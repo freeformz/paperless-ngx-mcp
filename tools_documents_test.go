@@ -272,9 +272,13 @@ func TestDocumentUploadRejectsDirectory(t *testing.T) {
 func TestDocumentUploadRejectsSymlink(t *testing.T) {
 	tmp := t.TempDir()
 	target := filepath.Join(tmp, "target.pdf")
-	os.WriteFile(target, []byte("pdf"), 0o644)
+	if err := os.WriteFile(target, []byte("pdf"), 0o644); err != nil {
+		t.Fatalf("failed to create target file: %v", err)
+	}
 	link := filepath.Join(tmp, "link.pdf")
-	os.Symlink(target, link)
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("skipping: symlinks not supported: %v", err)
+	}
 
 	client := NewClient("http://unused", "unused")
 	result := callTool(t, handleDocumentUpload(client), map[string]any{"file_path": link})
