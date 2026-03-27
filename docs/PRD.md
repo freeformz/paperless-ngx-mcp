@@ -77,7 +77,7 @@ The server always uses Paperless-ngx API version 9. These are passed via the MCP
 - **Pagination**: Automatic handling — list tools accept `page` and `page_size` parameters; responses include `count`, `next`, `previous`, and `results`
 - **Error handling**: HTTP error responses are translated to MCP error results with status code, detail message, and endpoint context
 - **Timeouts**: Configurable per-request timeout with sensible default (30s)
-- **Content types**: JSON for most endpoints; multipart/form-data for document uploads; binary for downloads
+- **Content types**: JSON for most endpoints; multipart/form-data for document uploads
 
 ## MCP Tools
 
@@ -94,11 +94,8 @@ Tools are organized into tiers. Tier 1 (document-centric) tools are implemented 
 | `document_update` | PATCH | `/api/documents/{id}/` | Update document metadata |
 | `document_delete` | DELETE | `/api/documents/{id}/` | Delete document (soft-delete to trash) |
 | `document_upload` | POST | `/api/documents/post_document/` | Upload a new document |
-| `document_download` | GET | `/api/documents/{id}/download/` | Download document file |
 | `document_metadata` | GET | `/api/documents/{id}/metadata/` | Get file metadata (checksums, sizes, MIME) |
 | `document_suggestions` | GET | `/api/documents/{id}/suggestions/` | Get AI suggestions for tags, correspondent, etc. |
-| `document_preview` | GET | `/api/documents/{id}/preview/` | Get document preview (returns PDF) |
-| `document_thumbnail` | GET | `/api/documents/{id}/thumb/` | Get document thumbnail (returns WebP image) |
 | `document_next_asn` | GET | `/api/documents/next_asn/` | Get next archive serial number |
 | `document_share_links` | GET | `/api/documents/{id}/share_links/` | List share links for a document |
 | `document_history` | GET | `/api/documents/{id}/history/` | Get audit trail for a document |
@@ -134,7 +131,7 @@ The primary search and filtering tool. Supports the full range of Paperless-ngx 
 | page | integer | no | Page number (default: 1) |
 | page_size | integer | no | Results per page (default: 25, max: 100000) |
 
-**Returns:** Paginated document list with count, next/previous page URLs, and document objects. When `query` is used, includes `__search_hit__` with score, highlights, and rank.
+**Returns:** Paginated document list with count, next/previous page URLs, and document objects. Each document object includes API URLs for download (`/api/documents/{id}/download/`), preview (`/api/documents/{id}/preview/`), and thumbnail (`/api/documents/{id}/thumb/`) — these are unauthenticated URL paths relative to `PAPERLESS_URL` that require a token to fetch. When `query` is used, includes `__search_hit__` with score, highlights, and rank.
 
 ##### document_get
 
@@ -144,7 +141,7 @@ The primary search and filtering tool. Supports the full range of Paperless-ngx 
 |------|------|----------|-------------|
 | id | integer | yes | Document ID |
 
-**Returns:** Full document object including tags, correspondent, document type, storage path, custom fields, notes, permissions.
+**Returns:** Full document object including tags, correspondent, document type, storage path, custom fields, notes, permissions, and API URL paths for download, preview, and thumbnail (unauthenticated paths relative to `PAPERLESS_URL`).
 
 ##### document_update
 
@@ -181,18 +178,6 @@ The primary search and filtering tool. Supports the full range of Paperless-ngx 
 
 **Returns:** Task UUID for tracking consumption status.
 
-##### document_download
-
-**Parameters:**
-
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| id | integer | yes | Document ID |
-| original | boolean | no | Download original instead of archive version |
-| destination | string | no | Local path to save file (default: temp directory) |
-
-**Returns:** Local file path where the document was saved.
-
 #### Document Notes
 
 | Tool | Method | Endpoint | Description |
@@ -206,7 +191,6 @@ The primary search and filtering tool. Supports the full range of Paperless-ngx 
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
 | `document_bulk_edit` | POST | `/api/documents/bulk_edit/` | Bulk edit documents |
-| `document_bulk_download` | POST | `/api/documents/bulk_download/` | Download multiple documents as ZIP |
 | `document_selection_data` | POST | `/api/documents/selection_data/` | Get aggregated metadata counts for a selection |
 
 ##### document_bulk_edit
@@ -559,22 +543,8 @@ The API version is hardcoded to `9` — the `Accept: application/json; version=9
 - `Patch(path string, body interface{}) (*http.Response, error)` — PATCH JSON
 - `Delete(path string) (*http.Response, error)` — DELETE
 - `PostMultipart(path string, fields map[string]string, file io.Reader, filename string) (*http.Response, error)` — Multipart upload
-- `Download(path string, params url.Values) (io.ReadCloser, string, error)` — Download file (returns reader, filename, error)
 
 All methods inject `Authorization` and `Accept` headers automatically.
-
-### Binary Response Handling
-
-Some endpoints return binary content rather than JSON:
-
-| Tool | Content Type | MCP Response Strategy |
-|------|-------------|----------------------|
-| `document_download` | application/pdf, original MIME | Save to local file, return file path |
-| `document_preview` | application/pdf | Save to temp file, return file path |
-| `document_thumbnail` | image/webp | Save to temp file, return file path |
-| `document_bulk_download` | application/zip | Save to local file, return file path |
-
-Binary content is never returned inline. Tool handlers write the content to a file and return the local path in the MCP result.
 
 ### Tool Handler Pattern
 
@@ -690,6 +660,7 @@ Test helpers should provide:
 
 These are explicitly out of scope for the current version but may be considered later:
 
+- **Document download/preview/thumbnail tools** — Binary file retrieval (`document_download`, `document_preview`, `document_thumbnail`, `document_bulk_download`). Requires design work on how binary content is handled in an MCP context where the agent cannot directly render files. Document list/get tools already return API URL paths for these resources.
 - **Claude Code hooks** — Session start/stop hooks for surfacing document state
 - **CLI subcommands** — Human-facing commands for listing documents, tags, etc.
 - **Response caching** — Cache tag/correspondent/document_type lists to reduce API calls
