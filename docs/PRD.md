@@ -14,13 +14,13 @@ Paperless-ngx is a powerful document management system, but interacting with it 
 2. **Document-centric prioritization** — Document, tag, correspondent, document type, and custom field operations are first-class
 3. **Metadata management** — Enable agents to read and update document metadata (title, tags, correspondent, document type, created date, custom fields, notes, etc.)
 4. **Search and filtering** — Full-text search, tag-based filtering, custom field queries, and document listing with rich filter support
-5. **Zero local state** — Purely pass-through to the Paperless-ngx server; no local database or caching
+5. **Minimal local state** — Pass-through to the Paperless-ngx server with in-memory caching of metadata lists (tags, correspondents, document types); no local database
 6. **CoWork compatible** — Works as an MCPB bundle for Claude Code and CoWork agent teams
 7. **Same toolchain as tasks-mcp** — Go, mcp-go, Cobra, GoReleaser, same CI/CD patterns
 
 ## Non-Goals
 
-- Local document storage or caching
+- Local document storage or persistent caching (in-memory metadata caching is in scope)
 - Document content modification (PDF editing, OCR, etc.) — metadata only
 - Paperless-ngx server administration (installation, upgrades, backups)
 - Real-time event streaming (WebSocket status endpoint)
@@ -78,6 +78,7 @@ The server always uses Paperless-ngx API version 9. These are passed via the MCP
 - **Error handling**: HTTP error responses are translated to MCP error results with status code, detail message, and endpoint context
 - **Timeouts**: Configurable per-request timeout with sensible default (30s)
 - **Content types**: JSON for most endpoints; multipart/form-data for document uploads
+- **Response caching**: In-memory TTL cache for metadata list endpoints (tags, correspondents, document types, storage paths, custom fields). These change infrequently but are queried often by agents doing classification work. Cache is invalidated on create/update/delete operations for the same resource type. No document content or search results are cached.
 
 ## MCP Tools
 
@@ -663,7 +664,6 @@ These are explicitly out of scope for the current version but may be considered 
 - **Document download/preview/thumbnail tools** — Binary file retrieval (`document_download`, `document_preview`, `document_thumbnail`, `document_bulk_download`). Requires design work on how binary content is handled in an MCP context where the agent cannot directly render files. Document list/get tools already return API URL paths for these resources.
 - **Claude Code hooks** — Session start/stop hooks for surfacing document state
 - **CLI subcommands** — Human-facing commands for listing documents, tags, etc.
-- **Response caching** — Cache tag/correspondent/document_type lists to reduce API calls
 - **Batch tool calls** — Combine multiple list operations into a single tool for efficiency
 - **Document content extraction** — Return document text content for agent analysis
 - **Webhook integration** — React to Paperless-ngx events in real-time
