@@ -8,6 +8,21 @@
     "name": "freeformz",
     "url": "https://github.com/freeformz"
   },
+  "user_config": {
+    "paperless_url": {
+      "type": "string",
+      "title": "Paperless-ngx URL",
+      "description": "Base URL of your Paperless-ngx instance (e.g. http://192.168.1.34:8000)",
+      "required": true
+    },
+    "paperless_token": {
+      "type": "string",
+      "title": "Paperless-ngx API Token",
+      "description": "API authentication token. Generate one in Paperless-ngx under Settings > Administration > Auth Tokens.",
+      "required": true,
+      "sensitive": true
+    }
+  },
   "server": {
     "type": "binary",
     "entry_point": "server/paperless-ngx-mcp",
@@ -15,8 +30,14 @@
       "command": "${__dirname}/server/paperless-ngx-mcp",
       "args": ["mcp"],
       "env": {
-        "PAPERLESS_URL": "",
-        "PAPERLESS_TOKEN": ""
+        "PAPERLESS_URL": "${user_config.paperless_url}",
+        "PAPERLESS_TOKEN": "${user_config.paperless_token}"
+      },
+      "platform_overrides": {
+        "win32": {
+          "command": "${__dirname}/server/paperless-ngx-mcp.exe",
+          "args": ["mcp"]
+        }
       }
     }
   },
