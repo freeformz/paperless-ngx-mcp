@@ -18,5 +18,8 @@ Thumbs.db
 # Test
 coverage.out
 
+# Claude Code
+.claude/settings.local.json
+
 # Go
 vendor/
