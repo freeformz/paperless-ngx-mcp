@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"testing"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func TestErrResult(t *testing.T) {
@@ -164,5 +166,58 @@ func TestSetJSONFieldInvalid(t *testing.T) {
 	err := setJSONField(body, req, "tags")
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
+	}
+}
+
+func TestWithNumberSchema(t *testing.T) {
+	tool := mcp.NewTool("test_tool",
+		withNumber("page_size", mcp.Description("Results per page")),
+	)
+	prop, ok := tool.InputSchema.Properties["page_size"].(map[string]any)
+	if !ok {
+		t.Fatal("expected page_size property")
+	}
+	types, ok := prop["type"].([]string)
+	if !ok {
+		t.Fatalf("expected type to be []string, got %T", prop["type"])
+	}
+	if len(types) != 2 || types[0] != "number" || types[1] != "string" {
+		t.Errorf("type = %v, want [number string]", types)
+	}
+	if prop["pattern"] != `^-?\d+(\.\d+)?$` {
+		t.Errorf("pattern = %v, want numeric pattern", prop["pattern"])
+	}
+}
+
+func TestWithNullableNumberSchema(t *testing.T) {
+	tool := mcp.NewTool("test_tool",
+		withNullableNumber("correspondent", mcp.Description("Correspondent ID")),
+	)
+	prop, ok := tool.InputSchema.Properties["correspondent"].(map[string]any)
+	if !ok {
+		t.Fatal("expected correspondent property")
+	}
+	types, ok := prop["type"].([]string)
+	if !ok {
+		t.Fatalf("expected type to be []string, got %T", prop["type"])
+	}
+	if len(types) != 3 || types[0] != "number" || types[1] != "string" || types[2] != "null" {
+		t.Errorf("type = %v, want [number string null]", types)
+	}
+}
+
+func TestWithNumberHandlerCoercion(t *testing.T) {
+	// Verify GetFloat coerces string "50" to 50.0
+	req := makeRequest(map[string]any{"page_size": "50"})
+	v := req.GetFloat("page_size", 0)
+	if v != 50.0 {
+		t.Errorf("GetFloat(\"50\") = %v, want 50.0", v)
+	}
+
+	// Verify GetFloat handles actual number
+	req2 := makeRequest(map[string]any{"page_size": float64(25)})
+	v2 := req2.GetFloat("page_size", 0)
+	if v2 != 25.0 {
+		t.Errorf("GetFloat(25) = %v, want 25.0", v2)
 	}
 }
