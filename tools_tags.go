@@ -39,7 +39,7 @@ func registerTagTools(srv *server.MCPServer, client *Client) {
 			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
-			withNullableNumber("parent", mcp.Description("Parent tag ID for hierarchy")),
+			withNumber("parent", mcp.Description("Parent tag ID for hierarchy")),
 		),
 		handleTagCreate(client),
 	)

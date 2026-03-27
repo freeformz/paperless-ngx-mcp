@@ -181,11 +181,11 @@ func TestWithNumberSchema(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected type to be []string, got %T", prop["type"])
 	}
-	if len(types) != 2 || types[0] != "number" || types[1] != "string" {
-		t.Errorf("type = %v, want [number string]", types)
+	if len(types) != 2 || types[0] != "integer" || types[1] != "string" {
+		t.Errorf("type = %v, want [integer string]", types)
 	}
-	if prop["pattern"] != `^-?\d+(\.\d+)?$` {
-		t.Errorf("pattern = %v, want numeric pattern", prop["pattern"])
+	if prop["pattern"] != `^-?\d+$` {
+		t.Errorf("pattern = %v, want integer pattern", prop["pattern"])
 	}
 }
 
@@ -201,7 +201,7 @@ func TestWithNullableNumberSchema(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected type to be []string, got %T", prop["type"])
 	}
-	if len(types) != 3 || types[0] != "number" || types[1] != "string" || types[2] != "null" {
+	if len(types) != 3 || types[0] != "integer" || types[1] != "string" || types[2] != "null" {
 		t.Errorf("type = %v, want [number string null]", types)
 	}
 }
