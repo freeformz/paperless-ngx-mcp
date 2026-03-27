@@ -21,8 +21,8 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 	// Tasks
 	srv.AddTool(mcp.NewTool("task_list",
 		mcp.WithDescription("List background tasks (e.g., document consumption)."),
-		mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
-		mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
+		withNumber("page", mcp.Description("Page number (default: 1)")),
+		withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 	), handlePaginatedList(client, "/api/tasks/"))
 
 	srv.AddTool(mcp.NewTool("task_get",
@@ -53,8 +53,8 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 	// Trash
 	srv.AddTool(mcp.NewTool("trash_list",
 		mcp.WithDescription("List trashed documents."),
-		mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
-		mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
+		withNumber("page", mcp.Description("Page number (default: 1)")),
+		withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 	), handlePaginatedList(client, "/api/trash/"))
 
 	srv.AddTool(mcp.NewTool("trash_action",
@@ -83,12 +83,12 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(mcp.NewTool("config_get",
 		mcp.WithDescription("Get a configuration entry."),
-		mcp.WithNumber("id", mcp.Description("Config entry ID"), mcp.Required()),
+		withNumber("id", mcp.Description("Config entry ID"), mcp.Required()),
 	), handleGetByID(client, "/api/config/%d/"))
 
 	srv.AddTool(mcp.NewTool("config_update",
 		mcp.WithDescription("Update a configuration entry."),
-		mcp.WithNumber("id", mcp.Description("Config entry ID"), mcp.Required()),
+		withNumber("id", mcp.Description("Config entry ID"), mcp.Required()),
 		mcp.WithString("body", mcp.Description("JSON object with fields to update"), mcp.Required()),
 	), handleConfigUpdate(client))
 }

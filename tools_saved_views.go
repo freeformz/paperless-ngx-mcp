@@ -12,8 +12,8 @@ func registerSavedViewTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("saved_view_list",
 			mcp.WithDescription("List saved views."),
-			mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
-			mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
+			withNumber("page", mcp.Description("Page number (default: 1)")),
+			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 		),
 		handlePaginatedList(client, "/api/saved_views/"),
 	)
@@ -21,7 +21,7 @@ func registerSavedViewTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("saved_view_get",
 			mcp.WithDescription("Get saved view details."),
-			mcp.WithNumber("id", mcp.Description("Saved view ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Saved view ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/saved_views/%d/"),
 	)
@@ -42,7 +42,7 @@ func registerSavedViewTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("saved_view_update",
 			mcp.WithDescription("Update a saved view."),
-			mcp.WithNumber("id", mcp.Description("Saved view ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Saved view ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("View name")),
 			mcp.WithBoolean("show_on_dashboard", mcp.Description("Show on dashboard")),
 			mcp.WithBoolean("show_in_sidebar", mcp.Description("Show in sidebar")),
@@ -56,7 +56,7 @@ func registerSavedViewTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("saved_view_delete",
 			mcp.WithDescription("Delete a saved view."),
-			mcp.WithNumber("id", mcp.Description("Saved view ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Saved view ID"), mcp.Required()),
 		),
 		handleDeleteByID(client, "/api/saved_views/%d/"),
 	)

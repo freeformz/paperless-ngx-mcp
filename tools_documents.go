@@ -17,10 +17,10 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("document_list",
 			mcp.WithDescription("List/search documents with filtering and full-text search. Returns paginated results."),
 			mcp.WithString("query", mcp.Description("Full-text search query")),
-			mcp.WithNumber("more_like_id", mcp.Description("Find documents similar to this document ID")),
-			mcp.WithNumber("correspondent_id", mcp.Description("Filter by correspondent ID")),
-			mcp.WithNumber("document_type_id", mcp.Description("Filter by document type ID")),
-			mcp.WithNumber("storage_path_id", mcp.Description("Filter by storage path ID")),
+			withNumber("more_like_id", mcp.Description("Find documents similar to this document ID")),
+			withNumber("correspondent_id", mcp.Description("Filter by correspondent ID")),
+			withNumber("document_type_id", mcp.Description("Filter by document type ID")),
+			withNumber("storage_path_id", mcp.Description("Filter by storage path ID")),
 			mcp.WithString("tags_id_all", mcp.Description("Comma-separated tag IDs — document must have ALL")),
 			mcp.WithString("tags_id_none", mcp.Description("Comma-separated tag IDs — document must have NONE")),
 			mcp.WithString("tags_id_in", mcp.Description("Comma-separated tag IDs — document must have ANY")),
@@ -33,10 +33,10 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			mcp.WithString("created_before", mcp.Description("Filter by created date (lte, YYYY-MM-DD)")),
 			mcp.WithString("added_after", mcp.Description("Filter by added date (gte, YYYY-MM-DD)")),
 			mcp.WithString("added_before", mcp.Description("Filter by added date (lte, YYYY-MM-DD)")),
-			mcp.WithNumber("owner_id", mcp.Description("Filter by owner")),
+			withNumber("owner_id", mcp.Description("Filter by owner")),
 			mcp.WithString("ordering", mcp.Description("Sort field (prefix - for descending)")),
-			mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
-			mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25, max: 100000)")),
+			withNumber("page", mcp.Description("Page number (default: 1)")),
+			withNumber("page_size", mcp.Description("Results per page (default: 25, max: 100000)")),
 		),
 		handleDocumentList(client),
 	)
@@ -44,7 +44,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_get",
 			mcp.WithDescription("Get full document details including tags, correspondent, document type, custom fields, notes, and permissions."),
-			mcp.WithNumber("id", mcp.Description("Document ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/documents/%d/"),
 	)
@@ -52,14 +52,14 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_update",
 			mcp.WithDescription("Update document metadata. Only specified fields are changed. Pass null for correspondent/document_type/storage_path to clear."),
-			mcp.WithNumber("id", mcp.Description("Document ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 			mcp.WithString("title", mcp.Description("New title")),
 			mcp.WithString("created", mcp.Description("New created date (YYYY-MM-DD)")),
-			mcp.WithNumber("correspondent", mcp.Description("Correspondent ID (null to clear)")),
-			mcp.WithNumber("document_type", mcp.Description("Document type ID (null to clear)")),
-			mcp.WithNumber("storage_path", mcp.Description("Storage path ID (null to clear)")),
+			withNumber("correspondent", mcp.Description("Correspondent ID (null to clear)")),
+			withNumber("document_type", mcp.Description("Document type ID (null to clear)")),
+			withNumber("storage_path", mcp.Description("Storage path ID (null to clear)")),
 			mcp.WithString("tags", mcp.Description("JSON array of tag IDs (replaces all tags)")),
-			mcp.WithNumber("archive_serial_number", mcp.Description("Archive serial number (null to clear)")),
+			withNumber("archive_serial_number", mcp.Description("Archive serial number (null to clear)")),
 			mcp.WithString("custom_fields", mcp.Description("JSON array of custom field assignments")),
 		),
 		handleDocumentUpdate(client),
@@ -68,7 +68,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_delete",
 			mcp.WithDescription("Delete a document (soft-delete to trash)."),
-			mcp.WithNumber("id", mcp.Description("Document ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
 		handleDeleteByID(client, "/api/documents/%d/"),
 	)
@@ -79,11 +79,11 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			mcp.WithString("file_path", mcp.Description("Local path to the file to upload"), mcp.Required()),
 			mcp.WithString("title", mcp.Description("Document title")),
 			mcp.WithString("created", mcp.Description("Created date")),
-			mcp.WithNumber("correspondent", mcp.Description("Correspondent ID")),
-			mcp.WithNumber("document_type", mcp.Description("Document type ID")),
-			mcp.WithNumber("storage_path", mcp.Description("Storage path ID")),
+			withNumber("correspondent", mcp.Description("Correspondent ID")),
+			withNumber("document_type", mcp.Description("Document type ID")),
+			withNumber("storage_path", mcp.Description("Storage path ID")),
 			mcp.WithString("tags", mcp.Description("JSON array of tag IDs")),
-			mcp.WithNumber("archive_serial_number", mcp.Description("Archive serial number")),
+			withNumber("archive_serial_number", mcp.Description("Archive serial number")),
 		),
 		handleDocumentUpload(client),
 	)
@@ -91,7 +91,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_metadata",
 			mcp.WithDescription("Get file metadata (checksums, sizes, MIME type) for a document."),
-			mcp.WithNumber("id", mcp.Description("Document ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/documents/%d/metadata/"),
 	)
@@ -99,7 +99,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_suggestions",
 			mcp.WithDescription("Get AI suggestions for tags, correspondent, document type, and storage path."),
-			mcp.WithNumber("id", mcp.Description("Document ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/documents/%d/suggestions/"),
 	)
@@ -114,7 +114,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_share_links",
 			mcp.WithDescription("List share links for a specific document."),
-			mcp.WithNumber("id", mcp.Description("Document ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/documents/%d/share_links/"),
 	)
@@ -122,7 +122,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_history",
 			mcp.WithDescription("Get audit trail for a document."),
-			mcp.WithNumber("id", mcp.Description("Document ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/documents/%d/history/"),
 	)
@@ -142,7 +142,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_note_list",
 			mcp.WithDescription("List notes on a document."),
-			mcp.WithNumber("id", mcp.Description("Document ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/documents/%d/notes/"),
 	)
@@ -150,7 +150,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_note_add",
 			mcp.WithDescription("Add a note to a document."),
-			mcp.WithNumber("id", mcp.Description("Document ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 			mcp.WithString("note", mcp.Description("Note content"), mcp.Required()),
 		),
 		handleDocumentNoteAdd(client),
@@ -159,8 +159,8 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_note_delete",
 			mcp.WithDescription("Delete a note from a document."),
-			mcp.WithNumber("id", mcp.Description("Document ID"), mcp.Required()),
-			mcp.WithNumber("note_id", mcp.Description("Note ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
+			withNumber("note_id", mcp.Description("Note ID"), mcp.Required()),
 		),
 		handleDocumentNoteDelete(client),
 	)

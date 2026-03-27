@@ -12,8 +12,8 @@ func registerShareLinkTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("share_link_list",
 			mcp.WithDescription("List share links."),
-			mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
-			mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
+			withNumber("page", mcp.Description("Page number (default: 1)")),
+			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 		),
 		handlePaginatedList(client, "/api/share_links/"),
 	)
@@ -21,7 +21,7 @@ func registerShareLinkTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("share_link_get",
 			mcp.WithDescription("Get share link details."),
-			mcp.WithNumber("id", mcp.Description("Share link ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Share link ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/share_links/%d/"),
 	)
@@ -29,7 +29,7 @@ func registerShareLinkTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("share_link_create",
 			mcp.WithDescription("Create a new share link for a document."),
-			mcp.WithNumber("document", mcp.Description("Document ID"), mcp.Required()),
+			withNumber("document", mcp.Description("Document ID"), mcp.Required()),
 			mcp.WithString("expiration", mcp.Description("Expiration date (YYYY-MM-DD or ISO 8601)")),
 			mcp.WithString("slug", mcp.Description("Custom URL slug")),
 			mcp.WithBoolean("file_version_archive", mcp.Description("Share archived version (default: true)")),
@@ -40,7 +40,7 @@ func registerShareLinkTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("share_link_update",
 			mcp.WithDescription("Update a share link."),
-			mcp.WithNumber("id", mcp.Description("Share link ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Share link ID"), mcp.Required()),
 			mcp.WithString("expiration", mcp.Description("Expiration date")),
 		),
 		handleShareLinkUpdate(client),
@@ -49,7 +49,7 @@ func registerShareLinkTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("share_link_delete",
 			mcp.WithDescription("Delete a share link."),
-			mcp.WithNumber("id", mcp.Description("Share link ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Share link ID"), mcp.Required()),
 		),
 		handleDeleteByID(client, "/api/share_links/%d/"),
 	)
