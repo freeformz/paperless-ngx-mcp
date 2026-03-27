@@ -20,7 +20,6 @@ Paperless-ngx is a powerful document management system, but interacting with it 
 
 ## Non-Goals
 
-- Local document storage or persistent caching (in-memory metadata caching is in scope)
 - Document content modification (PDF editing, OCR, etc.) — metadata only
 - Paperless-ngx server administration (installation, upgrades, backups)
 - Real-time event streaming (WebSocket status endpoint)
