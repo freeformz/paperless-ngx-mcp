@@ -202,7 +202,7 @@ func TestWithNullableNumberSchema(t *testing.T) {
 		t.Fatalf("expected type to be []string, got %T", prop["type"])
 	}
 	if len(types) != 3 || types[0] != "integer" || types[1] != "string" || types[2] != "null" {
-		t.Errorf("type = %v, want [number string null]", types)
+		t.Errorf("type = %v, want [integer string null]", types)
 	}
 }
 
