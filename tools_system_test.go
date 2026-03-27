@@ -11,7 +11,7 @@ func TestSystemStatus(t *testing.T) {
 	rh.Handle("GET", "/api/status/", jsonHandler(t, 200, status))
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleSystemStatus(client), nil)
+	result := callTool(t, handleSimpleGet(client, "/api/status/"), nil)
 	assertNotError(t, result)
 
 	m := resultJSON(t, result)
@@ -27,7 +27,7 @@ func TestTaskList(t *testing.T) {
 	rh.Handle("GET", "/api/tasks/", jsonHandler(t, 200, tasks))
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleTaskList(client), nil)
+	result := callTool(t, handlePaginatedList(client, "/api/tasks/"), nil)
 	assertNotError(t, result)
 }
 
@@ -38,7 +38,7 @@ func TestLogList(t *testing.T) {
 	rh.Handle("GET", "/api/logs/", jsonHandler(t, 200, logs))
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleLogList(client), nil)
+	result := callTool(t, handleSimpleGet(client, "/api/logs/"), nil)
 	assertNotError(t, result)
 }
 
@@ -47,7 +47,7 @@ func TestTrashList(t *testing.T) {
 	rh.Handle("GET", "/api/trash/", jsonHandler(t, 200, paginatedResponse([]any{}, 0)))
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleTrashList(client), nil)
+	result := callTool(t, handlePaginatedList(client, "/api/trash/"), nil)
 	assertNotError(t, result)
 }
 
@@ -70,16 +70,32 @@ func TestTrashActionRequiresAction(t *testing.T) {
 }
 
 func TestTaskGet(t *testing.T) {
+	taskID := "12345678-1234-1234-1234-123456789012"
 	rh := newRouteHandler(t)
-	rh.Handle("GET", "/api/tasks/abc-123/", jsonHandler(t, 200, map[string]any{"task_id": "abc-123", "status": "SUCCESS"}))
+	rh.Handle("GET", "/api/tasks/"+taskID+"/", jsonHandler(t, 200, map[string]any{"task_id": taskID, "status": "SUCCESS"}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleTaskGet(client), map[string]any{"id": "abc-123"})
+	result := callTool(t, handleTaskGet(client), map[string]any{"id": taskID})
 	assertNotError(t, result)
 }
 
 func TestTaskGetRequiresId(t *testing.T) {
 	client := NewClient("http://unused", "unused")
 	result := callTool(t, handleTaskGet(client), map[string]any{})
+	assertIsError(t, result)
+}
+
+func TestTaskGetAcceptsUppercaseUUID(t *testing.T) {
+	taskID := "12345678-1234-1234-1234-123456789ABC"
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/tasks/"+taskID+"/", jsonHandler(t, 200, map[string]any{"task_id": taskID, "status": "SUCCESS"}))
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleTaskGet(client), map[string]any{"id": taskID})
+	assertNotError(t, result)
+}
+
+func TestTaskGetRejectsInvalidId(t *testing.T) {
+	client := NewClient("http://unused", "unused")
+	result := callTool(t, handleTaskGet(client), map[string]any{"id": "abc-123"})
 	assertIsError(t, result)
 }
 
@@ -125,11 +141,23 @@ func TestLogGetRequiresId(t *testing.T) {
 	assertIsError(t, result)
 }
 
+func TestLogGetRejectsInvalidId(t *testing.T) {
+	client := NewClient("http://unused", "unused")
+	result := callTool(t, handleLogGet(client), map[string]any{"id": "../etc/passwd"})
+	assertIsError(t, result)
+}
+
+func TestLogGetRejectsDotDot(t *testing.T) {
+	client := NewClient("http://unused", "unused")
+	result := callTool(t, handleLogGet(client), map[string]any{"id": ".."})
+	assertIsError(t, result)
+}
+
 func TestRemoteVersion(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/remote_version/", jsonHandler(t, 200, map[string]any{"version": "2.1.0"}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleRemoteVersion(client), nil)
+	result := callTool(t, handleSimpleGet(client, "/api/remote_version/"), nil)
 	assertNotError(t, result)
 }
 
@@ -137,7 +165,7 @@ func TestUISettingsGet(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/ui_settings/", jsonHandler(t, 200, map[string]any{"theme": "dark"}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleUISettingsGet(client), nil)
+	result := callTool(t, handleSimpleGet(client, "/api/ui_settings/"), nil)
 	assertNotError(t, result)
 }
 
@@ -145,7 +173,7 @@ func TestConfigList(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/config/", jsonHandler(t, 200, paginatedResponse([]map[string]any{{"id": 1}}, 1)))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleConfigList(client), nil)
+	result := callTool(t, handleSimpleGet(client, "/api/config/"), nil)
 	assertNotError(t, result)
 }
 
@@ -153,7 +181,7 @@ func TestConfigGet(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/config/1/", jsonHandler(t, 200, map[string]any{"id": 1, "key": "value"}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleConfigGet(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/config/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -173,4 +201,3 @@ func TestConfigUpdateNoFields(t *testing.T) {
 	result := callTool(t, handleConfigUpdate(client), map[string]any{"id": float64(1)})
 	assertIsError(t, result)
 }
-

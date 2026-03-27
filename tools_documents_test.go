@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -51,7 +53,7 @@ func TestDocumentGet(t *testing.T) {
 	rh.Handle("GET", "/api/documents/42/", jsonHandler(t, 200, doc))
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleDocumentGet(client), map[string]any{"id": float64(42)})
+	result := callTool(t, handleGetByID(client, "/api/documents/%d/"), map[string]any{"id": float64(42)})
 	assertNotError(t, result)
 
 	m := resultJSON(t, result)
@@ -62,7 +64,7 @@ func TestDocumentGet(t *testing.T) {
 
 func TestDocumentGetRequiresID(t *testing.T) {
 	client := NewClient("http://unused", "unused")
-	result := callTool(t, handleDocumentGet(client), map[string]any{})
+	result := callTool(t, handleGetByID(client, "/api/documents/%d/"), map[string]any{})
 	assertIsError(t, result)
 }
 
@@ -132,7 +134,7 @@ func TestDocumentDelete(t *testing.T) {
 	})
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleDocumentDelete(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleDeleteByID(client, "/api/documents/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -143,7 +145,7 @@ func TestDocumentNoteList(t *testing.T) {
 	rh.Handle("GET", "/api/documents/1/notes/", jsonHandler(t, 200, notes))
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleDocumentNoteList(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/documents/%d/notes/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -189,7 +191,7 @@ func TestDocumentMetadata(t *testing.T) {
 	rh.Handle("GET", "/api/documents/1/metadata/", jsonHandler(t, 200, meta))
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleDocumentMetadata(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/documents/%d/metadata/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -200,7 +202,7 @@ func TestDocumentSuggestions(t *testing.T) {
 	rh.Handle("GET", "/api/documents/1/suggestions/", jsonHandler(t, 200, suggestions))
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleDocumentSuggestions(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/documents/%d/suggestions/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -209,7 +211,7 @@ func TestDocumentNextASN(t *testing.T) {
 	rh.Handle("GET", "/api/documents/next_asn/", jsonHandler(t, 200, float64(42)))
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleDocumentNextASN(client), nil)
+	result := callTool(t, handleSimpleGet(client, "/api/documents/next_asn/"), nil)
 	assertNotError(t, result)
 }
 
@@ -217,7 +219,7 @@ func TestDocumentShareLinksHandler(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/documents/1/share_links/", jsonHandler(t, 200, []map[string]any{{"id": 1}}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleDocumentShareLinks(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/documents/%d/share_links/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -225,7 +227,7 @@ func TestDocumentHistory(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/documents/1/history/", jsonHandler(t, 200, []map[string]any{{"action": "created"}}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleDocumentHistory(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/documents/%d/history/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -255,12 +257,40 @@ func TestDocumentUploadRequiresFilePath(t *testing.T) {
 	assertIsError(t, result)
 }
 
+func TestDocumentUploadRejectsNonExistentPath(t *testing.T) {
+	client := NewClient("http://unused", "unused")
+	result := callTool(t, handleDocumentUpload(client), map[string]any{"file_path": "/nonexistent/file.pdf"})
+	assertIsError(t, result)
+}
+
+func TestDocumentUploadRejectsDirectory(t *testing.T) {
+	client := NewClient("http://unused", "unused")
+	result := callTool(t, handleDocumentUpload(client), map[string]any{"file_path": t.TempDir()})
+	assertIsError(t, result)
+}
+
+func TestDocumentUploadRejectsSymlink(t *testing.T) {
+	tmp := t.TempDir()
+	target := filepath.Join(tmp, "target.pdf")
+	if err := os.WriteFile(target, []byte("pdf"), 0o644); err != nil {
+		t.Fatalf("failed to create target file: %v", err)
+	}
+	link := filepath.Join(tmp, "link.pdf")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("skipping: symlinks not supported: %v", err)
+	}
+
+	client := NewClient("http://unused", "unused")
+	result := callTool(t, handleDocumentUpload(client), map[string]any{"file_path": link})
+	assertIsError(t, result)
+}
+
 func TestAPIErrorHandling(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/documents/999/", jsonHandler(t, 404, map[string]any{"detail": "Not found."}))
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleDocumentGet(client), map[string]any{"id": float64(999)})
+	result := callTool(t, handleGetByID(client, "/api/documents/%d/"), map[string]any{"id": float64(999)})
 	assertIsError(t, result)
 
 	m := resultJSON(t, result)

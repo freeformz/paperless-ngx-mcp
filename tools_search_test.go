@@ -46,7 +46,7 @@ func TestStatistics(t *testing.T) {
 	rh.Handle("GET", "/api/statistics/", jsonHandler(t, 200, stats))
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleStatistics(client), nil)
+	result := callTool(t, handleSimpleGet(client, "/api/statistics/"), nil)
 	assertNotError(t, result)
 
 	m := resultJSON(t, result)

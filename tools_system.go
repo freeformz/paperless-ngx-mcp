@@ -3,10 +3,18 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/url"
+	"regexp"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+)
+
+var (
+	// uuidPattern validates task IDs as UUIDs to prevent path injection (case-insensitive).
+	uuidPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+	// logNamePattern validates log file names to prevent path traversal.
+	// Disallows ".." sequences to prevent directory traversal.
+	logNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)*$`)
 )
 
 func registerSystemTools(srv *server.MCPServer, client *Client) {
@@ -15,7 +23,7 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 		mcp.WithDescription("List background tasks (e.g., document consumption)."),
 		mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
 		mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
-	), handleTaskList(client))
+	), handlePaginatedList(client, "/api/tasks/"))
 
 	srv.AddTool(mcp.NewTool("task_get",
 		mcp.WithDescription("Get background task details."),
@@ -35,7 +43,7 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 	// Logs
 	srv.AddTool(mcp.NewTool("log_list",
 		mcp.WithDescription("List available log files."),
-	), handleLogList(client))
+	), handleSimpleGet(client, "/api/logs/"))
 
 	srv.AddTool(mcp.NewTool("log_get",
 		mcp.WithDescription("Get log file contents."),
@@ -47,7 +55,7 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 		mcp.WithDescription("List trashed documents."),
 		mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
 		mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
-	), handleTrashList(client))
+	), handlePaginatedList(client, "/api/trash/"))
 
 	srv.AddTool(mcp.NewTool("trash_action",
 		mcp.WithDescription("Restore or permanently delete trashed documents."),
@@ -58,25 +66,25 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 	// System
 	srv.AddTool(mcp.NewTool("system_status",
 		mcp.WithDescription("Get system status including version, database, storage info (admin only)."),
-	), handleSystemStatus(client))
+	), handleSimpleGet(client, "/api/status/"))
 
 	srv.AddTool(mcp.NewTool("remote_version",
 		mcp.WithDescription("Check for available Paperless-ngx updates."),
-	), handleRemoteVersion(client))
+	), handleSimpleGet(client, "/api/remote_version/"))
 
 	srv.AddTool(mcp.NewTool("ui_settings_get",
 		mcp.WithDescription("Get UI settings for the current user."),
-	), handleUISettingsGet(client))
+	), handleSimpleGet(client, "/api/ui_settings/"))
 
 	// Config
 	srv.AddTool(mcp.NewTool("config_list",
 		mcp.WithDescription("List application configuration entries."),
-	), handleConfigList(client))
+	), handleSimpleGet(client, "/api/config/"))
 
 	srv.AddTool(mcp.NewTool("config_get",
 		mcp.WithDescription("Get a configuration entry."),
 		mcp.WithNumber("id", mcp.Description("Config entry ID"), mcp.Required()),
-	), handleConfigGet(client))
+	), handleGetByID(client, "/api/config/%d/"))
 
 	srv.AddTool(mcp.NewTool("config_update",
 		mcp.WithDescription("Update a configuration entry."),
@@ -85,24 +93,17 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 	), handleConfigUpdate(client))
 }
 
-func handleTaskList(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		params := url.Values{}
-		addPaginationParams(params, request)
-		path := "/api/tasks/"
-		resp, err := client.Get(path, params)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
 func handleTaskGet(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id := request.GetString("id", "")
-		if id == "" {
-			return errResult("id is required"), nil
+		id, errRes := getRequiredString(request, "id")
+		if errRes != nil {
+			return errRes, nil
+		}
+		if !uuidPattern.MatchString(id) {
+			return errResult("id must be a valid UUID"), nil
 		}
 		path := fmt.Sprintf("/api/tasks/%s/", id)
-		resp, err := client.Get(path, nil)
+		resp, err := client.Get(ctx, path, nil)
 		return doRequest(resp, err, "GET", path)
 	}
 }
@@ -118,60 +119,45 @@ func handleTaskAcknowledge(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := "/api/tasks/acknowledge/"
-		resp, err := client.Post(path, body)
+		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
 	}
 }
 
 func handleTaskRun(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		taskName := request.GetString("task_name", "")
-		if taskName == "" {
-			return errResult("task_name is required"), nil
+		taskName, errRes := getRequiredString(request, "task_name")
+		if errRes != nil {
+			return errRes, nil
 		}
 
 		body := map[string]any{"task_name": taskName}
 		path := "/api/tasks/run/"
-		resp, err := client.Post(path, body)
+		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
-	}
-}
-
-func handleLogList(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		path := "/api/logs/"
-		resp, err := client.Get(path, nil)
-		return doRequest(resp, err, "GET", path)
 	}
 }
 
 func handleLogGet(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id := request.GetString("id", "")
-		if id == "" {
-			return errResult("id is required"), nil
+		id, errRes := getRequiredString(request, "id")
+		if errRes != nil {
+			return errRes, nil
+		}
+		if !logNamePattern.MatchString(id) {
+			return errResult("id must contain only alphanumeric characters, dots, hyphens, and underscores"), nil
 		}
 		path := fmt.Sprintf("/api/logs/%s/", id)
-		resp, err := client.Get(path, nil)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleTrashList(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		params := url.Values{}
-		addPaginationParams(params, request)
-		path := "/api/trash/"
-		resp, err := client.Get(path, params)
+		resp, err := client.Get(ctx, path, nil)
 		return doRequest(resp, err, "GET", path)
 	}
 }
 
 func handleTrashAction(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		action := request.GetString("action", "")
-		if action == "" {
-			return errResult("action is required"), nil
+		action, errRes := getRequiredString(request, "action")
+		if errRes != nil {
+			return errRes, nil
 		}
 
 		body := map[string]any{"action": action}
@@ -180,52 +166,8 @@ func handleTrashAction(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := "/api/trash/"
-		resp, err := client.Post(path, body)
+		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
-	}
-}
-
-func handleSystemStatus(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		path := "/api/status/"
-		resp, err := client.Get(path, nil)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleRemoteVersion(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		path := "/api/remote_version/"
-		resp, err := client.Get(path, nil)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleUISettingsGet(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		path := "/api/ui_settings/"
-		resp, err := client.Get(path, nil)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleConfigList(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		path := "/api/config/"
-		resp, err := client.Get(path, nil)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleConfigGet(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/config/%d/", id)
-		resp, err := client.Get(path, nil)
-		return doRequest(resp, err, "GET", path)
 	}
 }
 
@@ -242,13 +184,15 @@ func handleConfigUpdate(client *Client) server.ToolHandlerFunc {
 		}
 		if parsed, ok := body["body"].(map[string]any); ok {
 			body = parsed
+		} else if _, ok := body["body"]; ok {
+			return errResult("body must be a JSON object"), nil
 		}
 		if len(body) == 0 {
 			return errResult("body is required"), nil
 		}
 
 		path := fmt.Sprintf("/api/config/%d/", id)
-		resp, err := client.Patch(path, body)
+		resp, err := client.Patch(ctx, path, body)
 		return doRequest(resp, err, "PATCH", path)
 	}
 }

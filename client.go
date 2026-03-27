@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,11 +30,22 @@ type Client struct {
 
 // NewClient creates a new Paperless-ngx API client with in-memory caching.
 func NewClient(baseURL, token string) *Client {
+	parsedBase := strings.TrimRight(baseURL, "/")
 	return &Client{
-		baseURL: strings.TrimRight(baseURL, "/"),
+		baseURL: parsedBase,
 		token:   token,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) >= 10 {
+					return fmt.Errorf("stopped after 10 redirects")
+				}
+				// Strip auth header if redirected to a different origin (scheme/host/port) to prevent token leaking.
+				if len(via) > 0 && (req.URL.Scheme != via[0].URL.Scheme || req.URL.Host != via[0].URL.Host) {
+					req.Header.Del("Authorization")
+				}
+				return nil
+			},
 		},
 		cache: NewCache(defaultCacheTTL),
 	}
@@ -47,7 +59,7 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 
 // Get performs a GET request with optional query parameters.
 // Responses for cacheable metadata list endpoints are served from cache when available.
-func (c *Client) Get(path string, params url.Values) (*http.Response, error) {
+func (c *Client) Get(ctx context.Context, path string, params url.Values) (*http.Response, error) {
 	u := c.baseURL + path
 	if len(params) > 0 {
 		u += "?" + params.Encode()
@@ -64,7 +76,7 @@ func (c *Client) Get(path string, params url.Values) (*http.Response, error) {
 		}
 	}
 
-	req, err := http.NewRequest("GET", u, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +101,7 @@ func (c *Client) Get(path string, params url.Values) (*http.Response, error) {
 
 // Post performs a POST request with a JSON body.
 // Invalidates cache for the affected resource type.
-func (c *Client) Post(path string, body any) (*http.Response, error) {
+func (c *Client) Post(ctx context.Context, path string, body any) (*http.Response, error) {
 	if c.cache != nil {
 		if prefix := cachePrefix(path); prefix != "" {
 			c.cache.Invalidate(prefix)
@@ -102,7 +114,7 @@ func (c *Client) Post(path string, body any) (*http.Response, error) {
 			return nil, fmt.Errorf("encode body: %w", err)
 		}
 	}
-	req, err := http.NewRequest("POST", c.baseURL+path, &buf)
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+path, &buf)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +124,7 @@ func (c *Client) Post(path string, body any) (*http.Response, error) {
 
 // Patch performs a PATCH request with a JSON body.
 // Invalidates cache for the affected resource type.
-func (c *Client) Patch(path string, body any) (*http.Response, error) {
+func (c *Client) Patch(ctx context.Context, path string, body any) (*http.Response, error) {
 	if c.cache != nil {
 		if prefix := cachePrefix(path); prefix != "" {
 			c.cache.Invalidate(prefix)
@@ -125,7 +137,7 @@ func (c *Client) Patch(path string, body any) (*http.Response, error) {
 			return nil, fmt.Errorf("encode body: %w", err)
 		}
 	}
-	req, err := http.NewRequest("PATCH", c.baseURL+path, &buf)
+	req, err := http.NewRequestWithContext(ctx, "PATCH", c.baseURL+path, &buf)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +147,7 @@ func (c *Client) Patch(path string, body any) (*http.Response, error) {
 
 // Delete performs a DELETE request with optional query parameters.
 // Invalidates cache for the affected resource type.
-func (c *Client) Delete(path string, params url.Values) (*http.Response, error) {
+func (c *Client) Delete(ctx context.Context, path string, params url.Values) (*http.Response, error) {
 	if c.cache != nil {
 		if prefix := cachePrefix(path); prefix != "" {
 			c.cache.Invalidate(prefix)
@@ -146,7 +158,7 @@ func (c *Client) Delete(path string, params url.Values) (*http.Response, error) 
 	if len(params) > 0 {
 		u += "?" + params.Encode()
 	}
-	req, err := http.NewRequest("DELETE", u, nil)
+	req, err := http.NewRequestWithContext(ctx, "DELETE", u, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +167,7 @@ func (c *Client) Delete(path string, params url.Values) (*http.Response, error) 
 
 // PostMultipart performs a POST request with multipart/form-data encoding.
 // Used for document uploads.
-func (c *Client) PostMultipart(path string, fields map[string]string, filePath string) (*http.Response, error) {
+func (c *Client) PostMultipart(ctx context.Context, path string, fields map[string]string, filePath string) (*http.Response, error) {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 
@@ -185,7 +197,7 @@ func (c *Client) PostMultipart(path string, fields map[string]string, filePath s
 		return nil, fmt.Errorf("close multipart writer: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", c.baseURL+path, &buf)
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+path, &buf)
 	if err != nil {
 		return nil, err
 	}

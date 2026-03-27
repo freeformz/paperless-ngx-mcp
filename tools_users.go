@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/url"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -17,14 +16,14 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 			mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
 			mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
 		),
-		handleUserList(client),
+		handlePaginatedList(client, "/api/users/"),
 	)
 	srv.AddTool(
 		mcp.NewTool("user_get",
 			mcp.WithDescription("Get user details."),
 			mcp.WithNumber("id", mcp.Description("User ID"), mcp.Required()),
 		),
-		handleUserGet(client),
+		handleGetByID(client, "/api/users/%d/"),
 	)
 	srv.AddTool(
 		mcp.NewTool("user_create",
@@ -62,7 +61,7 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Delete a user."),
 			mcp.WithNumber("id", mcp.Description("User ID"), mcp.Required()),
 		),
-		handleUserDelete(client),
+		handleDeleteByID(client, "/api/users/%d/"),
 	)
 	srv.AddTool(
 		mcp.NewTool("user_deactivate_totp",
@@ -79,14 +78,14 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 			mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
 			mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
 		),
-		handleGroupList(client),
+		handlePaginatedList(client, "/api/groups/"),
 	)
 	srv.AddTool(
 		mcp.NewTool("group_get",
 			mcp.WithDescription("Get group details."),
 			mcp.WithNumber("id", mcp.Description("Group ID"), mcp.Required()),
 		),
-		handleGroupGet(client),
+		handleGetByID(client, "/api/groups/%d/"),
 	)
 	srv.AddTool(
 		mcp.NewTool("group_create",
@@ -110,7 +109,7 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Delete a group."),
 			mcp.WithNumber("id", mcp.Description("Group ID"), mcp.Required()),
 		),
-		handleGroupDelete(client),
+		handleDeleteByID(client, "/api/groups/%d/"),
 	)
 
 	// Profile
@@ -118,7 +117,7 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("profile_get",
 			mcp.WithDescription("Get the current user's profile."),
 		),
-		handleProfileGet(client),
+		handleSimpleGet(client, "/api/profile/"),
 	)
 	srv.AddTool(
 		mcp.NewTool("profile_update",
@@ -132,37 +131,15 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 	)
 }
 
-func handleUserList(client *Client) server.ToolHandlerFunc {
+func handleUserCreate(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		params := url.Values{}
-		addPaginationParams(params, request)
-		path := "/api/users/"
-		resp, err := client.Get(path, params)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleUserGet(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
+		username, errRes := getRequiredString(request, "username")
 		if errRes != nil {
 			return errRes, nil
 		}
-		path := fmt.Sprintf("/api/users/%d/", id)
-		resp, err := client.Get(path, nil)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleUserCreate(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		username := request.GetString("username", "")
-		if username == "" {
-			return errResult("username is required"), nil
-		}
-		password := request.GetString("password", "")
-		if password == "" {
-			return errResult("password is required"), nil
+		password, errRes := getRequiredString(request, "password")
+		if errRes != nil {
+			return errRes, nil
 		}
 
 		body := map[string]any{"username": username, "password": password}
@@ -191,7 +168,7 @@ func handleUserCreate(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := "/api/users/"
-		resp, err := client.Post(path, body)
+		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
 	}
 }
@@ -239,20 +216,8 @@ func handleUserUpdate(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := fmt.Sprintf("/api/users/%d/", id)
-		resp, err := client.Patch(path, body)
+		resp, err := client.Patch(ctx, path, body)
 		return doRequest(resp, err, "PATCH", path)
-	}
-}
-
-func handleUserDelete(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/users/%d/", id)
-		resp, err := client.Delete(path, nil)
-		return doRequest(resp, err, "DELETE", path)
 	}
 }
 
@@ -263,38 +228,16 @@ func handleUserDeactivateTotp(client *Client) server.ToolHandlerFunc {
 			return errRes, nil
 		}
 		path := fmt.Sprintf("/api/users/%d/deactivate_totp/", id)
-		resp, err := client.Post(path, nil)
+		resp, err := client.Post(ctx, path, nil)
 		return doRequest(resp, err, "POST", path)
-	}
-}
-
-func handleGroupList(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		params := url.Values{}
-		addPaginationParams(params, request)
-		path := "/api/groups/"
-		resp, err := client.Get(path, params)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleGroupGet(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/groups/%d/", id)
-		resp, err := client.Get(path, nil)
-		return doRequest(resp, err, "GET", path)
 	}
 }
 
 func handleGroupCreate(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		name := request.GetString("name", "")
-		if name == "" {
-			return errResult("name is required"), nil
+		name, errRes := getRequiredString(request, "name")
+		if errRes != nil {
+			return errRes, nil
 		}
 
 		body := map[string]any{"name": name}
@@ -303,7 +246,7 @@ func handleGroupCreate(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := "/api/groups/"
-		resp, err := client.Post(path, body)
+		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
 	}
 }
@@ -328,28 +271,8 @@ func handleGroupUpdate(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := fmt.Sprintf("/api/groups/%d/", id)
-		resp, err := client.Patch(path, body)
+		resp, err := client.Patch(ctx, path, body)
 		return doRequest(resp, err, "PATCH", path)
-	}
-}
-
-func handleGroupDelete(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/groups/%d/", id)
-		resp, err := client.Delete(path, nil)
-		return doRequest(resp, err, "DELETE", path)
-	}
-}
-
-func handleProfileGet(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		path := "/api/profile/"
-		resp, err := client.Get(path, nil)
-		return doRequest(resp, err, "GET", path)
 	}
 }
 
@@ -374,7 +297,7 @@ func handleProfileUpdate(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := "/api/profile/"
-		resp, err := client.Patch(path, body)
+		resp, err := client.Patch(ctx, path, body)
 		return doRequest(resp, err, "PATCH", path)
 	}
 }

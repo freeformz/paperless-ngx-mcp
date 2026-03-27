@@ -26,7 +26,7 @@ func registerCustomFieldTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Get custom field details."),
 			mcp.WithNumber("id", mcp.Description("Custom field ID"), mcp.Required()),
 		),
-		handleCustomFieldGet(client),
+		handleGetByID(client, "/api/custom_fields/%d/"),
 	)
 
 	srv.AddTool(
@@ -54,7 +54,7 @@ func registerCustomFieldTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Delete a custom field definition."),
 			mcp.WithNumber("id", mcp.Description("Custom field ID"), mcp.Required()),
 		),
-		handleCustomFieldDelete(client),
+		handleDeleteByID(client, "/api/custom_fields/%d/"),
 	)
 }
 
@@ -66,32 +66,20 @@ func handleCustomFieldList(client *Client) server.ToolHandlerFunc {
 		addStringParam(params, request, "ordering", "ordering")
 
 		path := "/api/custom_fields/"
-		resp, err := client.Get(path, params)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleCustomFieldGet(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/custom_fields/%d/", id)
-		resp, err := client.Get(path, nil)
+		resp, err := client.Get(ctx, path, params)
 		return doRequest(resp, err, "GET", path)
 	}
 }
 
 func handleCustomFieldCreate(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		name := request.GetString("name", "")
-		if name == "" {
-			return errResult("name is required"), nil
+		name, errRes := getRequiredString(request, "name")
+		if errRes != nil {
+			return errRes, nil
 		}
-		dataType := request.GetString("data_type", "")
-		if dataType == "" {
-			return errResult("data_type is required"), nil
+		dataType, errRes := getRequiredString(request, "data_type")
+		if errRes != nil {
+			return errRes, nil
 		}
 
 		body := map[string]any{"name": name, "data_type": dataType}
@@ -101,7 +89,7 @@ func handleCustomFieldCreate(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := "/api/custom_fields/"
-		resp, err := client.Post(path, body)
+		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
 	}
 }
@@ -126,19 +114,7 @@ func handleCustomFieldUpdate(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := fmt.Sprintf("/api/custom_fields/%d/", id)
-		resp, err := client.Patch(path, body)
+		resp, err := client.Patch(ctx, path, body)
 		return doRequest(resp, err, "PATCH", path)
-	}
-}
-
-func handleCustomFieldDelete(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/custom_fields/%d/", id)
-		resp, err := client.Delete(path, nil)
-		return doRequest(resp, err, "DELETE", path)
 	}
 }

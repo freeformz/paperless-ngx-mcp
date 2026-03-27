@@ -26,7 +26,7 @@ func registerDocumentTypeTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Get document type details."),
 			mcp.WithNumber("id", mcp.Description("Document type ID"), mcp.Required()),
 		),
-		handleDocumentTypeGet(client),
+		handleGetByID(client, "/api/document_types/%d/"),
 	)
 
 	srv.AddTool(
@@ -57,7 +57,7 @@ func registerDocumentTypeTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Delete a document type."),
 			mcp.WithNumber("id", mcp.Description("Document type ID"), mcp.Required()),
 		),
-		handleDocumentTypeDelete(client),
+		handleDeleteByID(client, "/api/document_types/%d/"),
 	)
 }
 
@@ -69,28 +69,16 @@ func handleDocumentTypeList(client *Client) server.ToolHandlerFunc {
 		addStringParam(params, request, "ordering", "ordering")
 
 		path := "/api/document_types/"
-		resp, err := client.Get(path, params)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleDocumentTypeGet(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/document_types/%d/", id)
-		resp, err := client.Get(path, nil)
+		resp, err := client.Get(ctx, path, params)
 		return doRequest(resp, err, "GET", path)
 	}
 }
 
 func handleDocumentTypeCreate(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		name := request.GetString("name", "")
-		if name == "" {
-			return errResult("name is required"), nil
+		name, errRes := getRequiredString(request, "name")
+		if errRes != nil {
+			return errRes, nil
 		}
 
 		body := map[string]any{"name": name}
@@ -107,7 +95,7 @@ func handleDocumentTypeCreate(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := "/api/document_types/"
-		resp, err := client.Post(path, body)
+		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
 	}
 }
@@ -140,19 +128,7 @@ func handleDocumentTypeUpdate(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := fmt.Sprintf("/api/document_types/%d/", id)
-		resp, err := client.Patch(path, body)
+		resp, err := client.Patch(ctx, path, body)
 		return doRequest(resp, err, "PATCH", path)
-	}
-}
-
-func handleDocumentTypeDelete(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/document_types/%d/", id)
-		resp, err := client.Delete(path, nil)
-		return doRequest(resp, err, "DELETE", path)
 	}
 }

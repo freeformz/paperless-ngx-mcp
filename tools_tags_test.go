@@ -33,7 +33,7 @@ func TestTagGet(t *testing.T) {
 	rh.Handle("GET", "/api/tags/1/", jsonHandler(t, 200, tag))
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleTagGet(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/tags/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 
 	m := resultJSON(t, result)
@@ -100,7 +100,7 @@ func TestTagDelete(t *testing.T) {
 	})
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleTagDelete(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleDeleteByID(client, "/api/tags/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 

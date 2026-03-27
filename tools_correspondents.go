@@ -26,7 +26,7 @@ func registerCorrespondentTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Get correspondent details."),
 			mcp.WithNumber("id", mcp.Description("Correspondent ID"), mcp.Required()),
 		),
-		handleCorrespondentGet(client),
+		handleGetByID(client, "/api/correspondents/%d/"),
 	)
 
 	srv.AddTool(
@@ -57,7 +57,7 @@ func registerCorrespondentTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Delete a correspondent."),
 			mcp.WithNumber("id", mcp.Description("Correspondent ID"), mcp.Required()),
 		),
-		handleCorrespondentDelete(client),
+		handleDeleteByID(client, "/api/correspondents/%d/"),
 	)
 }
 
@@ -69,28 +69,16 @@ func handleCorrespondentList(client *Client) server.ToolHandlerFunc {
 		addStringParam(params, request, "ordering", "ordering")
 
 		path := "/api/correspondents/"
-		resp, err := client.Get(path, params)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleCorrespondentGet(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/correspondents/%d/", id)
-		resp, err := client.Get(path, nil)
+		resp, err := client.Get(ctx, path, params)
 		return doRequest(resp, err, "GET", path)
 	}
 }
 
 func handleCorrespondentCreate(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		name := request.GetString("name", "")
-		if name == "" {
-			return errResult("name is required"), nil
+		name, errRes := getRequiredString(request, "name")
+		if errRes != nil {
+			return errRes, nil
 		}
 
 		body := map[string]any{"name": name, "matching_algorithm": 6}
@@ -107,7 +95,7 @@ func handleCorrespondentCreate(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := "/api/correspondents/"
-		resp, err := client.Post(path, body)
+		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
 	}
 }
@@ -140,19 +128,7 @@ func handleCorrespondentUpdate(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := fmt.Sprintf("/api/correspondents/%d/", id)
-		resp, err := client.Patch(path, body)
+		resp, err := client.Patch(ctx, path, body)
 		return doRequest(resp, err, "PATCH", path)
-	}
-}
-
-func handleCorrespondentDelete(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/correspondents/%d/", id)
-		resp, err := client.Delete(path, nil)
-		return doRequest(resp, err, "DELETE", path)
 	}
 }

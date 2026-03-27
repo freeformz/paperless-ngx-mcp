@@ -86,17 +86,6 @@ func resultJSON(t *testing.T, result *mcp.CallToolResult) map[string]any {
 	return m
 }
 
-// resultJSONArray extracts the text content from an MCP tool result and parses it as a JSON array.
-func resultJSONArray(t *testing.T, result *mcp.CallToolResult) []any {
-	t.Helper()
-	text := resultText(t, result)
-	var arr []any
-	if err := json.Unmarshal([]byte(text), &arr); err != nil {
-		t.Fatalf("unmarshal result JSON array: %s\ntext: %s", err, text)
-	}
-	return arr
-}
-
 // assertNotError asserts that the result is not an error.
 func assertNotError(t *testing.T, result *mcp.CallToolResult) {
 	t.Helper()

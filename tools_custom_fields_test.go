@@ -17,7 +17,7 @@ func TestCustomFieldGet(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/custom_fields/1/", jsonHandler(t, 200, map[string]any{"id": 1, "name": "Due Date", "data_type": "date"}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleCustomFieldGet(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/custom_fields/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -49,6 +49,6 @@ func TestCustomFieldDelete(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("DELETE", "/api/custom_fields/1/", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleCustomFieldDelete(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleDeleteByID(client, "/api/custom_fields/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }

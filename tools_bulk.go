@@ -49,9 +49,9 @@ func handleDocumentBulkEdit(client *Client) server.ToolHandlerFunc {
 			return errResult("documents is required"), nil
 		}
 
-		method := request.GetString("method", "")
-		if method == "" {
-			return errResult("method is required"), nil
+		method, errRes := getRequiredString(request, "method")
+		if errRes != nil {
+			return errRes, nil
 		}
 		body["method"] = method
 
@@ -63,7 +63,7 @@ func handleDocumentBulkEdit(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := "/api/documents/bulk_edit/"
-		resp, err := client.Post(path, body)
+		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
 	}
 }
@@ -80,21 +80,20 @@ func handleDocumentSelectionData(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := "/api/documents/selection_data/"
-		resp, err := client.Post(path, body)
+		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
 	}
 }
 
 func handleBulkEditObjects(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		objectType := request.GetString("object_type", "")
-		if objectType == "" {
-			return errResult("object_type is required"), nil
+		objectType, errRes := getRequiredString(request, "object_type")
+		if errRes != nil {
+			return errRes, nil
 		}
-
-		operation := request.GetString("operation", "")
-		if operation == "" {
-			return errResult("operation is required"), nil
+		operation, errRes := getRequiredString(request, "operation")
+		if errRes != nil {
+			return errRes, nil
 		}
 
 		body := map[string]any{
@@ -114,7 +113,7 @@ func handleBulkEditObjects(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := "/api/bulk_edit_objects/"
-		resp, err := client.Post(path, body)
+		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
 	}
 }
