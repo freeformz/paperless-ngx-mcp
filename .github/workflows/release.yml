@@ -1,0 +1,191 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build MCPB bundles
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          BINARIES=$(jq -c '.[] | select(.type == "Binary")' dist/artifacts.json)
+
+          echo "$BINARIES" | while read -r artifact; do
+            BINARY_PATH=$(echo "$artifact" | jq -r '.path')
+            GOOS=$(echo "$artifact" | jq -r '.goos')
+            GOARCH=$(echo "$artifact" | jq -r '.goarch')
+
+            case "$GOOS" in
+              darwin)  MCPB_PLATFORM="darwin" ;;
+              linux)   MCPB_PLATFORM="linux" ;;
+              windows) MCPB_PLATFORM="win32" ;;
+              *)       echo "Unknown OS: ${GOOS}, skipping"; continue ;;
+            esac
+
+            BUNDLE_DIR=$(mktemp -d)
+            mkdir -p "${BUNDLE_DIR}/server"
+
+            BINARY_NAME="paperless-ngx-mcp"
+            if [ "$GOOS" = "windows" ]; then
+              BINARY_NAME="paperless-ngx-mcp.exe"
+            fi
+            cp "$BINARY_PATH" "${BUNDLE_DIR}/server/${BINARY_NAME}"
+            chmod +x "${BUNDLE_DIR}/server/${BINARY_NAME}"
+
+            jq --arg version "$VERSION" \
+               --arg platform "$MCPB_PLATFORM" \
+               '.version = $version | .compatibility.platforms = [$platform]' \
+               manifest.json > "${BUNDLE_DIR}/manifest.json"
+
+            MCPB_NAME="paperless-ngx-mcp_${VERSION}_${GOOS}_${GOARCH}.mcpb"
+            (cd "$BUNDLE_DIR" && zip -r "${GITHUB_WORKSPACE}/${MCPB_NAME}" .)
+
+            rm -rf "$BUNDLE_DIR"
+            echo "Created ${MCPB_NAME}"
+          done
+
+      - name: Upload MCPB bundles to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          for mcpb in paperless-ngx-mcp_${VERSION}_*.mcpb; do
+            [ -f "$mcpb" ] || continue
+            gh release upload "$GITHUB_REF_NAME" "$mcpb" --clobber
+            echo "Uploaded $mcpb"
+          done
+
+  docker:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux/amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+
+      - name: Compute version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          build-args: VERSION=${{ steps.version.outputs.version }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          if [ -z "$digest" ]; then
+            echo "::error::Build did not produce a digest"
+            exit 1
+          fi
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.runner }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  docker-merge:
+    runs-on: ubuntu-latest
+    needs: docker
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        env:
+          DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          digests=( * )
+          if [ "${#digests[@]}" -lt 2 ]; then
+            echo "::error::Expected 2 digest files, found ${#digests[@]}"
+            exit 1
+          fi
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' "${digests[@]}")

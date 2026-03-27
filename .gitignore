@@ -15,5 +15,8 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Test
+coverage.out
+
 # Go
 vendor/

@@ -1,0 +1,34 @@
+{
+  "manifest_version": "0.3",
+  "name": "paperless-ngx-mcp",
+  "display_name": "Paperless-ngx MCP",
+  "version": "0.0.0",
+  "description": "MCP server for Paperless-ngx document management. Search, browse, and manage documents and metadata.",
+  "author": {
+    "name": "freeformz",
+    "url": "https://github.com/freeformz"
+  },
+  "server": {
+    "type": "binary",
+    "entry_point": "server/paperless-ngx-mcp",
+    "mcp_config": {
+      "command": "${__dirname}/server/paperless-ngx-mcp",
+      "args": ["mcp"],
+      "env": {
+        "PAPERLESS_URL": "",
+        "PAPERLESS_TOKEN": ""
+      }
+    }
+  },
+  "tools": [
+    {"name": "document_list", "description": "Search and list documents"},
+    {"name": "document_get", "description": "Get document details"},
+    {"name": "document_update", "description": "Update document metadata"},
+    {"name": "tag_list", "description": "List tags"},
+    {"name": "correspondent_list", "description": "List correspondents"},
+    {"name": "document_type_list", "description": "List document types"}
+  ],
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"]
+  }
+}

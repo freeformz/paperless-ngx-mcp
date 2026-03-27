@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            go:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - 'Makefile'
+              - '.github/workflows/ci.yml'
+
+      - uses: actions/setup-go@v5
+        if: steps.changes.outputs.go == 'true'
+        with:
+          go-version-file: go.mod
+
+      - name: Vet
+        if: steps.changes.outputs.go == 'true'
+        run: go vet ./...
+
+      - name: Staticcheck
+        if: steps.changes.outputs.go == 'true'
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          staticcheck ./...
+
+      - name: Test
+        if: steps.changes.outputs.go == 'true'
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Check coverage
+        if: steps.changes.outputs.go == 'true'
+        run: |
+          coverage=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Total coverage: ${coverage}%"
+          threshold=70
+          if [ "$(echo "$coverage < $threshold" | bc -l)" -eq 1 ]; then
+            echo "::error::Coverage ${coverage}% is below the ${threshold}% threshold"
+            exit 1
+          fi
+
+      - name: Build
+        if: steps.changes.outputs.go == 'true'
+        run: go build -o /dev/null .
