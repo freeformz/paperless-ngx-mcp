@@ -15,8 +15,8 @@ func registerCorrespondentTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("List correspondents with optional filtering."),
 			mcp.WithString("name", mcp.Description("Filter by name (icontains)")),
 			mcp.WithString("ordering", mcp.Description("Sort field")),
-			mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
-			mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
+			withNumber("page", mcp.Description("Page number (default: 1)")),
+			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 		),
 		handleCorrespondentList(client),
 	)
@@ -24,7 +24,7 @@ func registerCorrespondentTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("correspondent_get",
 			mcp.WithDescription("Get correspondent details."),
-			mcp.WithNumber("id", mcp.Description("Correspondent ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Correspondent ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/correspondents/%d/"),
 	)
@@ -33,7 +33,7 @@ func registerCorrespondentTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("correspondent_create",
 			mcp.WithDescription("Create a new correspondent."),
 			mcp.WithString("name", mcp.Description("Correspondent name"), mcp.Required()),
-			mcp.WithNumber("matching_algorithm", mcp.Description("Matching algorithm: 1=Any, 2=All, 3=Exact, 4=Regex, 5=Fuzzy, 6=Auto (default: 6)")),
+			withNumber("matching_algorithm", mcp.Description("Matching algorithm: 1=Any, 2=All, 3=Exact, 4=Regex, 5=Fuzzy, 6=Auto (default: 6)")),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
 		),
@@ -43,9 +43,9 @@ func registerCorrespondentTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("correspondent_update",
 			mcp.WithDescription("Update a correspondent."),
-			mcp.WithNumber("id", mcp.Description("Correspondent ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Correspondent ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Correspondent name")),
-			mcp.WithNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
+			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
 		),
@@ -55,7 +55,7 @@ func registerCorrespondentTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("correspondent_delete",
 			mcp.WithDescription("Delete a correspondent."),
-			mcp.WithNumber("id", mcp.Description("Correspondent ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Correspondent ID"), mcp.Required()),
 		),
 		handleDeleteByID(client, "/api/correspondents/%d/"),
 	)

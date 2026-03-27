@@ -13,13 +13,13 @@ func registerWorkflowTools(srv *server.MCPServer, client *Client) {
 	// Workflows
 	srv.AddTool(mcp.NewTool("workflow_list",
 		mcp.WithDescription("List workflows."),
-		mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
-		mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
+		withNumber("page", mcp.Description("Page number (default: 1)")),
+		withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 	), handlePaginatedList(client, "/api/workflows/"))
 
 	srv.AddTool(mcp.NewTool("workflow_get",
 		mcp.WithDescription("Get workflow details."),
-		mcp.WithNumber("id", mcp.Description("Workflow ID"), mcp.Required()),
+		withNumber("id", mcp.Description("Workflow ID"), mcp.Required()),
 	), handleGetByID(client, "/api/workflows/%d/"))
 
 	srv.AddTool(mcp.NewTool("workflow_create",
@@ -30,25 +30,25 @@ func registerWorkflowTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(mcp.NewTool("workflow_update",
 		mcp.WithDescription("Update a workflow."),
-		mcp.WithNumber("id", mcp.Description("Workflow ID"), mcp.Required()),
+		withNumber("id", mcp.Description("Workflow ID"), mcp.Required()),
 		mcp.WithString("body", mcp.Description("JSON object with fields to update"), mcp.Required()),
 	), handleWorkflowUpdate(client))
 
 	srv.AddTool(mcp.NewTool("workflow_delete",
 		mcp.WithDescription("Delete a workflow."),
-		mcp.WithNumber("id", mcp.Description("Workflow ID"), mcp.Required()),
+		withNumber("id", mcp.Description("Workflow ID"), mcp.Required()),
 	), handleDeleteByID(client, "/api/workflows/%d/"))
 
 	// Workflow Triggers
 	srv.AddTool(mcp.NewTool("workflow_trigger_list",
 		mcp.WithDescription("List workflow triggers."),
-		mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
-		mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
+		withNumber("page", mcp.Description("Page number (default: 1)")),
+		withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 	), handlePaginatedList(client, "/api/workflow_triggers/"))
 
 	srv.AddTool(mcp.NewTool("workflow_trigger_get",
 		mcp.WithDescription("Get workflow trigger details."),
-		mcp.WithNumber("id", mcp.Description("Trigger ID"), mcp.Required()),
+		withNumber("id", mcp.Description("Trigger ID"), mcp.Required()),
 	), handleGetByID(client, "/api/workflow_triggers/%d/"))
 
 	srv.AddTool(mcp.NewTool("workflow_trigger_create",
@@ -58,25 +58,25 @@ func registerWorkflowTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(mcp.NewTool("workflow_trigger_update",
 		mcp.WithDescription("Update a workflow trigger."),
-		mcp.WithNumber("id", mcp.Description("Trigger ID"), mcp.Required()),
+		withNumber("id", mcp.Description("Trigger ID"), mcp.Required()),
 		mcp.WithString("body", mcp.Description("JSON object with fields to update"), mcp.Required()),
 	), handleGenericJSONUpdateByID(client, "/api/workflow_triggers/%d/"))
 
 	srv.AddTool(mcp.NewTool("workflow_trigger_delete",
 		mcp.WithDescription("Delete a workflow trigger."),
-		mcp.WithNumber("id", mcp.Description("Trigger ID"), mcp.Required()),
+		withNumber("id", mcp.Description("Trigger ID"), mcp.Required()),
 	), handleDeleteByID(client, "/api/workflow_triggers/%d/"))
 
 	// Workflow Actions
 	srv.AddTool(mcp.NewTool("workflow_action_list",
 		mcp.WithDescription("List workflow actions."),
-		mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
-		mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
+		withNumber("page", mcp.Description("Page number (default: 1)")),
+		withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 	), handlePaginatedList(client, "/api/workflow_actions/"))
 
 	srv.AddTool(mcp.NewTool("workflow_action_get",
 		mcp.WithDescription("Get workflow action details."),
-		mcp.WithNumber("id", mcp.Description("Action ID"), mcp.Required()),
+		withNumber("id", mcp.Description("Action ID"), mcp.Required()),
 	), handleGetByID(client, "/api/workflow_actions/%d/"))
 
 	srv.AddTool(mcp.NewTool("workflow_action_create",
@@ -86,13 +86,13 @@ func registerWorkflowTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(mcp.NewTool("workflow_action_update",
 		mcp.WithDescription("Update a workflow action."),
-		mcp.WithNumber("id", mcp.Description("Action ID"), mcp.Required()),
+		withNumber("id", mcp.Description("Action ID"), mcp.Required()),
 		mcp.WithString("body", mcp.Description("JSON object with fields to update"), mcp.Required()),
 	), handleGenericJSONUpdateByID(client, "/api/workflow_actions/%d/"))
 
 	srv.AddTool(mcp.NewTool("workflow_action_delete",
 		mcp.WithDescription("Delete a workflow action."),
-		mcp.WithNumber("id", mcp.Description("Action ID"), mcp.Required()),
+		withNumber("id", mcp.Description("Action ID"), mcp.Required()),
 	), handleDeleteByID(client, "/api/workflow_actions/%d/"))
 }
 

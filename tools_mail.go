@@ -13,20 +13,20 @@ func registerMailTools(srv *server.MCPServer, client *Client) {
 	// Mail Accounts
 	srv.AddTool(mcp.NewTool("mail_account_list",
 		mcp.WithDescription("List mail accounts."),
-		mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
-		mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
+		withNumber("page", mcp.Description("Page number (default: 1)")),
+		withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 	), handlePaginatedList(client, "/api/mail_accounts/"))
 
 	srv.AddTool(mcp.NewTool("mail_account_get",
 		mcp.WithDescription("Get mail account details."),
-		mcp.WithNumber("id", mcp.Description("Mail account ID"), mcp.Required()),
+		withNumber("id", mcp.Description("Mail account ID"), mcp.Required()),
 	), handleGetByID(client, "/api/mail_accounts/%d/"))
 
 	srv.AddTool(mcp.NewTool("mail_account_create",
 		mcp.WithDescription("Create a mail account."),
 		mcp.WithString("name", mcp.Description("Account name"), mcp.Required()),
 		mcp.WithString("imap_server", mcp.Description("IMAP server hostname"), mcp.Required()),
-		mcp.WithNumber("imap_port", mcp.Description("IMAP port")),
+		withNumber("imap_port", mcp.Description("IMAP port")),
 		mcp.WithString("imap_security", mcp.Description("Security: none, ssl, starttls")),
 		mcp.WithString("username", mcp.Description("Username"), mcp.Required()),
 		mcp.WithString("password", mcp.Description("Password"), mcp.Required()),
@@ -35,10 +35,10 @@ func registerMailTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(mcp.NewTool("mail_account_update",
 		mcp.WithDescription("Update a mail account."),
-		mcp.WithNumber("id", mcp.Description("Mail account ID"), mcp.Required()),
+		withNumber("id", mcp.Description("Mail account ID"), mcp.Required()),
 		mcp.WithString("name", mcp.Description("Account name")),
 		mcp.WithString("imap_server", mcp.Description("IMAP server hostname")),
-		mcp.WithNumber("imap_port", mcp.Description("IMAP port")),
+		withNumber("imap_port", mcp.Description("IMAP port")),
 		mcp.WithString("imap_security", mcp.Description("Security: none, ssl, starttls")),
 		mcp.WithString("username", mcp.Description("Username")),
 		mcp.WithString("password", mcp.Description("Password")),
@@ -46,59 +46,59 @@ func registerMailTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(mcp.NewTool("mail_account_delete",
 		mcp.WithDescription("Delete a mail account."),
-		mcp.WithNumber("id", mcp.Description("Mail account ID"), mcp.Required()),
+		withNumber("id", mcp.Description("Mail account ID"), mcp.Required()),
 	), handleDeleteByID(client, "/api/mail_accounts/%d/"))
 
 	srv.AddTool(mcp.NewTool("mail_account_test",
 		mcp.WithDescription("Test mail account connectivity."),
-		mcp.WithNumber("id", mcp.Description("Mail account ID"), mcp.Required()),
+		withNumber("id", mcp.Description("Mail account ID"), mcp.Required()),
 	), handleMailAccountTest(client))
 
 	srv.AddTool(mcp.NewTool("mail_account_process",
 		mcp.WithDescription("Manually process a mail account to check for new mail."),
-		mcp.WithNumber("id", mcp.Description("Mail account ID"), mcp.Required()),
+		withNumber("id", mcp.Description("Mail account ID"), mcp.Required()),
 	), handleMailAccountProcess(client))
 
 	// Mail Rules
 	srv.AddTool(mcp.NewTool("mail_rule_list",
 		mcp.WithDescription("List mail rules."),
-		mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
-		mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
+		withNumber("page", mcp.Description("Page number (default: 1)")),
+		withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 	), handlePaginatedList(client, "/api/mail_rules/"))
 
 	srv.AddTool(mcp.NewTool("mail_rule_get",
 		mcp.WithDescription("Get mail rule details."),
-		mcp.WithNumber("id", mcp.Description("Mail rule ID"), mcp.Required()),
+		withNumber("id", mcp.Description("Mail rule ID"), mcp.Required()),
 	), handleGetByID(client, "/api/mail_rules/%d/"))
 
 	srv.AddTool(mcp.NewTool("mail_rule_create",
 		mcp.WithDescription("Create a mail rule."),
 		mcp.WithString("name", mcp.Description("Rule name"), mcp.Required()),
-		mcp.WithNumber("account", mcp.Description("Mail account ID"), mcp.Required()),
+		withNumber("account", mcp.Description("Mail account ID"), mcp.Required()),
 		mcp.WithString("body", mcp.Description("JSON object with rule configuration"), mcp.Required()),
 	), handleMailRuleCreate(client))
 
 	srv.AddTool(mcp.NewTool("mail_rule_update",
 		mcp.WithDescription("Update a mail rule."),
-		mcp.WithNumber("id", mcp.Description("Mail rule ID"), mcp.Required()),
+		withNumber("id", mcp.Description("Mail rule ID"), mcp.Required()),
 		mcp.WithString("body", mcp.Description("JSON object with fields to update"), mcp.Required()),
 	), handleMailRuleUpdate(client))
 
 	srv.AddTool(mcp.NewTool("mail_rule_delete",
 		mcp.WithDescription("Delete a mail rule."),
-		mcp.WithNumber("id", mcp.Description("Mail rule ID"), mcp.Required()),
+		withNumber("id", mcp.Description("Mail rule ID"), mcp.Required()),
 	), handleDeleteByID(client, "/api/mail_rules/%d/"))
 
 	// Processed Mail
 	srv.AddTool(mcp.NewTool("processed_mail_list",
 		mcp.WithDescription("List processed mail records."),
-		mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
-		mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
+		withNumber("page", mcp.Description("Page number (default: 1)")),
+		withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 	), handlePaginatedList(client, "/api/processed_mail/"))
 
 	srv.AddTool(mcp.NewTool("processed_mail_get",
 		mcp.WithDescription("Get processed mail details."),
-		mcp.WithNumber("id", mcp.Description("Processed mail ID"), mcp.Required()),
+		withNumber("id", mcp.Description("Processed mail ID"), mcp.Required()),
 	), handleGetByID(client, "/api/processed_mail/%d/"))
 
 	srv.AddTool(mcp.NewTool("processed_mail_bulk_delete",

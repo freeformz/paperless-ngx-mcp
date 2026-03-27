@@ -13,15 +13,15 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("user_list",
 			mcp.WithDescription("List users."),
-			mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
-			mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
+			withNumber("page", mcp.Description("Page number (default: 1)")),
+			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 		),
 		handlePaginatedList(client, "/api/users/"),
 	)
 	srv.AddTool(
 		mcp.NewTool("user_get",
 			mcp.WithDescription("Get user details."),
-			mcp.WithNumber("id", mcp.Description("User ID"), mcp.Required()),
+			withNumber("id", mcp.Description("User ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/users/%d/"),
 	)
@@ -43,7 +43,7 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("user_update",
 			mcp.WithDescription("Update a user."),
-			mcp.WithNumber("id", mcp.Description("User ID"), mcp.Required()),
+			withNumber("id", mcp.Description("User ID"), mcp.Required()),
 			mcp.WithString("username", mcp.Description("Username")),
 			mcp.WithString("password", mcp.Description("Password")),
 			mcp.WithString("email", mcp.Description("Email address")),
@@ -59,14 +59,14 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("user_delete",
 			mcp.WithDescription("Delete a user."),
-			mcp.WithNumber("id", mcp.Description("User ID"), mcp.Required()),
+			withNumber("id", mcp.Description("User ID"), mcp.Required()),
 		),
 		handleDeleteByID(client, "/api/users/%d/"),
 	)
 	srv.AddTool(
 		mcp.NewTool("user_deactivate_totp",
 			mcp.WithDescription("Deactivate TOTP two-factor authentication for a user (admin only)."),
-			mcp.WithNumber("id", mcp.Description("User ID"), mcp.Required()),
+			withNumber("id", mcp.Description("User ID"), mcp.Required()),
 		),
 		handleUserDeactivateTotp(client),
 	)
@@ -75,15 +75,15 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("group_list",
 			mcp.WithDescription("List groups."),
-			mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
-			mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
+			withNumber("page", mcp.Description("Page number (default: 1)")),
+			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 		),
 		handlePaginatedList(client, "/api/groups/"),
 	)
 	srv.AddTool(
 		mcp.NewTool("group_get",
 			mcp.WithDescription("Get group details."),
-			mcp.WithNumber("id", mcp.Description("Group ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Group ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/groups/%d/"),
 	)
@@ -98,7 +98,7 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("group_update",
 			mcp.WithDescription("Update a group."),
-			mcp.WithNumber("id", mcp.Description("Group ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Group ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Group name")),
 			mcp.WithString("permissions", mcp.Description("JSON array of permission codenames")),
 		),
@@ -107,7 +107,7 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("group_delete",
 			mcp.WithDescription("Delete a group."),
-			mcp.WithNumber("id", mcp.Description("Group ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Group ID"), mcp.Required()),
 		),
 		handleDeleteByID(client, "/api/groups/%d/"),
 	)

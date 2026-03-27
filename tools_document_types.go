@@ -15,8 +15,8 @@ func registerDocumentTypeTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("List document types with optional filtering."),
 			mcp.WithString("name", mcp.Description("Filter by name (icontains)")),
 			mcp.WithString("ordering", mcp.Description("Sort field")),
-			mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
-			mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
+			withNumber("page", mcp.Description("Page number (default: 1)")),
+			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 		),
 		handleDocumentTypeList(client),
 	)
@@ -24,7 +24,7 @@ func registerDocumentTypeTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_type_get",
 			mcp.WithDescription("Get document type details."),
-			mcp.WithNumber("id", mcp.Description("Document type ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Document type ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/document_types/%d/"),
 	)
@@ -33,7 +33,7 @@ func registerDocumentTypeTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("document_type_create",
 			mcp.WithDescription("Create a new document type."),
 			mcp.WithString("name", mcp.Description("Document type name"), mcp.Required()),
-			mcp.WithNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
+			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
 		),
@@ -43,9 +43,9 @@ func registerDocumentTypeTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_type_update",
 			mcp.WithDescription("Update a document type."),
-			mcp.WithNumber("id", mcp.Description("Document type ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Document type ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Document type name")),
-			mcp.WithNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
+			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
 		),
@@ -55,7 +55,7 @@ func registerDocumentTypeTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_type_delete",
 			mcp.WithDescription("Delete a document type."),
-			mcp.WithNumber("id", mcp.Description("Document type ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Document type ID"), mcp.Required()),
 		),
 		handleDeleteByID(client, "/api/document_types/%d/"),
 	)

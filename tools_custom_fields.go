@@ -15,8 +15,8 @@ func registerCustomFieldTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("List custom field definitions."),
 			mcp.WithString("name", mcp.Description("Filter by name (icontains)")),
 			mcp.WithString("ordering", mcp.Description("Sort field")),
-			mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
-			mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
+			withNumber("page", mcp.Description("Page number (default: 1)")),
+			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 		),
 		handleCustomFieldList(client),
 	)
@@ -24,7 +24,7 @@ func registerCustomFieldTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("custom_field_get",
 			mcp.WithDescription("Get custom field details."),
-			mcp.WithNumber("id", mcp.Description("Custom field ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Custom field ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/custom_fields/%d/"),
 	)
@@ -42,7 +42,7 @@ func registerCustomFieldTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("custom_field_update",
 			mcp.WithDescription("Update a custom field definition."),
-			mcp.WithNumber("id", mcp.Description("Custom field ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Custom field ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Field name")),
 			mcp.WithString("extra_data", mcp.Description("JSON object with type-specific configuration")),
 		),
@@ -52,7 +52,7 @@ func registerCustomFieldTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("custom_field_delete",
 			mcp.WithDescription("Delete a custom field definition."),
-			mcp.WithNumber("id", mcp.Description("Custom field ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Custom field ID"), mcp.Required()),
 		),
 		handleDeleteByID(client, "/api/custom_fields/%d/"),
 	)

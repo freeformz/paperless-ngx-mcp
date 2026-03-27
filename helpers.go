@@ -173,6 +173,28 @@ func setJSONField(body map[string]any, request mcp.CallToolRequest, name string)
 	return nil
 }
 
+// withNumber defines a tool parameter that accepts both integer and string values.
+// MCP clients may send numbers as strings; the handler uses GetFloat/GetInt
+// which handle coercion automatically. Strings are constrained to integer format
+// so invalid values like "abc" or "1.5" are rejected at schema validation.
+func withNumber(name string, opts ...mcp.PropertyOption) mcp.ToolOption {
+	allOpts := append([]mcp.PropertyOption{func(schema map[string]any) {
+		schema["type"] = []string{"integer", "string"}
+		schema["pattern"] = `^-?\d+$`
+	}}, opts...)
+	return mcp.WithAny(name, allOpts...)
+}
+
+// withNullableNumber defines a tool parameter that accepts integer, string, or null.
+// Used for fields that can be cleared by sending null (e.g., correspondent, document_type).
+func withNullableNumber(name string, opts ...mcp.PropertyOption) mcp.ToolOption {
+	allOpts := append([]mcp.PropertyOption{func(schema map[string]any) {
+		schema["type"] = []string{"integer", "string", "null"}
+		schema["pattern"] = `^-?\d+$`
+	}}, opts...)
+	return mcp.WithAny(name, allOpts...)
+}
+
 // --- Generic CRUD handlers ---
 
 // handleSimpleGet returns a handler that GETs a fixed path with no parameters.

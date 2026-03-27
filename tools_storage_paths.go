@@ -15,8 +15,8 @@ func registerStoragePathTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("List storage paths with optional filtering."),
 			mcp.WithString("name", mcp.Description("Filter by name (icontains)")),
 			mcp.WithString("ordering", mcp.Description("Sort field")),
-			mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
-			mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
+			withNumber("page", mcp.Description("Page number (default: 1)")),
+			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 		),
 		handleStoragePathList(client),
 	)
@@ -24,7 +24,7 @@ func registerStoragePathTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("storage_path_get",
 			mcp.WithDescription("Get storage path details."),
-			mcp.WithNumber("id", mcp.Description("Storage path ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Storage path ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/storage_paths/%d/"),
 	)
@@ -34,7 +34,7 @@ func registerStoragePathTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Create a new storage path."),
 			mcp.WithString("name", mcp.Description("Storage path name"), mcp.Required()),
 			mcp.WithString("path", mcp.Description("Path template"), mcp.Required()),
-			mcp.WithNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
+			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
 		),
@@ -44,10 +44,10 @@ func registerStoragePathTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("storage_path_update",
 			mcp.WithDescription("Update a storage path."),
-			mcp.WithNumber("id", mcp.Description("Storage path ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Storage path ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Storage path name")),
 			mcp.WithString("path", mcp.Description("Path template")),
-			mcp.WithNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
+			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
 		),
@@ -57,7 +57,7 @@ func registerStoragePathTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("storage_path_delete",
 			mcp.WithDescription("Delete a storage path."),
-			mcp.WithNumber("id", mcp.Description("Storage path ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Storage path ID"), mcp.Required()),
 		),
 		handleDeleteByID(client, "/api/storage_paths/%d/"),
 	)
@@ -66,7 +66,7 @@ func registerStoragePathTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("storage_path_test",
 			mcp.WithDescription("Test a storage path template against a document to see the resulting path."),
 			mcp.WithString("path", mcp.Description("Path template to test"), mcp.Required()),
-			mcp.WithNumber("document_id", mcp.Description("Document ID to test against")),
+			withNumber("document_id", mcp.Description("Document ID to test against")),
 		),
 		handleStoragePathTest(client),
 	)

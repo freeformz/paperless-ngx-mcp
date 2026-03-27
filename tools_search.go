@@ -13,7 +13,7 @@ func registerSearchTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("search_autocomplete",
 			mcp.WithDescription("Autocomplete search terms. Returns suggested completions for partial queries."),
 			mcp.WithString("term", mcp.Description("Partial search term to autocomplete"), mcp.Required()),
-			mcp.WithNumber("limit", mcp.Description("Maximum number of suggestions")),
+			withNumber("limit", mcp.Description("Maximum number of suggestions")),
 		),
 		handleSearchAutocomplete(client),
 	)
@@ -22,8 +22,8 @@ func registerSearchTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("search_global",
 			mcp.WithDescription("Global search across all object types (documents, tags, correspondents, etc.)."),
 			mcp.WithString("query", mcp.Description("Search query"), mcp.Required()),
-			mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
-			mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
+			withNumber("page", mcp.Description("Page number (default: 1)")),
+			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 		),
 		handleSearchGlobal(client),
 	)

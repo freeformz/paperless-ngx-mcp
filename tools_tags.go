@@ -16,8 +16,8 @@ func registerTagTools(srv *server.MCPServer, client *Client) {
 			mcp.WithString("name", mcp.Description("Filter by name (icontains)")),
 			mcp.WithBoolean("is_root", mcp.Description("Filter root tags only")),
 			mcp.WithString("ordering", mcp.Description("Sort field")),
-			mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
-			mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
+			withNumber("page", mcp.Description("Page number (default: 1)")),
+			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 		),
 		handleTagList(client),
 	)
@@ -25,7 +25,7 @@ func registerTagTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("tag_get",
 			mcp.WithDescription("Get tag details."),
-			mcp.WithNumber("id", mcp.Description("Tag ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Tag ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/tags/%d/"),
 	)
@@ -36,10 +36,10 @@ func registerTagTools(srv *server.MCPServer, client *Client) {
 			mcp.WithString("name", mcp.Description("Tag name"), mcp.Required()),
 			mcp.WithString("color", mcp.Description("Hex color (e.g., #a6cee3)")),
 			mcp.WithBoolean("is_inbox_tag", mcp.Description("Whether this is an inbox tag")),
-			mcp.WithNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
+			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
-			mcp.WithNumber("parent", mcp.Description("Parent tag ID for hierarchy")),
+			withNumber("parent", mcp.Description("Parent tag ID for hierarchy")),
 		),
 		handleTagCreate(client),
 	)
@@ -47,14 +47,14 @@ func registerTagTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("tag_update",
 			mcp.WithDescription("Update a tag."),
-			mcp.WithNumber("id", mcp.Description("Tag ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Tag ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Tag name")),
 			mcp.WithString("color", mcp.Description("Hex color")),
 			mcp.WithBoolean("is_inbox_tag", mcp.Description("Whether this is an inbox tag")),
-			mcp.WithNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
+			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
-			mcp.WithNumber("parent", mcp.Description("Parent tag ID")),
+			withNullableNumber("parent", mcp.Description("Parent tag ID")),
 		),
 		handleTagUpdate(client),
 	)
@@ -62,7 +62,7 @@ func registerTagTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("tag_delete",
 			mcp.WithDescription("Delete a tag."),
-			mcp.WithNumber("id", mcp.Description("Tag ID"), mcp.Required()),
+			withNumber("id", mcp.Description("Tag ID"), mcp.Required()),
 		),
 		handleDeleteByID(client, "/api/tags/%d/"),
 	)
