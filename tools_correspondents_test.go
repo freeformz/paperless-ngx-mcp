@@ -17,7 +17,7 @@ func TestCorrespondentGet(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/correspondents/1/", jsonHandler(t, 200, map[string]any{"id": 1, "name": "Acme"}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleCorrespondentGet(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/correspondents/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -47,6 +47,6 @@ func TestCorrespondentDelete(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("DELETE", "/api/correspondents/1/", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleCorrespondentDelete(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleDeleteByID(client, "/api/correspondents/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }

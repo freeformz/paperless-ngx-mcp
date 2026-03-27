@@ -51,7 +51,7 @@ func TestDocumentGet(t *testing.T) {
 	rh.Handle("GET", "/api/documents/42/", jsonHandler(t, 200, doc))
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleDocumentGet(client), map[string]any{"id": float64(42)})
+	result := callTool(t, handleGetByID(client, "/api/documents/%d/"), map[string]any{"id": float64(42)})
 	assertNotError(t, result)
 
 	m := resultJSON(t, result)
@@ -62,7 +62,7 @@ func TestDocumentGet(t *testing.T) {
 
 func TestDocumentGetRequiresID(t *testing.T) {
 	client := NewClient("http://unused", "unused")
-	result := callTool(t, handleDocumentGet(client), map[string]any{})
+	result := callTool(t, handleGetByID(client, "/api/documents/%d/"), map[string]any{})
 	assertIsError(t, result)
 }
 
@@ -132,7 +132,7 @@ func TestDocumentDelete(t *testing.T) {
 	})
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleDocumentDelete(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleDeleteByID(client, "/api/documents/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -143,7 +143,7 @@ func TestDocumentNoteList(t *testing.T) {
 	rh.Handle("GET", "/api/documents/1/notes/", jsonHandler(t, 200, notes))
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleDocumentNoteList(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/documents/%d/notes/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -189,7 +189,7 @@ func TestDocumentMetadata(t *testing.T) {
 	rh.Handle("GET", "/api/documents/1/metadata/", jsonHandler(t, 200, meta))
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleDocumentMetadata(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/documents/%d/metadata/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -200,7 +200,7 @@ func TestDocumentSuggestions(t *testing.T) {
 	rh.Handle("GET", "/api/documents/1/suggestions/", jsonHandler(t, 200, suggestions))
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleDocumentSuggestions(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/documents/%d/suggestions/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -209,7 +209,7 @@ func TestDocumentNextASN(t *testing.T) {
 	rh.Handle("GET", "/api/documents/next_asn/", jsonHandler(t, 200, float64(42)))
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleDocumentNextASN(client), nil)
+	result := callTool(t, handleSimpleGet(client, "/api/documents/next_asn/"), nil)
 	assertNotError(t, result)
 }
 
@@ -217,7 +217,7 @@ func TestDocumentShareLinksHandler(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/documents/1/share_links/", jsonHandler(t, 200, []map[string]any{{"id": 1}}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleDocumentShareLinks(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/documents/%d/share_links/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -225,7 +225,7 @@ func TestDocumentHistory(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/documents/1/history/", jsonHandler(t, 200, []map[string]any{{"action": "created"}}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleDocumentHistory(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/documents/%d/history/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -260,7 +260,7 @@ func TestAPIErrorHandling(t *testing.T) {
 	rh.Handle("GET", "/api/documents/999/", jsonHandler(t, 404, map[string]any{"detail": "Not found."}))
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleDocumentGet(client), map[string]any{"id": float64(999)})
+	result := callTool(t, handleGetByID(client, "/api/documents/%d/"), map[string]any{"id": float64(999)})
 	assertIsError(t, result)
 
 	m := resultJSON(t, result)

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/url"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -16,7 +15,7 @@ func registerShareLinkTools(srv *server.MCPServer, client *Client) {
 			mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
 			mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
 		),
-		handleShareLinkList(client),
+		handlePaginatedList(client, "/api/share_links/"),
 	)
 
 	srv.AddTool(
@@ -24,7 +23,7 @@ func registerShareLinkTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Get share link details."),
 			mcp.WithNumber("id", mcp.Description("Share link ID"), mcp.Required()),
 		),
-		handleShareLinkGet(client),
+		handleGetByID(client, "/api/share_links/%d/"),
 	)
 
 	srv.AddTool(
@@ -52,31 +51,8 @@ func registerShareLinkTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Delete a share link."),
 			mcp.WithNumber("id", mcp.Description("Share link ID"), mcp.Required()),
 		),
-		handleShareLinkDelete(client),
+		handleDeleteByID(client, "/api/share_links/%d/"),
 	)
-}
-
-func handleShareLinkList(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		params := url.Values{}
-		addPaginationParams(params, request)
-
-		path := "/api/share_links/"
-		resp, err := client.Get(path, params)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleShareLinkGet(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/share_links/%d/", id)
-		resp, err := client.Get(path, nil)
-		return doRequest(resp, err, "GET", path)
-	}
 }
 
 func handleShareLinkCreate(client *Client) server.ToolHandlerFunc {
@@ -103,7 +79,7 @@ func handleShareLinkCreate(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := "/api/share_links/"
-		resp, err := client.Post(path, body)
+		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
 	}
 }
@@ -125,19 +101,7 @@ func handleShareLinkUpdate(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := fmt.Sprintf("/api/share_links/%d/", id)
-		resp, err := client.Patch(path, body)
+		resp, err := client.Patch(ctx, path, body)
 		return doRequest(resp, err, "PATCH", path)
-	}
-}
-
-func handleShareLinkDelete(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/share_links/%d/", id)
-		resp, err := client.Delete(path, nil)
-		return doRequest(resp, err, "DELETE", path)
 	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 )
 
 // errResult returns an MCP error result with the given message.
@@ -130,6 +132,16 @@ func getRequiredInt(request mcp.CallToolRequest, name string) (int, *mcp.CallToo
 	return int(request.GetFloat(name, 0)), nil
 }
 
+// getRequiredString extracts a required string parameter from the request.
+// Returns the value and nil on success, or "" and an error result if missing or empty.
+func getRequiredString(request mcp.CallToolRequest, name string) (string, *mcp.CallToolResult) {
+	v := request.GetString(name, "")
+	if v == "" {
+		return "", errResult(name + " is required")
+	}
+	return v, nil
+}
+
 // setNullableInt sets a nullable integer field in a body map for PATCH requests.
 // If the argument is present and nil, sets the field to nil (clears it).
 // If the argument is present and a number, sets the field to the int value.
@@ -159,4 +171,52 @@ func setJSONField(body map[string]any, request mcp.CallToolRequest, name string)
 	}
 	body[name] = v
 	return nil
+}
+
+// --- Generic CRUD handlers ---
+
+// handleSimpleGet returns a handler that GETs a fixed path with no parameters.
+func handleSimpleGet(client *Client, path string) server.ToolHandlerFunc {
+	return func(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		resp, err := client.Get(ctx, path, nil)
+		return doRequest(resp, err, "GET", path)
+	}
+}
+
+// handlePaginatedList returns a handler that GETs a paginated list endpoint.
+func handlePaginatedList(client *Client, path string) server.ToolHandlerFunc {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		params := url.Values{}
+		addPaginationParams(params, request)
+		resp, err := client.Get(ctx, path, params)
+		return doRequest(resp, err, "GET", path)
+	}
+}
+
+// handleGetByID returns a handler that GETs a resource by integer ID.
+// pathFmt must contain exactly one %d verb for the ID.
+func handleGetByID(client *Client, pathFmt string) server.ToolHandlerFunc {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		id, errRes := getRequiredInt(request, "id")
+		if errRes != nil {
+			return errRes, nil
+		}
+		path := fmt.Sprintf(pathFmt, id)
+		resp, err := client.Get(ctx, path, nil)
+		return doRequest(resp, err, "GET", path)
+	}
+}
+
+// handleDeleteByID returns a handler that DELETEs a resource by integer ID.
+// pathFmt must contain exactly one %d verb for the ID.
+func handleDeleteByID(client *Client, pathFmt string) server.ToolHandlerFunc {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		id, errRes := getRequiredInt(request, "id")
+		if errRes != nil {
+			return errRes, nil
+		}
+		path := fmt.Sprintf(pathFmt, id)
+		resp, err := client.Delete(ctx, path, nil)
+		return doRequest(resp, err, "DELETE", path)
+	}
 }

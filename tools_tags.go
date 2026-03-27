@@ -27,7 +27,7 @@ func registerTagTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Get tag details."),
 			mcp.WithNumber("id", mcp.Description("Tag ID"), mcp.Required()),
 		),
-		handleTagGet(client),
+		handleGetByID(client, "/api/tags/%d/"),
 	)
 
 	srv.AddTool(
@@ -64,7 +64,7 @@ func registerTagTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Delete a tag."),
 			mcp.WithNumber("id", mcp.Description("Tag ID"), mcp.Required()),
 		),
-		handleTagDelete(client),
+		handleDeleteByID(client, "/api/tags/%d/"),
 	)
 }
 
@@ -77,28 +77,16 @@ func handleTagList(client *Client) server.ToolHandlerFunc {
 		addStringParam(params, request, "ordering", "ordering")
 
 		path := "/api/tags/"
-		resp, err := client.Get(path, params)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleTagGet(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/tags/%d/", id)
-		resp, err := client.Get(path, nil)
+		resp, err := client.Get(ctx, path, params)
 		return doRequest(resp, err, "GET", path)
 	}
 }
 
 func handleTagCreate(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		name := request.GetString("name", "")
-		if name == "" {
-			return errResult("name is required"), nil
+		name, errRes := getRequiredString(request, "name")
+		if errRes != nil {
+			return errRes, nil
 		}
 
 		body := map[string]any{"name": name}
@@ -124,7 +112,7 @@ func handleTagCreate(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := "/api/tags/"
-		resp, err := client.Post(path, body)
+		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
 	}
 }
@@ -164,19 +152,7 @@ func handleTagUpdate(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := fmt.Sprintf("/api/tags/%d/", id)
-		resp, err := client.Patch(path, body)
+		resp, err := client.Patch(ctx, path, body)
 		return doRequest(resp, err, "PATCH", path)
-	}
-}
-
-func handleTagDelete(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/tags/%d/", id)
-		resp, err := client.Delete(path, nil)
-		return doRequest(resp, err, "DELETE", path)
 	}
 }

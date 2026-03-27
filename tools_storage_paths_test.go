@@ -17,7 +17,7 @@ func TestStoragePathGet(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/storage_paths/1/", jsonHandler(t, 200, map[string]any{"id": 1, "name": "Default"}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleStoragePathGet(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/storage_paths/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -49,7 +49,7 @@ func TestStoragePathDelete(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("DELETE", "/api/storage_paths/1/", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleStoragePathDelete(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleDeleteByID(client, "/api/storage_paths/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 

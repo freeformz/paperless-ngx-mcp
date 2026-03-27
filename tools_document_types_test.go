@@ -17,7 +17,7 @@ func TestDocumentTypeGet(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/document_types/1/", jsonHandler(t, 200, map[string]any{"id": 1, "name": "Invoice"}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleDocumentTypeGet(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/document_types/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -47,6 +47,6 @@ func TestDocumentTypeDelete(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("DELETE", "/api/document_types/1/", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleDocumentTypeDelete(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleDeleteByID(client, "/api/document_types/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }

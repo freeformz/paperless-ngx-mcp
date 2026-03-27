@@ -9,7 +9,7 @@ func TestUserList(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/users/", jsonHandler(t, 200, paginatedResponse([]map[string]any{{"id": 1, "username": "admin"}}, 1)))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleUserList(client), nil)
+	result := callTool(t, handlePaginatedList(client, "/api/users/"), nil)
 	assertNotError(t, result)
 }
 
@@ -17,7 +17,7 @@ func TestUserGet(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/users/1/", jsonHandler(t, 200, map[string]any{"id": 1, "username": "admin"}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleUserGet(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/users/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -55,7 +55,7 @@ func TestUserDelete(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("DELETE", "/api/users/1/", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleUserDelete(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleDeleteByID(client, "/api/users/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -71,7 +71,7 @@ func TestGroupList(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/groups/", jsonHandler(t, 200, paginatedResponse([]map[string]any{{"id": 1, "name": "editors"}}, 1)))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleGroupList(client), nil)
+	result := callTool(t, handlePaginatedList(client, "/api/groups/"), nil)
 	assertNotError(t, result)
 }
 
@@ -79,7 +79,7 @@ func TestGroupGet(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/groups/1/", jsonHandler(t, 200, map[string]any{"id": 1, "name": "editors"}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleGroupGet(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/groups/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -115,7 +115,7 @@ func TestGroupDelete(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("DELETE", "/api/groups/1/", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleGroupDelete(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleDeleteByID(client, "/api/groups/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -123,7 +123,7 @@ func TestProfileGet(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/profile/", jsonHandler(t, 200, map[string]any{"email": "admin@example.com"}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleProfileGet(client), nil)
+	result := callTool(t, handleSimpleGet(client, "/api/profile/"), nil)
 	assertNotError(t, result)
 }
 

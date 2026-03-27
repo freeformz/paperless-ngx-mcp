@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -44,7 +46,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Get full document details including tags, correspondent, document type, custom fields, notes, and permissions."),
 			mcp.WithNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
-		handleDocumentGet(client),
+		handleGetByID(client, "/api/documents/%d/"),
 	)
 
 	srv.AddTool(
@@ -68,7 +70,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Delete a document (soft-delete to trash)."),
 			mcp.WithNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
-		handleDocumentDelete(client),
+		handleDeleteByID(client, "/api/documents/%d/"),
 	)
 
 	srv.AddTool(
@@ -91,7 +93,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Get file metadata (checksums, sizes, MIME type) for a document."),
 			mcp.WithNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
-		handleDocumentMetadata(client),
+		handleGetByID(client, "/api/documents/%d/metadata/"),
 	)
 
 	srv.AddTool(
@@ -99,14 +101,14 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Get AI suggestions for tags, correspondent, document type, and storage path."),
 			mcp.WithNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
-		handleDocumentSuggestions(client),
+		handleGetByID(client, "/api/documents/%d/suggestions/"),
 	)
 
 	srv.AddTool(
 		mcp.NewTool("document_next_asn",
 			mcp.WithDescription("Get the next available archive serial number."),
 		),
-		handleDocumentNextASN(client),
+		handleSimpleGet(client, "/api/documents/next_asn/"),
 	)
 
 	srv.AddTool(
@@ -114,7 +116,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("List share links for a specific document."),
 			mcp.WithNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
-		handleDocumentShareLinks(client),
+		handleGetByID(client, "/api/documents/%d/share_links/"),
 	)
 
 	srv.AddTool(
@@ -122,7 +124,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Get audit trail for a document."),
 			mcp.WithNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
-		handleDocumentHistory(client),
+		handleGetByID(client, "/api/documents/%d/history/"),
 	)
 
 	srv.AddTool(
@@ -142,7 +144,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("List notes on a document."),
 			mcp.WithNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
-		handleDocumentNoteList(client),
+		handleGetByID(client, "/api/documents/%d/notes/"),
 	)
 
 	srv.AddTool(
@@ -189,19 +191,7 @@ func handleDocumentList(client *Client) server.ToolHandlerFunc {
 		addStringParam(params, request, "ordering", "ordering")
 
 		path := "/api/documents/"
-		resp, err := client.Get(path, params)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleDocumentGet(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/documents/%d/", id)
-		resp, err := client.Get(path, nil)
+		resp, err := client.Get(ctx, path, params)
 		return doRequest(resp, err, "GET", path)
 	}
 }
@@ -240,28 +230,31 @@ func handleDocumentUpdate(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := fmt.Sprintf("/api/documents/%d/", id)
-		resp, err := client.Patch(path, body)
+		resp, err := client.Patch(ctx, path, body)
 		return doRequest(resp, err, "PATCH", path)
-	}
-}
-
-func handleDocumentDelete(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/documents/%d/", id)
-		resp, err := client.Delete(path, nil)
-		return doRequest(resp, err, "DELETE", path)
 	}
 }
 
 func handleDocumentUpload(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		filePath := request.GetString("file_path", "")
-		if filePath == "" {
-			return errResult("file_path is required"), nil
+		filePath, errRes := getRequiredString(request, "file_path")
+		if errRes != nil {
+			return errRes, nil
+		}
+
+		// Validate file path: resolve to absolute, check it's a regular file
+		absPath, err := filepath.Abs(filePath)
+		if err != nil {
+			return errResult(fmt.Sprintf("invalid file path: %s", err)), nil
+		}
+		filePath = absPath
+
+		info, err := os.Lstat(filePath)
+		if err != nil {
+			return errResult(fmt.Sprintf("file not accessible: %s", err)), nil
+		}
+		if !info.Mode().IsRegular() {
+			return errResult("file_path must be a regular file"), nil
 		}
 
 		fields := map[string]string{}
@@ -290,64 +283,8 @@ func handleDocumentUpload(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := "/api/documents/post_document/"
-		resp, err := client.PostMultipart(path, fields, filePath)
+		resp, err := client.PostMultipart(ctx, path, fields, filePath)
 		return doRequest(resp, err, "POST", path)
-	}
-}
-
-func handleDocumentMetadata(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/documents/%d/metadata/", id)
-		resp, err := client.Get(path, nil)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleDocumentSuggestions(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/documents/%d/suggestions/", id)
-		resp, err := client.Get(path, nil)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleDocumentNextASN(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		path := "/api/documents/next_asn/"
-		resp, err := client.Get(path, nil)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleDocumentShareLinks(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/documents/%d/share_links/", id)
-		resp, err := client.Get(path, nil)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleDocumentHistory(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/documents/%d/history/", id)
-		resp, err := client.Get(path, nil)
-		return doRequest(resp, err, "GET", path)
 	}
 }
 
@@ -362,9 +299,9 @@ func handleDocumentEmail(client *Client) server.ToolHandlerFunc {
 			return errResult("documents is required"), nil
 		}
 
-		to := request.GetString("to", "")
-		if to == "" {
-			return errResult("to is required"), nil
+		to, errRes := getRequiredString(request, "to")
+		if errRes != nil {
+			return errRes, nil
 		}
 		body["to"] = to
 
@@ -376,20 +313,8 @@ func handleDocumentEmail(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := "/api/documents/email/"
-		resp, err := client.Post(path, body)
+		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
-	}
-}
-
-func handleDocumentNoteList(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/documents/%d/notes/", id)
-		resp, err := client.Get(path, nil)
-		return doRequest(resp, err, "GET", path)
 	}
 }
 
@@ -399,14 +324,14 @@ func handleDocumentNoteAdd(client *Client) server.ToolHandlerFunc {
 		if errRes != nil {
 			return errRes, nil
 		}
-		note := request.GetString("note", "")
-		if note == "" {
-			return errResult("note is required"), nil
+		note, errRes := getRequiredString(request, "note")
+		if errRes != nil {
+			return errRes, nil
 		}
 
 		body := map[string]any{"note": note}
 		path := fmt.Sprintf("/api/documents/%d/notes/", id)
-		resp, err := client.Post(path, body)
+		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
 	}
 }
@@ -424,7 +349,7 @@ func handleDocumentNoteDelete(client *Client) server.ToolHandlerFunc {
 
 		path := fmt.Sprintf("/api/documents/%d/notes/", id)
 		params := url.Values{"id": {strconv.Itoa(noteID)}}
-		resp, err := client.Delete(path, params)
+		resp, err := client.Delete(ctx, path, params)
 		return doRequest(resp, err, "DELETE", path)
 	}
 }

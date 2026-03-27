@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/url"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -16,7 +15,7 @@ func registerSavedViewTools(srv *server.MCPServer, client *Client) {
 			mcp.WithNumber("page", mcp.Description("Page number (default: 1)")),
 			mcp.WithNumber("page_size", mcp.Description("Results per page (default: 25)")),
 		),
-		handleSavedViewList(client),
+		handlePaginatedList(client, "/api/saved_views/"),
 	)
 
 	srv.AddTool(
@@ -24,7 +23,7 @@ func registerSavedViewTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Get saved view details."),
 			mcp.WithNumber("id", mcp.Description("Saved view ID"), mcp.Required()),
 		),
-		handleSavedViewGet(client),
+		handleGetByID(client, "/api/saved_views/%d/"),
 	)
 
 	srv.AddTool(
@@ -59,38 +58,15 @@ func registerSavedViewTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Delete a saved view."),
 			mcp.WithNumber("id", mcp.Description("Saved view ID"), mcp.Required()),
 		),
-		handleSavedViewDelete(client),
+		handleDeleteByID(client, "/api/saved_views/%d/"),
 	)
-}
-
-func handleSavedViewList(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		params := url.Values{}
-		addPaginationParams(params, request)
-
-		path := "/api/saved_views/"
-		resp, err := client.Get(path, params)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleSavedViewGet(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/saved_views/%d/", id)
-		resp, err := client.Get(path, nil)
-		return doRequest(resp, err, "GET", path)
-	}
 }
 
 func handleSavedViewCreate(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		name := request.GetString("name", "")
-		if name == "" {
-			return errResult("name is required"), nil
+		name, errRes := getRequiredString(request, "name")
+		if errRes != nil {
+			return errRes, nil
 		}
 
 		body := map[string]any{"name": name}
@@ -113,7 +89,7 @@ func handleSavedViewCreate(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := "/api/saved_views/"
-		resp, err := client.Post(path, body)
+		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
 	}
 }
@@ -152,19 +128,7 @@ func handleSavedViewUpdate(client *Client) server.ToolHandlerFunc {
 		}
 
 		path := fmt.Sprintf("/api/saved_views/%d/", id)
-		resp, err := client.Patch(path, body)
+		resp, err := client.Patch(ctx, path, body)
 		return doRequest(resp, err, "PATCH", path)
-	}
-}
-
-func handleSavedViewDelete(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		path := fmt.Sprintf("/api/saved_views/%d/", id)
-		resp, err := client.Delete(path, nil)
-		return doRequest(resp, err, "DELETE", path)
 	}
 }

@@ -32,46 +32,38 @@ func registerSearchTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("statistics",
 			mcp.WithDescription("Get system statistics including document counts, inbox status, and storage usage."),
 		),
-		handleStatistics(client),
+		handleSimpleGet(client, "/api/statistics/"),
 	)
 }
 
 func handleSearchAutocomplete(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		term := request.GetString("term", "")
-		if term == "" {
-			return errResult("term is required"), nil
+		term, errRes := getRequiredString(request, "term")
+		if errRes != nil {
+			return errRes, nil
 		}
 
 		params := url.Values{"term": {term}}
 		addIntParam(params, request, "limit", "limit")
 
 		path := "/api/search/autocomplete/"
-		resp, err := client.Get(path, params)
+		resp, err := client.Get(ctx, path, params)
 		return doRequest(resp, err, "GET", path)
 	}
 }
 
 func handleSearchGlobal(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		query := request.GetString("query", "")
-		if query == "" {
-			return errResult("query is required"), nil
+		query, errRes := getRequiredString(request, "query")
+		if errRes != nil {
+			return errRes, nil
 		}
 
 		params := url.Values{"query": {query}}
 		addPaginationParams(params, request)
 
 		path := "/api/search/"
-		resp, err := client.Get(path, params)
-		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleStatistics(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		path := "/api/statistics/"
-		resp, err := client.Get(path, nil)
+		resp, err := client.Get(ctx, path, params)
 		return doRequest(resp, err, "GET", path)
 	}
 }

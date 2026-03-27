@@ -9,7 +9,7 @@ func TestMailAccountList(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/mail_accounts/", jsonHandler(t, 200, paginatedResponse([]map[string]any{{"id": 1, "name": "Gmail"}}, 1)))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleMailAccountList(client), nil)
+	result := callTool(t, handlePaginatedList(client, "/api/mail_accounts/"), nil)
 	assertNotError(t, result)
 }
 
@@ -17,7 +17,7 @@ func TestMailAccountGet(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/mail_accounts/1/", jsonHandler(t, 200, map[string]any{"id": 1, "name": "Gmail"}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleMailAccountGet(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/mail_accounts/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -64,7 +64,7 @@ func TestMailAccountDelete(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("DELETE", "/api/mail_accounts/1/", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleMailAccountDelete(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleDeleteByID(client, "/api/mail_accounts/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -88,7 +88,7 @@ func TestMailRuleList(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/mail_rules/", jsonHandler(t, 200, paginatedResponse([]map[string]any{{"id": 1, "name": "Invoices"}}, 1)))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleMailRuleList(client), nil)
+	result := callTool(t, handlePaginatedList(client, "/api/mail_rules/"), nil)
 	assertNotError(t, result)
 }
 
@@ -96,7 +96,7 @@ func TestMailRuleGet(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/mail_rules/1/", jsonHandler(t, 200, map[string]any{"id": 1, "name": "Invoices"}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleMailRuleGet(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/mail_rules/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -141,7 +141,7 @@ func TestMailRuleDelete(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("DELETE", "/api/mail_rules/1/", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleMailRuleDelete(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleDeleteByID(client, "/api/mail_rules/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -149,7 +149,7 @@ func TestProcessedMailList(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/processed_mail/", jsonHandler(t, 200, paginatedResponse([]map[string]any{{"id": 1}}, 1)))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleProcessedMailList(client), nil)
+	result := callTool(t, handlePaginatedList(client, "/api/processed_mail/"), nil)
 	assertNotError(t, result)
 }
 
@@ -157,7 +157,7 @@ func TestProcessedMailGet(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/processed_mail/1/", jsonHandler(t, 200, map[string]any{"id": 1, "subject": "Invoice"}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleProcessedMailGet(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/processed_mail/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 

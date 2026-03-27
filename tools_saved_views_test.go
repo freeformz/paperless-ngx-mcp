@@ -9,7 +9,7 @@ func TestSavedViewList(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/saved_views/", jsonHandler(t, 200, paginatedResponse([]map[string]any{{"id": 1, "name": "Inbox"}}, 1)))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleSavedViewList(client), nil)
+	result := callTool(t, handlePaginatedList(client, "/api/saved_views/"), nil)
 	assertNotError(t, result)
 }
 
@@ -17,7 +17,7 @@ func TestSavedViewGet(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/saved_views/1/", jsonHandler(t, 200, map[string]any{"id": 1, "name": "Inbox"}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleSavedViewGet(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/saved_views/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -53,6 +53,6 @@ func TestSavedViewDelete(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("DELETE", "/api/saved_views/1/", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleSavedViewDelete(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleDeleteByID(client, "/api/saved_views/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }

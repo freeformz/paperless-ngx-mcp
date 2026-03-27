@@ -9,7 +9,7 @@ func TestShareLinkList(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/share_links/", jsonHandler(t, 200, paginatedResponse([]map[string]any{{"id": 1}}, 1)))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleShareLinkList(client), nil)
+	result := callTool(t, handlePaginatedList(client, "/api/share_links/"), nil)
 	assertNotError(t, result)
 }
 
@@ -17,7 +17,7 @@ func TestShareLinkGet(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/share_links/1/", jsonHandler(t, 200, map[string]any{"id": 1, "slug": "abc"}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleShareLinkGet(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleGetByID(client, "/api/share_links/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
@@ -53,6 +53,6 @@ func TestShareLinkDelete(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("DELETE", "/api/share_links/1/", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleShareLinkDelete(client), map[string]any{"id": float64(1)})
+	result := callTool(t, handleDeleteByID(client, "/api/share_links/%d/"), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }

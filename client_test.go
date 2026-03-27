@@ -23,7 +23,7 @@ func TestClientAuthAndVersionHeaders(t *testing.T) {
 
 	client := NewClient(ts.URL, "test-token")
 
-	resp, err := client.Get("/api/test/", nil)
+	resp, err := client.Get(t.Context(), "/api/test/", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestClientPostJSON(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	client := NewClient(ts.URL, "test-token")
-	resp, err := client.Post("/api/tags/", map[string]any{"name": "test"})
+	resp, err := client.Post(t.Context(), "/api/tags/", map[string]any{"name": "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestClientPatch(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	client := NewClient(ts.URL, "test-token")
-	resp, err := client.Patch("/api/tags/1/", map[string]any{"name": "updated"})
+	resp, err := client.Patch(t.Context(), "/api/tags/1/", map[string]any{"name": "updated"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestClientDelete(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	client := NewClient(ts.URL, "test-token")
-	resp, err := client.Delete("/api/tags/1/", nil)
+	resp, err := client.Delete(t.Context(), "/api/tags/1/", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestClientBaseURLTrailingSlash(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	client := NewClient(ts.URL+"/", "test-token")
-	resp, err := client.Get("/api/test/", nil)
+	resp, err := client.Get(t.Context(), "/api/test/", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

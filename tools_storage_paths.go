@@ -26,7 +26,7 @@ func registerStoragePathTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Get storage path details."),
 			mcp.WithNumber("id", mcp.Description("Storage path ID"), mcp.Required()),
 		),
-		handleStoragePathGet(client),
+		handleGetByID(client, "/api/storage_paths/%d/"),
 	)
 
 	srv.AddTool(
@@ -59,7 +59,7 @@ func registerStoragePathTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Delete a storage path."),
 			mcp.WithNumber("id", mcp.Description("Storage path ID"), mcp.Required()),
 		),
-		handleStoragePathDelete(client),
+		handleDeleteByID(client, "/api/storage_paths/%d/"),
 	)
 
 	srv.AddTool(
@@ -80,32 +80,20 @@ func handleStoragePathList(client *Client) server.ToolHandlerFunc {
 		addStringParam(params, request, "ordering", "ordering")
 
 		path := "/api/storage_paths/"
-		resp, err := client.Get(path, params)
+		resp, err := client.Get(ctx, path, params)
 		return doRequest(resp, err, "GET", path)
-	}
-}
-
-func handleStoragePathGet(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		p := fmt.Sprintf("/api/storage_paths/%d/", id)
-		resp, err := client.Get(p, nil)
-		return doRequest(resp, err, "GET", p)
 	}
 }
 
 func handleStoragePathCreate(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		name := request.GetString("name", "")
-		if name == "" {
-			return errResult("name is required"), nil
+		name, errRes := getRequiredString(request, "name")
+		if errRes != nil {
+			return errRes, nil
 		}
-		pathTemplate := request.GetString("path", "")
-		if pathTemplate == "" {
-			return errResult("path is required"), nil
+		pathTemplate, errRes := getRequiredString(request, "path")
+		if errRes != nil {
+			return errRes, nil
 		}
 
 		body := map[string]any{"name": name, "path": pathTemplate}
@@ -122,7 +110,7 @@ func handleStoragePathCreate(client *Client) server.ToolHandlerFunc {
 		}
 
 		p := "/api/storage_paths/"
-		resp, err := client.Post(p, body)
+		resp, err := client.Post(ctx, p, body)
 		return doRequest(resp, err, "POST", p)
 	}
 }
@@ -158,28 +146,16 @@ func handleStoragePathUpdate(client *Client) server.ToolHandlerFunc {
 		}
 
 		p := fmt.Sprintf("/api/storage_paths/%d/", id)
-		resp, err := client.Patch(p, body)
+		resp, err := client.Patch(ctx, p, body)
 		return doRequest(resp, err, "PATCH", p)
-	}
-}
-
-func handleStoragePathDelete(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		p := fmt.Sprintf("/api/storage_paths/%d/", id)
-		resp, err := client.Delete(p, nil)
-		return doRequest(resp, err, "DELETE", p)
 	}
 }
 
 func handleStoragePathTest(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		pathTemplate := request.GetString("path", "")
-		if pathTemplate == "" {
-			return errResult("path is required"), nil
+		pathTemplate, errRes := getRequiredString(request, "path")
+		if errRes != nil {
+			return errRes, nil
 		}
 
 		body := map[string]any{"path": pathTemplate}
@@ -189,7 +165,7 @@ func handleStoragePathTest(client *Client) server.ToolHandlerFunc {
 		}
 
 		p := "/api/storage_paths/test/"
-		resp, err := client.Post(p, body)
+		resp, err := client.Post(ctx, p, body)
 		return doRequest(resp, err, "POST", p)
 	}
 }
