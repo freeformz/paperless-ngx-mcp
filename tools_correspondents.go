@@ -33,7 +33,7 @@ func registerCorrespondentTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("correspondent_create",
 			mcp.WithDescription("Create a new correspondent."),
 			mcp.WithString("name", mcp.Description("Correspondent name"), mcp.Required()),
-			mcp.WithNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
+			mcp.WithNumber("matching_algorithm", mcp.Description("Matching algorithm: 1=Any, 2=All, 3=Exact, 4=Regex, 5=Fuzzy, 6=Auto (default: 6)")),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
 		),
@@ -93,14 +93,14 @@ func handleCorrespondentCreate(client *Client) server.ToolHandlerFunc {
 			return errResult("name is required"), nil
 		}
 
-		body := map[string]any{"name": name}
+		body := map[string]any{"name": name, "matching_algorithm": 6}
 		args := request.GetArguments()
 
 		if v := request.GetString("match", ""); v != "" {
 			body["match"] = v
 		}
 		if _, ok := args["matching_algorithm"]; ok {
-			body["matching_algorithm"] = int(request.GetFloat("matching_algorithm", 0))
+			body["matching_algorithm"] = int(request.GetFloat("matching_algorithm", 6))
 		}
 		if _, ok := args["is_insensitive"]; ok {
 			body["is_insensitive"] = request.GetBool("is_insensitive", false)
