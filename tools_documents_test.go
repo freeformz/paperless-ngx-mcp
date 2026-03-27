@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -252,6 +254,30 @@ func TestDocumentEmailRequiresFields(t *testing.T) {
 func TestDocumentUploadRequiresFilePath(t *testing.T) {
 	client := NewClient("http://unused", "unused")
 	result := callTool(t, handleDocumentUpload(client), map[string]any{})
+	assertIsError(t, result)
+}
+
+func TestDocumentUploadRejectsNonExistentPath(t *testing.T) {
+	client := NewClient("http://unused", "unused")
+	result := callTool(t, handleDocumentUpload(client), map[string]any{"file_path": "/nonexistent/file.pdf"})
+	assertIsError(t, result)
+}
+
+func TestDocumentUploadRejectsDirectory(t *testing.T) {
+	client := NewClient("http://unused", "unused")
+	result := callTool(t, handleDocumentUpload(client), map[string]any{"file_path": t.TempDir()})
+	assertIsError(t, result)
+}
+
+func TestDocumentUploadRejectsSymlink(t *testing.T) {
+	tmp := t.TempDir()
+	target := filepath.Join(tmp, "target.pdf")
+	os.WriteFile(target, []byte("pdf"), 0o644)
+	link := filepath.Join(tmp, "link.pdf")
+	os.Symlink(target, link)
+
+	client := NewClient("http://unused", "unused")
+	result := callTool(t, handleDocumentUpload(client), map[string]any{"file_path": link})
 	assertIsError(t, result)
 }
 

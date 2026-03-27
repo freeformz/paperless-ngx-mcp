@@ -107,6 +107,8 @@ func genericJSONCreate(client *Client, apiPath string, extraFields map[string]an
 			body = parsed
 		} else if _, ok := body["body"]; !ok {
 			return errResult("body is required"), nil
+		} else {
+			return errResult("body must be a JSON object"), nil
 		}
 		maps.Copy(body, extraFields)
 
@@ -124,6 +126,8 @@ func genericJSONUpdate(client *Client, apiPath string) server.ToolHandlerFunc {
 		}
 		if parsed, ok := body["body"].(map[string]any); ok {
 			body = parsed
+		} else if _, ok := body["body"]; ok {
+			return errResult("body must be a JSON object"), nil
 		}
 		if len(body) == 0 {
 			return errResult("body is required"), nil

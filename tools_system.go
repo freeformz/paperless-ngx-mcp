@@ -10,10 +10,11 @@ import (
 )
 
 var (
-	// uuidPattern validates task IDs as UUIDs to prevent path injection.
-	uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+	// uuidPattern validates task IDs as UUIDs to prevent path injection (case-insensitive).
+	uuidPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 	// logNamePattern validates log file names to prevent path traversal.
-	logNamePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+	// Disallows ".." sequences to prevent directory traversal.
+	logNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)*$`)
 )
 
 func registerSystemTools(srv *server.MCPServer, client *Client) {
@@ -183,6 +184,8 @@ func handleConfigUpdate(client *Client) server.ToolHandlerFunc {
 		}
 		if parsed, ok := body["body"].(map[string]any); ok {
 			body = parsed
+		} else if _, ok := body["body"]; ok {
+			return errResult("body must be a JSON object"), nil
 		}
 		if len(body) == 0 {
 			return errResult("body is required"), nil

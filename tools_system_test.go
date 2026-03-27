@@ -84,6 +84,15 @@ func TestTaskGetRequiresId(t *testing.T) {
 	assertIsError(t, result)
 }
 
+func TestTaskGetAcceptsUppercaseUUID(t *testing.T) {
+	taskID := "12345678-1234-1234-1234-123456789ABC"
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/tasks/"+taskID+"/", jsonHandler(t, 200, map[string]any{"task_id": taskID, "status": "SUCCESS"}))
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleTaskGet(client), map[string]any{"id": taskID})
+	assertNotError(t, result)
+}
+
 func TestTaskGetRejectsInvalidId(t *testing.T) {
 	client := NewClient("http://unused", "unused")
 	result := callTool(t, handleTaskGet(client), map[string]any{"id": "abc-123"})
@@ -135,6 +144,12 @@ func TestLogGetRequiresId(t *testing.T) {
 func TestLogGetRejectsInvalidId(t *testing.T) {
 	client := NewClient("http://unused", "unused")
 	result := callTool(t, handleLogGet(client), map[string]any{"id": "../etc/passwd"})
+	assertIsError(t, result)
+}
+
+func TestLogGetRejectsDotDot(t *testing.T) {
+	client := NewClient("http://unused", "unused")
+	result := callTool(t, handleLogGet(client), map[string]any{"id": ".."})
 	assertIsError(t, result)
 }
 

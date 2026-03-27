@@ -40,8 +40,8 @@ func NewClient(baseURL, token string) *Client {
 				if len(via) >= 10 {
 					return fmt.Errorf("stopped after 10 redirects")
 				}
-				// Strip auth header if redirected to a different host to prevent token leaking.
-				if len(via) > 0 && req.URL.Host != via[0].URL.Host {
+				// Strip auth header if redirected to a different origin (scheme/host/port) to prevent token leaking.
+				if len(via) > 0 && (req.URL.Scheme != via[0].URL.Scheme || req.URL.Host != via[0].URL.Host) {
 					req.Header.Del("Authorization")
 				}
 				return nil

@@ -232,6 +232,8 @@ func handleMailRuleCreate(client *Client) server.ToolHandlerFunc {
 		if extra, ok := body["body"].(map[string]any); ok {
 			delete(body, "body")
 			maps.Copy(body, extra)
+		} else if _, ok := body["body"]; ok {
+			return errResult("body must be a JSON object"), nil
 		}
 
 		path := "/api/mail_rules/"
@@ -255,6 +257,8 @@ func handleMailRuleUpdate(client *Client) server.ToolHandlerFunc {
 		if extra, ok := body["body"].(map[string]any); ok {
 			delete(body, "body")
 			maps.Copy(body, extra)
+		} else if _, ok := body["body"]; ok {
+			return errResult("body must be a JSON object"), nil
 		}
 
 		if len(body) == 0 {
