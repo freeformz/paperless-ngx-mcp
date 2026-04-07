@@ -51,10 +51,10 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_update",
-			mcp.WithDescription("Update document metadata. Only specified fields are changed. Pass null for correspondent/document_type/storage_path/owner to clear."),
+			mcp.WithDescription("Update document metadata. Only specified fields are changed. Pass null for correspondent/document_type/storage_path/archive_serial_number/owner to clear."),
 			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 			mcp.WithString("title", mcp.Description("New title")),
-			mcp.WithString("content", mcp.Description("New document content text (OCR text)")),
+			mcp.WithString("content", mcp.Description("New document content text (OCR text). Pass empty string to clear.")),
 			mcp.WithString("created", mcp.Description("New created date (YYYY-MM-DD)")),
 			withNullableNumber("correspondent", mcp.Description("Correspondent ID (null to clear)")),
 			withNullableNumber("document_type", mcp.Description("Document type ID (null to clear)")),

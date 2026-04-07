@@ -153,7 +153,7 @@ The primary search and filtering tool. Supports the full range of Paperless-ngx 
 |------|------|----------|-------------|
 | id | integer | yes | Document ID |
 | title | string | no | New title |
-| content | string | no | New document content text (OCR text) |
+| content | string | no | New document content text (OCR text); empty string clears content |
 | created | string | no | New created date (YYYY-MM-DD) |
 | correspondent | integer | no | Correspondent ID (null to clear) |
 | document_type | integer | no | Document type ID (null to clear) |
