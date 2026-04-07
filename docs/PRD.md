@@ -21,7 +21,8 @@ Paperless-ngx is a powerful document management system, but interacting with it 
 ## Non-Goals
 
 - Local document storage or persistent caching (in-memory metadata caching is in scope)
-- Document content modification (PDF editing, OCR, etc.) — metadata only
+- Document file modification (PDF editing, image manipulation, re-OCR, etc.) — the `content` text field (extracted OCR text) is editable via `document_update`
+- Permission management (`set_permissions`) — intentionally excluded for now
 - Paperless-ngx server administration (installation, upgrades, backups)
 - Real-time event streaming (WebSocket status endpoint)
 - OAuth flow handling (tokens are provided via configuration)
@@ -152,12 +153,14 @@ The primary search and filtering tool. Supports the full range of Paperless-ngx 
 |------|------|----------|-------------|
 | id | integer | yes | Document ID |
 | title | string | no | New title |
+| content | string | no | New document content text (OCR text); empty string clears content |
 | created | string | no | New created date (YYYY-MM-DD) |
 | correspondent | integer | no | Correspondent ID (null to clear) |
 | document_type | integer | no | Document type ID (null to clear) |
 | storage_path | integer | no | Storage path ID (null to clear) |
 | tags | string | no | JSON array of tag IDs (replaces all tags) |
 | archive_serial_number | integer | no | Archive serial number (null to clear) |
+| owner | integer | no | Owner user ID (null to clear) |
 | custom_fields | string | no | JSON array of custom field assignments |
 
 **Returns:** Updated document object.
