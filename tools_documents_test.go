@@ -119,6 +119,108 @@ func TestDocumentUpdateClearCorrespondent(t *testing.T) {
 	}
 }
 
+func TestDocumentUpdateContent(t *testing.T) {
+	var capturedBody map[string]any
+
+	rh := newRouteHandler(t)
+	rh.Handle("PATCH", "/api/documents/1/", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &capturedBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.Write([]byte(`{"id":1,"content":"new content"}`))
+	})
+
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleDocumentUpdate(client), map[string]any{
+		"id":      float64(1),
+		"content": "new content",
+	})
+	assertNotError(t, result)
+
+	if capturedBody["content"] != "new content" {
+		t.Errorf("content = %v, want 'new content'", capturedBody["content"])
+	}
+}
+
+func TestDocumentUpdateContentEmpty(t *testing.T) {
+	var capturedBody map[string]any
+
+	rh := newRouteHandler(t)
+	rh.Handle("PATCH", "/api/documents/1/", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &capturedBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.Write([]byte(`{"id":1,"content":""}`))
+	})
+
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleDocumentUpdate(client), map[string]any{
+		"id":      float64(1),
+		"content": "",
+	})
+	assertNotError(t, result)
+
+	if _, ok := capturedBody["content"]; !ok {
+		t.Error("expected content in body")
+	}
+	if capturedBody["content"] != "" {
+		t.Errorf("content = %v, want empty string", capturedBody["content"])
+	}
+}
+
+func TestDocumentUpdateOwner(t *testing.T) {
+	var capturedBody map[string]any
+
+	rh := newRouteHandler(t)
+	rh.Handle("PATCH", "/api/documents/1/", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &capturedBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.Write([]byte(`{"id":1,"owner":5}`))
+	})
+
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleDocumentUpdate(client), map[string]any{
+		"id":    float64(1),
+		"owner": float64(5),
+	})
+	assertNotError(t, result)
+
+	if capturedBody["owner"] != float64(5) {
+		t.Errorf("owner = %v, want 5", capturedBody["owner"])
+	}
+}
+
+func TestDocumentUpdateClearOwner(t *testing.T) {
+	var capturedBody map[string]any
+
+	rh := newRouteHandler(t)
+	rh.Handle("PATCH", "/api/documents/1/", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &capturedBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.Write([]byte(`{"id":1}`))
+	})
+
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleDocumentUpdate(client), map[string]any{
+		"id":    float64(1),
+		"owner": nil,
+	})
+	assertNotError(t, result)
+
+	if _, ok := capturedBody["owner"]; !ok {
+		t.Error("expected owner in body")
+	}
+	if capturedBody["owner"] != nil {
+		t.Errorf("owner = %v, want nil", capturedBody["owner"])
+	}
+}
+
 func TestDocumentUpdateNoFields(t *testing.T) {
 	client := NewClient("http://unused", "unused")
 	result := callTool(t, handleDocumentUpdate(client), map[string]any{

@@ -51,15 +51,17 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_update",
-			mcp.WithDescription("Update document metadata. Only specified fields are changed. Pass null for correspondent/document_type/storage_path to clear."),
+			mcp.WithDescription("Update document metadata. Only specified fields are changed. Pass null for correspondent/document_type/storage_path/owner to clear."),
 			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 			mcp.WithString("title", mcp.Description("New title")),
+			mcp.WithString("content", mcp.Description("New document content text (OCR text)")),
 			mcp.WithString("created", mcp.Description("New created date (YYYY-MM-DD)")),
 			withNullableNumber("correspondent", mcp.Description("Correspondent ID (null to clear)")),
 			withNullableNumber("document_type", mcp.Description("Document type ID (null to clear)")),
 			withNullableNumber("storage_path", mcp.Description("Storage path ID (null to clear)")),
 			mcp.WithString("tags", mcp.Description("JSON array of tag IDs (replaces all tags)")),
 			withNullableNumber("archive_serial_number", mcp.Description("Archive serial number (null to clear)")),
+			withNullableNumber("owner", mcp.Description("Owner user ID (null to clear)")),
 			mcp.WithString("custom_fields", mcp.Description("JSON array of custom field assignments")),
 		),
 		handleDocumentUpdate(client),
@@ -209,6 +211,9 @@ func handleDocumentUpdate(client *Client) server.ToolHandlerFunc {
 		if v := request.GetString("title", ""); v != "" {
 			body["title"] = v
 		}
+		if _, ok := args["content"]; ok {
+			body["content"] = request.GetString("content", "")
+		}
 		if v := request.GetString("created", ""); v != "" {
 			body["created"] = v
 		}
@@ -217,6 +222,7 @@ func handleDocumentUpdate(client *Client) server.ToolHandlerFunc {
 		setNullableInt(body, args, request, "document_type")
 		setNullableInt(body, args, request, "storage_path")
 		setNullableInt(body, args, request, "archive_serial_number")
+		setNullableInt(body, args, request, "owner")
 
 		if err := setJSONField(body, request, "tags"); err != nil {
 			return errResult(err.Error()), nil
