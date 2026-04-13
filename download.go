@@ -20,15 +20,15 @@ type Downloader struct {
 	files       map[string]struct{}
 }
 
-// NewDownloader creates a Downloader with a random temp directory under /tmp.
-// The directory is created immediately. The caller should call Cleanup to remove it.
+// NewDownloader creates a Downloader with a unique temp directory under os.TempDir().
+// The directory is created immediately. The caller should remove it when finished,
+// for example with os.RemoveAll(d.Dir()).
 func NewDownloader(concurrency int) (*Downloader, error) {
-	suffix, err := randomHex(4)
-	if err != nil {
-		return nil, fmt.Errorf("generate random suffix: %w", err)
+	if concurrency < 1 {
+		return nil, fmt.Errorf("concurrency must be >= 1, got %d", concurrency)
 	}
-	dir := filepath.Join(os.TempDir(), "paperless-ngx-mcp-"+suffix)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	dir, err := os.MkdirTemp("", "paperless-ngx-mcp-")
+	if err != nil {
 		return nil, fmt.Errorf("create download dir: %w", err)
 	}
 	return &Downloader{

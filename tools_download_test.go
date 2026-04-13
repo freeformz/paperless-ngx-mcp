@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func testDownloader(t *testing.T, concurrency int) *Downloader {
@@ -214,11 +216,28 @@ func TestDocumentDownloadMissingIDs(t *testing.T) {
 }
 
 func TestDocumentDownloadConcurrencyRespected(t *testing.T) {
-	// Download 10 documents with concurrency 2 — verify they all complete
+	// Download 10 documents with concurrency 2 — verify max in-flight never exceeds 2
+	var (
+		inflight    atomic.Int32
+		maxInflight atomic.Int32
+	)
+
 	rh := newRouteHandler(t)
 	for i := 1; i <= 10; i++ {
 		id := i
 		rh.Handle("GET", fmt.Sprintf("/api/documents/%d/download/", id), func(w http.ResponseWriter, r *http.Request) {
+			cur := inflight.Add(1)
+			// Update max observed concurrency
+			for {
+				old := maxInflight.Load()
+				if cur <= old || maxInflight.CompareAndSwap(old, cur) {
+					break
+				}
+			}
+			// Small sleep to increase overlap window
+			time.Sleep(10 * time.Millisecond)
+			inflight.Add(-1)
+
 			w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="doc%d.pdf"`, id))
 			fmt.Fprintf(w, "content-%d", id)
 		})
@@ -242,6 +261,10 @@ func TestDocumentDownloadConcurrencyRespected(t *testing.T) {
 		if rm["error"] != nil {
 			t.Errorf("result %d: unexpected error: %v", i, rm["error"])
 		}
+	}
+
+	if observed := maxInflight.Load(); observed > 2 {
+		t.Errorf("max in-flight = %d, want <= 2", observed)
 	}
 }
 

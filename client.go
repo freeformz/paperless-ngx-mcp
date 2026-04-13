@@ -166,7 +166,8 @@ func (c *Client) Delete(ctx context.Context, path string, params url.Values) (*h
 }
 
 // GetRaw performs a GET request and returns the raw response without reading the body.
-// Unlike Get, it does not set Accept: application/json or attempt caching.
+// Unlike Get, it accepts any content type and does not attempt caching.
+// The API version header is still sent for version negotiation.
 // The caller is responsible for closing the response body.
 func (c *Client) GetRaw(ctx context.Context, path string, params url.Values) (*http.Response, error) {
 	u := c.baseURL + path
@@ -179,6 +180,7 @@ func (c *Client) GetRaw(ctx context.Context, path string, params url.Values) (*h
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Token "+c.token)
+	req.Header.Set("Accept", "*/*; version="+apiVersion)
 	return c.httpClient.Do(req)
 }
 
