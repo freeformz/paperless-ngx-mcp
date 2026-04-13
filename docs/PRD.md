@@ -207,7 +207,7 @@ Removes downloaded document files. With no arguments, removes all files in the i
 |------|------|----------|-------------|
 | files | string | no | JSON array of file paths to remove. Omit to remove all downloaded files. |
 
-**Returns:** JSON object with `removed` (array of removed paths) and `count`/`removed_count`. When removing specific files, may include `failed` and `failed_count` for files that could not be removed.
+**Returns:** JSON object with `removed` (array of removed paths) and `removed_count`. When removing specific files, may include `failed` and `failed_count` for files that could not be removed.
 
 #### Document Notes
 

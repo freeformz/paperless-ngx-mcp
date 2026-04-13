@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -73,6 +74,9 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 		var wg sync.WaitGroup
 
 		workerCount := dl.Concurrency()
+		if workerCount > len(ids) {
+			workerCount = len(ids)
+		}
 		for w := 0; w < workerCount; w++ {
 			wg.Add(1)
 			go func() {
@@ -123,8 +127,8 @@ func downloadOne(ctx context.Context, client *Client, dl *Downloader, id int, va
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		_, _ = io.Copy(io.Discard, resp.Body)
-		return "", fmt.Errorf("HTTP %d for document %d", resp.StatusCode, id)
+		detail := extractErrorDetail(resp)
+		return "", fmt.Errorf("HTTP %d for document %d: %s", resp.StatusCode, id, detail)
 	}
 
 	ext := extensionFromResponse(resp)
@@ -153,6 +157,22 @@ func downloadOne(ctx context.Context, client *Client, dl *Downloader, id int, va
 	return dest, nil
 }
 
+// extractErrorDetail reads a bounded amount of the response body and tries to
+// extract a "detail" field from JSON. Falls back to the raw status text.
+func extractErrorDetail(resp *http.Response) string {
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
+	if err != nil || len(body) == 0 {
+		return resp.Status
+	}
+	var detail struct {
+		Detail string `json:"detail"`
+	}
+	if json.Unmarshal(body, &detail) == nil && detail.Detail != "" {
+		return detail.Detail
+	}
+	return resp.Status
+}
+
 func handleCleanupDownloads(dl *Downloader) server.ToolHandlerFunc {
 	return func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		filesStr := request.GetString("files", "")
@@ -163,8 +183,8 @@ func handleCleanupDownloads(dl *Downloader) server.ToolHandlerFunc {
 				return errResult(fmt.Sprintf("cleanup failed: %s", err)), nil
 			}
 			resp := map[string]any{
-				"removed": removed,
-				"count":   len(removed),
+				"removed":       removed,
+				"removed_count": len(removed),
 			}
 			return jsonResult(resp)
 		}

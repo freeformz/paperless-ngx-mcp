@@ -52,8 +52,12 @@ func NewClient(baseURL, token string) *Client {
 }
 
 func (c *Client) do(req *http.Request) (*http.Response, error) {
+	return c.doWithAccept(req, "application/json; version="+apiVersion)
+}
+
+func (c *Client) doWithAccept(req *http.Request, accept string) (*http.Response, error) {
 	req.Header.Set("Authorization", "Token "+c.token)
-	req.Header.Set("Accept", "application/json; version="+apiVersion)
+	req.Header.Set("Accept", accept)
 	return c.httpClient.Do(req)
 }
 
@@ -167,7 +171,6 @@ func (c *Client) Delete(ctx context.Context, path string, params url.Values) (*h
 
 // GetRaw performs a GET request and returns the raw response without reading the body.
 // Unlike Get, it accepts any content type and does not attempt caching.
-// The API version header is still sent for version negotiation.
 // The caller is responsible for closing the response body.
 func (c *Client) GetRaw(ctx context.Context, path string, params url.Values) (*http.Response, error) {
 	u := c.baseURL + path
@@ -179,9 +182,7 @@ func (c *Client) GetRaw(ctx context.Context, path string, params url.Values) (*h
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Token "+c.token)
-	req.Header.Set("Accept", "*/*; version="+apiVersion)
-	return c.httpClient.Do(req)
+	return c.doWithAccept(req, "*/*; version="+apiVersion)
 }
 
 // PostMultipart performs a POST request with multipart/form-data encoding.

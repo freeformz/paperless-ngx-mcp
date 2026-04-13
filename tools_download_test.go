@@ -286,8 +286,8 @@ func TestCleanupDownloadsAll(t *testing.T) {
 	assertNotError(t, result)
 
 	m := resultJSON(t, result)
-	if m["count"] != float64(3) {
-		t.Errorf("count = %v, want 3", m["count"])
+	if m["removed_count"] != float64(3) {
+		t.Errorf("removed_count = %v, want 3", m["removed_count"])
 	}
 
 	// Directory should be empty
