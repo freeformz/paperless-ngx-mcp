@@ -17,6 +17,10 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+// maxInlineSize is the maximum document size (100 MB) allowed for content mode.
+// Documents larger than this must use disk mode.
+const maxInlineSize = 100 * 1024 * 1024
+
 func registerDownloadTools(srv *server.MCPServer, client *Client, dl *Downloader) {
 	srv.AddTool(
 		mcp.NewTool("document_download",
@@ -40,10 +44,10 @@ func registerDownloadTools(srv *server.MCPServer, client *Client, dl *Downloader
 // downloadResult represents the outcome of downloading a single document.
 type downloadResult struct {
 	ID          int    `json:"id"`
-	Content     string `json:"content,omitempty"`      // base64-encoded file content (default mode)
+	Content     string `json:"content,omitempty"`      // base64-encoded file content; populated only when content=true
 	ContentType string `json:"content_type,omitempty"` // MIME type
 	Filename    string `json:"filename,omitempty"`     // original filename from server
-	Path        string `json:"path,omitempty"`         // local file path (save_to_disk mode)
+	Path        string `json:"path,omitempty"`         // local file path; populated in the default disk-download mode
 	Error       string `json:"error,omitempty"`
 }
 
@@ -102,9 +106,17 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 			defer body.Close()
 
 			if returnContent {
-				data, readErr := io.ReadAll(body)
+				limited := io.LimitReader(body, maxInlineSize+1)
+				data, readErr := io.ReadAll(limited)
 				if readErr != nil {
 					results[job.idx] = downloadResult{ID: job.docID, Error: fmt.Sprintf("read body: %s", readErr)}
+					return
+				}
+				if int64(len(data)) > maxInlineSize {
+					results[job.idx] = downloadResult{
+						ID:    job.docID,
+						Error: fmt.Sprintf("document exceeds maximum inline size (%d MB); use disk mode instead", maxInlineSize/(1024*1024)),
+					}
 					return
 				}
 				results[job.idx] = downloadResult{

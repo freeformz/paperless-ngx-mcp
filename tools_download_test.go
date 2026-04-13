@@ -495,6 +495,41 @@ func TestDocumentDownloadDiskModeDirRecreated(t *testing.T) {
 	}
 }
 
+func TestDocumentDownloadContentModeExceedsMaxSize(t *testing.T) {
+	// Generate content larger than maxInlineSize
+	largeBody := make([]byte, maxInlineSize+1)
+	for i := range largeBody {
+		largeBody[i] = 'x'
+	}
+
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/documents/1/download/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Disposition", `attachment; filename="huge.pdf"`)
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Write(largeBody)
+	})
+
+	client := testClientAndServer(t, rh)
+	dl := testDownloader(t, 5)
+
+	result := callTool(t, handleDocumentDownload(client, dl), map[string]any{
+		"ids":     "[1]",
+		"content": true,
+	})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	results := m["results"].([]any)
+	r0 := results[0].(map[string]any)
+	errMsg, ok := r0["error"].(string)
+	if !ok || errMsg == "" {
+		t.Fatal("expected error for oversized document")
+	}
+	if !strings.Contains(errMsg, "exceeds maximum inline size") {
+		t.Errorf("unexpected error: %s", errMsg)
+	}
+}
+
 // cleanup_downloads tests
 
 func TestCleanupDownloadsAll(t *testing.T) {
