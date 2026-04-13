@@ -291,7 +291,10 @@ func TestCleanupDownloadsAll(t *testing.T) {
 	}
 
 	// Directory should be empty
-	entries, _ := os.ReadDir(dl.Dir())
+	entries, err := os.ReadDir(dl.Dir())
+	if err != nil {
+		t.Fatalf("read dir: %s", err)
+	}
 	if len(entries) != 0 {
 		t.Errorf("expected empty dir, got %d entries", len(entries))
 	}

@@ -57,6 +57,9 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 		}
 
 		variant := request.GetString("variant", "archived")
+		if variant == "" {
+			variant = "archived"
+		}
 		switch variant {
 		case "archived", "original", "thumbnail":
 		default:
