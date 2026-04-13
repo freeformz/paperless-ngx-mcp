@@ -182,7 +182,7 @@ func (c *Client) GetRaw(ctx context.Context, path string, params url.Values) (*h
 	if err != nil {
 		return nil, err
 	}
-	return c.doWithAccept(req, "*/*; version="+apiVersion)
+	return c.doWithAccept(req, "application/json; version="+apiVersion+", */*")
 }
 
 // PostMultipart performs a POST request with multipart/form-data encoding.

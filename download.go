@@ -89,20 +89,29 @@ func (d *Downloader) CleanupAll() ([]string, error) {
 		if err := os.Remove(p); err != nil {
 			return removed, fmt.Errorf("remove %s: %w", e.Name(), err)
 		}
+
+		d.mu.Lock()
+		delete(d.files, p)
+		d.mu.Unlock()
+
 		removed = append(removed, p)
 	}
-
-	d.mu.Lock()
-	for _, p := range removed {
-		delete(d.files, p)
-	}
-	d.mu.Unlock()
 
 	return removed, nil
 }
 
-// CleanupFiles removes specific files, validating each is inside the download directory.
+// CleanupFiles removes specific files, validating each is a direct child of the download directory.
+// Symlinks are resolved to prevent traversal outside the download directory.
 func (d *Downloader) CleanupFiles(paths []string) ([]string, []string, error) {
+	dirAbs, err := filepath.Abs(d.dir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve download dir: %w", err)
+	}
+	dirResolved, err := filepath.EvalSymlinks(dirAbs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve download dir symlinks: %w", err)
+	}
+
 	var removed, failed []string
 	for _, p := range paths {
 		abs, err := filepath.Abs(p)
@@ -110,11 +119,25 @@ func (d *Downloader) CleanupFiles(paths []string) ([]string, []string, error) {
 			failed = append(failed, fmt.Sprintf("%s: invalid path: %s", p, err))
 			continue
 		}
-		rel, err := filepath.Rel(d.dir, abs)
-		if err != nil || rel == "." || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+
+		// Must be a direct child (no subdirectories)
+		parentAbs := filepath.Dir(filepath.Clean(abs))
+		if parentAbs != dirAbs {
+			failed = append(failed, fmt.Sprintf("%s: not a direct child of download directory", p))
+			continue
+		}
+
+		// Resolve symlinks and verify parent is still the download dir
+		parentResolved, err := filepath.EvalSymlinks(parentAbs)
+		if err != nil {
+			failed = append(failed, fmt.Sprintf("%s: cannot resolve parent: %s", p, err))
+			continue
+		}
+		if parentResolved != dirResolved {
 			failed = append(failed, fmt.Sprintf("%s: not inside download directory", p))
 			continue
 		}
+
 		if err := os.Remove(abs); err != nil {
 			failed = append(failed, fmt.Sprintf("%s: %s", p, err))
 			continue
