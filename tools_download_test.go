@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func testDownloader(t *testing.T, concurrency int) *Downloader {
@@ -265,6 +268,66 @@ func TestDocumentDownloadConcurrencyRespected(t *testing.T) {
 
 	if observed := maxInflight.Load(); observed > 2 {
 		t.Errorf("max in-flight = %d, want <= 2", observed)
+	}
+}
+
+func TestDocumentDownloadContextCancellation(t *testing.T) {
+	// Cancel context after first download completes — remaining should report context error
+	var started atomic.Int32
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	rh := newRouteHandler(t)
+	for i := 1; i <= 5; i++ {
+		id := i
+		rh.Handle("GET", fmt.Sprintf("/api/documents/%d/download/", id), func(w http.ResponseWriter, r *http.Request) {
+			n := started.Add(1)
+			if n >= 2 {
+				cancel()
+				// Give workers time to observe cancellation
+				time.Sleep(20 * time.Millisecond)
+			}
+			w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="doc%d.pdf"`, id))
+			fmt.Fprintf(w, "content-%d", id)
+		})
+	}
+
+	client := testClientAndServer(t, rh)
+	dl := testDownloader(t, 1) // concurrency 1 to serialize downloads
+
+	handler := handleDocumentDownload(client, dl)
+	result, err := handler(ctx, mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Arguments: map[string]any{
+				"ids": "[1,2,3,4,5]",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("handler returned error: %s", err)
+	}
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	results := m["results"].([]any)
+	if len(results) != 5 {
+		t.Fatalf("expected 5 results, got %d", len(results))
+	}
+
+	// At least one result should have a context cancellation error
+	var cancelErrors int
+	for _, r := range results {
+		rm := r.(map[string]any)
+		if e, ok := rm["error"].(string); ok && e != "" {
+			cancelErrors++
+			if !strings.Contains(e, "cancel") {
+				t.Errorf("expected cancel error, got: %s", e)
+			}
+		}
+	}
+	if cancelErrors == 0 {
+		t.Error("expected at least one context cancellation error")
 	}
 }
 

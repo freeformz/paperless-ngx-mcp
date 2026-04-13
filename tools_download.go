@@ -76,15 +76,14 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 		jobs := make(chan downloadJob)
 		var wg sync.WaitGroup
 
-		workerCount := dl.Concurrency()
-		if workerCount > len(ids) {
-			workerCount = len(ids)
-		}
-		for w := 0; w < workerCount; w++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		workerCount := min(dl.Concurrency(), len(ids))
+		for range workerCount {
+			wg.Go(func() {
 				for job := range jobs {
+					if ctx.Err() != nil {
+						results[job.idx] = downloadResult{ID: job.docID, Error: ctx.Err().Error()}
+						continue
+					}
 					path, err := downloadOne(ctx, client, dl, job.docID, variant)
 					if err != nil {
 						results[job.idx] = downloadResult{ID: job.docID, Error: err.Error()}
@@ -92,12 +91,20 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 						results[job.idx] = downloadResult{ID: job.docID, Path: path}
 					}
 				}
-			}()
+			})
 		}
 
 		for i, id := range ids {
-			jobs <- downloadJob{idx: i, docID: id}
+			select {
+			case jobs <- downloadJob{idx: i, docID: id}:
+			case <-ctx.Done():
+				for j := i; j < len(ids); j++ {
+					results[j] = downloadResult{ID: ids[j], Error: ctx.Err().Error()}
+				}
+				goto done
+			}
 		}
+	done:
 		close(jobs)
 		wg.Wait()
 
