@@ -166,7 +166,8 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 }
 
 // fetchDocument performs the HTTP request and returns the response body along with
-// document metadata. The caller is responsible for closing the returned body.
+// document metadata. The caller MUST close the returned body on success to avoid
+// leaking the underlying HTTP connection. On error, the body is already closed.
 func fetchDocument(ctx context.Context, client *Client, id int, variant string) (io.ReadCloser, *documentMeta, error) {
 	var path string
 	params := url.Values{}
