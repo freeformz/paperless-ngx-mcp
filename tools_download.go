@@ -47,9 +47,8 @@ type downloadResult struct {
 	Error       string `json:"error,omitempty"`
 }
 
-// fetchedDocument holds raw data from an HTTP download before encoding/saving.
-type fetchedDocument struct {
-	body        []byte
+// documentMeta holds metadata extracted from an HTTP download response.
+type documentMeta struct {
 	contentType string
 	filename    string
 	ext         string
@@ -100,28 +99,35 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 						results[job.idx] = downloadResult{ID: job.docID, Error: ctx.Err().Error()}
 						continue
 					}
-					doc, err := fetchDocument(ctx, client, job.docID, variant)
+					body, meta, err := fetchDocument(ctx, client, job.docID, variant)
 					if err != nil {
 						results[job.idx] = downloadResult{ID: job.docID, Error: err.Error()}
 						continue
 					}
 					if returnContent {
+						data, readErr := io.ReadAll(body)
+						body.Close()
+						if readErr != nil {
+							results[job.idx] = downloadResult{ID: job.docID, Error: fmt.Sprintf("read body: %s", readErr)}
+							continue
+						}
 						results[job.idx] = downloadResult{
 							ID:          job.docID,
-							Content:     base64.StdEncoding.EncodeToString(doc.body),
-							ContentType: doc.contentType,
-							Filename:    doc.filename,
+							Content:     base64.StdEncoding.EncodeToString(data),
+							ContentType: meta.contentType,
+							Filename:    meta.filename,
 						}
 					} else {
-						path, err := saveDocument(dl, doc)
-						if err != nil {
-							results[job.idx] = downloadResult{ID: job.docID, Error: err.Error()}
+						path, saveErr := saveDocument(dl, body, meta)
+						body.Close()
+						if saveErr != nil {
+							results[job.idx] = downloadResult{ID: job.docID, Error: saveErr.Error()}
 						} else {
 							results[job.idx] = downloadResult{
 								ID:          job.docID,
 								Path:        path,
-								ContentType: doc.contentType,
-								Filename:    doc.filename,
+								ContentType: meta.contentType,
+								Filename:    meta.filename,
 							}
 						}
 					}
@@ -153,8 +159,9 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 	}
 }
 
-// fetchDocument performs the HTTP download and returns raw document data.
-func fetchDocument(ctx context.Context, client *Client, id int, variant string) (*fetchedDocument, error) {
+// fetchDocument performs the HTTP request and returns the response body along with
+// document metadata. The caller is responsible for closing the returned body.
+func fetchDocument(ctx context.Context, client *Client, id int, variant string) (io.ReadCloser, *documentMeta, error) {
 	var path string
 	params := url.Values{}
 
@@ -170,18 +177,13 @@ func fetchDocument(ctx context.Context, client *Client, id int, variant string) 
 
 	resp, err := client.GetRaw(ctx, path, params)
 	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
+		return nil, nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		detail := extractErrorDetail(resp)
-		return nil, fmt.Errorf("HTTP %d for document %d: %s", resp.StatusCode, id, detail)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read body: %w", err)
+		resp.Body.Close()
+		return nil, nil, fmt.Errorf("HTTP %d for document %d: %s", resp.StatusCode, id, detail)
 	}
 
 	ct := resp.Header.Get("Content-Type")
@@ -189,29 +191,40 @@ func fetchDocument(ctx context.Context, client *Client, id int, variant string) 
 		ct = mediaType
 	}
 
-	return &fetchedDocument{
-		body:        body,
+	meta := &documentMeta{
 		contentType: ct,
 		filename:    filenameFromResponse(resp),
 		ext:         extensionFromResponse(resp),
-	}, nil
+	}
+	return resp.Body, meta, nil
 }
 
-// saveDocument writes fetched document data to disk in the downloader's temp directory.
+// saveDocument streams document data to disk in the downloader's temp directory.
 // Creates the directory if it was removed since startup.
-func saveDocument(dl *Downloader, doc *fetchedDocument) (string, error) {
+func saveDocument(dl *Downloader, body io.Reader, meta *documentMeta) (string, error) {
 	if err := os.MkdirAll(dl.Dir(), 0o700); err != nil {
 		return "", fmt.Errorf("ensure download dir: %w", err)
 	}
 
-	filename, err := randomFileName(doc.ext)
+	filename, err := randomFileName(meta.ext)
 	if err != nil {
 		return "", fmt.Errorf("generate filename: %w", err)
 	}
 
 	dest := filepath.Join(dl.Dir(), filename)
-	if err := os.WriteFile(dest, doc.body, 0o600); err != nil {
+	f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
+	if err != nil {
+		return "", fmt.Errorf("create file: %w", err)
+	}
+
+	if _, err := io.Copy(f, body); err != nil {
+		f.Close()
+		os.Remove(dest)
 		return "", fmt.Errorf("write file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(dest)
+		return "", fmt.Errorf("close file: %w", err)
 	}
 
 	dl.TrackFile(dest)
