@@ -25,7 +25,9 @@ func main() {
 }
 
 func mcpCmd() *cobra.Command {
-	return &cobra.Command{
+	var downloadConcurrency int
+
+	cmd := &cobra.Command{
 		Use:   "mcp",
 		Short: "Start MCP server (stdio)",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -39,9 +41,18 @@ func mcpCmd() *cobra.Command {
 				return fmt.Errorf("PAPERLESS_TOKEN environment variable is required")
 			}
 
+			dl, err := NewDownloader(downloadConcurrency)
+			if err != nil {
+				return fmt.Errorf("create downloader: %w", err)
+			}
+			defer os.RemoveAll(dl.Dir())
+
 			client := NewClient(baseURL, token)
-			srv := NewServer(client)
+			srv := NewServer(client, dl)
 			return server.ServeStdio(srv)
 		},
 	}
+
+	cmd.Flags().IntVar(&downloadConcurrency, "download-concurrency", 5, "Max parallel document downloads")
+	return cmd
 }

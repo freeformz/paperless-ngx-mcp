@@ -102,6 +102,8 @@ Tools are organized into tiers. Tier 1 (document-centric) tools are implemented 
 | `document_share_links` | GET | `/api/documents/{id}/share_links/` | List share links for a document |
 | `document_history` | GET | `/api/documents/{id}/history/` | Get audit trail for a document |
 | `document_email` | POST | `/api/documents/email/` | Email one or more documents |
+| `document_download` | GET | `/api/documents/{id}/download/` | Download document files to local temp storage |
+| `cleanup_downloads` | — | — | Clean up downloaded document files |
 
 ##### document_list
 
@@ -181,6 +183,31 @@ The primary search and filtering tool. Supports the full range of Paperless-ngx 
 | archive_serial_number | integer | no | Archive serial number |
 
 **Returns:** Task UUID for tracking consumption status.
+
+##### document_download
+
+Downloads one or more document files to a local temp directory. Files are downloaded in parallel with configurable concurrency (default 5, override with `--download-concurrency` CLI flag). Returns mixed results: each document ID gets either a file path on success or an error message on failure.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| ids | string | yes | JSON array of document IDs to download |
+| variant | string | no | File variant: `archived` (default, OCR'd PDF/A), `original` (as uploaded), or `thumbnail` |
+
+**Returns:** JSON object with `download_dir` (instance temp directory) and `results` array. Each result contains `id` and either `path` (local file path) or `error` (error message).
+
+##### cleanup_downloads
+
+Removes downloaded document files. With no arguments, removes all files in the instance's download directory. With a file list, removes only those specific files (validated to be inside the download directory).
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| files | string | no | JSON array of file paths to remove. Omit to remove all downloaded files. |
+
+**Returns:** JSON object with `removed` (array of removed paths) and `removed_count`. When removing specific files, may include `failed` and `failed_count` for files that could not be removed.
 
 #### Document Notes
 
