@@ -224,7 +224,7 @@ func saveDocument(dl *Downloader, body io.Reader, meta *documentMeta) (string, e
 	}
 
 	if _, err := io.Copy(f, body); err != nil {
-		f.Close()
+		_ = f.Close() // best-effort; already returning write error
 		os.Remove(dest)
 		return "", fmt.Errorf("write file: %w", err)
 	}
