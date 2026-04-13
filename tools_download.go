@@ -91,6 +91,43 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 		jobs := make(chan downloadJob)
 		var wg sync.WaitGroup
 
+		// processJob fetches and handles a single download job. Using a named
+		// function lets us use defer to ensure the response body is always closed.
+		processJob := func(job downloadJob) {
+			body, meta, err := fetchDocument(ctx, client, job.docID, variant)
+			if err != nil {
+				results[job.idx] = downloadResult{ID: job.docID, Error: err.Error()}
+				return
+			}
+			defer body.Close()
+
+			if returnContent {
+				data, readErr := io.ReadAll(body)
+				if readErr != nil {
+					results[job.idx] = downloadResult{ID: job.docID, Error: fmt.Sprintf("read body: %s", readErr)}
+					return
+				}
+				results[job.idx] = downloadResult{
+					ID:          job.docID,
+					Content:     base64.StdEncoding.EncodeToString(data),
+					ContentType: meta.contentType,
+					Filename:    meta.filename,
+				}
+			} else {
+				path, saveErr := saveDocument(dl, body, meta)
+				if saveErr != nil {
+					results[job.idx] = downloadResult{ID: job.docID, Error: saveErr.Error()}
+				} else {
+					results[job.idx] = downloadResult{
+						ID:          job.docID,
+						Path:        path,
+						ContentType: meta.contentType,
+						Filename:    meta.filename,
+					}
+				}
+			}
+		}
+
 		workerCount := min(dl.Concurrency(), len(ids))
 		for range workerCount {
 			wg.Go(func() {
@@ -99,38 +136,7 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 						results[job.idx] = downloadResult{ID: job.docID, Error: ctx.Err().Error()}
 						continue
 					}
-					body, meta, err := fetchDocument(ctx, client, job.docID, variant)
-					if err != nil {
-						results[job.idx] = downloadResult{ID: job.docID, Error: err.Error()}
-						continue
-					}
-					if returnContent {
-						data, readErr := io.ReadAll(body)
-						body.Close()
-						if readErr != nil {
-							results[job.idx] = downloadResult{ID: job.docID, Error: fmt.Sprintf("read body: %s", readErr)}
-							continue
-						}
-						results[job.idx] = downloadResult{
-							ID:          job.docID,
-							Content:     base64.StdEncoding.EncodeToString(data),
-							ContentType: meta.contentType,
-							Filename:    meta.filename,
-						}
-					} else {
-						path, saveErr := saveDocument(dl, body, meta)
-						body.Close()
-						if saveErr != nil {
-							results[job.idx] = downloadResult{ID: job.docID, Error: saveErr.Error()}
-						} else {
-							results[job.idx] = downloadResult{
-								ID:          job.docID,
-								Path:        path,
-								ContentType: meta.contentType,
-								Filename:    meta.filename,
-							}
-						}
-					}
+					processJob(job)
 				}
 			})
 		}
