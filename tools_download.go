@@ -63,24 +63,35 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 		}
 
 		results := make([]downloadResult, len(ids))
-		sem := make(chan struct{}, dl.Concurrency())
+
+		type downloadJob struct {
+			idx   int
+			docID int
+		}
+
+		jobs := make(chan downloadJob)
 		var wg sync.WaitGroup
 
-		for i, id := range ids {
+		workerCount := dl.Concurrency()
+		for w := 0; w < workerCount; w++ {
 			wg.Add(1)
-			go func(idx, docID int) {
+			go func() {
 				defer wg.Done()
-				sem <- struct{}{}
-				defer func() { <-sem }()
-
-				path, err := downloadOne(ctx, client, dl, docID, variant)
-				if err != nil {
-					results[idx] = downloadResult{ID: docID, Error: err.Error()}
-				} else {
-					results[idx] = downloadResult{ID: docID, Path: path}
+				for job := range jobs {
+					path, err := downloadOne(ctx, client, dl, job.docID, variant)
+					if err != nil {
+						results[job.idx] = downloadResult{ID: job.docID, Error: err.Error()}
+					} else {
+						results[job.idx] = downloadResult{ID: job.docID, Path: path}
+					}
 				}
-			}(i, id)
+			}()
 		}
+
+		for i, id := range ids {
+			jobs <- downloadJob{idx: i, docID: id}
+		}
+		close(jobs)
 		wg.Wait()
 
 		resp := map[string]any{
@@ -112,6 +123,7 @@ func downloadOne(ctx context.Context, client *Client, dl *Downloader, id int, va
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return "", fmt.Errorf("HTTP %d for document %d", resp.StatusCode, id)
 	}
 

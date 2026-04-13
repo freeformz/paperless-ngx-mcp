@@ -75,9 +75,6 @@ func (d *Downloader) TrackedFiles() []string {
 
 // CleanupAll removes all files in the download directory.
 func (d *Downloader) CleanupAll() ([]string, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	entries, err := os.ReadDir(d.dir)
 	if err != nil {
 		return nil, fmt.Errorf("read download dir: %w", err)
@@ -92,17 +89,20 @@ func (d *Downloader) CleanupAll() ([]string, error) {
 		if err := os.Remove(p); err != nil {
 			return removed, fmt.Errorf("remove %s: %w", e.Name(), err)
 		}
-		delete(d.files, p)
 		removed = append(removed, p)
 	}
+
+	d.mu.Lock()
+	for _, p := range removed {
+		delete(d.files, p)
+	}
+	d.mu.Unlock()
+
 	return removed, nil
 }
 
 // CleanupFiles removes specific files, validating each is inside the download directory.
 func (d *Downloader) CleanupFiles(paths []string) ([]string, []string, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	var removed, failed []string
 	for _, p := range paths {
 		abs, err := filepath.Abs(p)
@@ -110,7 +110,8 @@ func (d *Downloader) CleanupFiles(paths []string) ([]string, []string, error) {
 			failed = append(failed, fmt.Sprintf("%s: invalid path: %s", p, err))
 			continue
 		}
-		if !strings.HasPrefix(abs, d.dir+string(filepath.Separator)) {
+		rel, err := filepath.Rel(d.dir, abs)
+		if err != nil || rel == "." || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
 			failed = append(failed, fmt.Sprintf("%s: not inside download directory", p))
 			continue
 		}
@@ -118,9 +119,17 @@ func (d *Downloader) CleanupFiles(paths []string) ([]string, []string, error) {
 			failed = append(failed, fmt.Sprintf("%s: %s", p, err))
 			continue
 		}
-		delete(d.files, abs)
 		removed = append(removed, abs)
 	}
+
+	if len(removed) > 0 {
+		d.mu.Lock()
+		for _, p := range removed {
+			delete(d.files, p)
+		}
+		d.mu.Unlock()
+	}
+
 	return removed, failed, nil
 }
 
