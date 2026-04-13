@@ -5,7 +5,7 @@ import (
 )
 
 // NewServer creates and configures the MCP server with all tool registrations.
-func NewServer(client *Client) *server.MCPServer {
+func NewServer(client *Client, dl *Downloader) *server.MCPServer {
 	srv := server.NewMCPServer(
 		"paperless-ngx-mcp",
 		version,
@@ -14,6 +14,7 @@ func NewServer(client *Client) *server.MCPServer {
 	)
 
 	registerDocumentTools(srv, client)
+	registerDownloadTools(srv, client, dl)
 	registerTagTools(srv, client)
 	registerCorrespondentTools(srv, client)
 	registerDocumentTypeTools(srv, client)
@@ -34,8 +35,9 @@ func NewServer(client *Client) *server.MCPServer {
 const serverInstructions = `Paperless-ngx MCP server — manage documents and metadata via AI agents.
 
 ## Tool Categories
-- **Documents**: document_list (search/filter), document_get, document_update, document_delete, document_upload, document_metadata, document_suggestions, document_next_asn, document_share_links, document_history, document_email
+- **Documents**: document_list (search/filter), document_get, document_update, document_delete, document_upload, document_download, document_metadata, document_suggestions, document_next_asn, document_share_links, document_history, document_email
 - **Document Notes**: document_note_list, document_note_add, document_note_delete
+- **Downloads**: document_download (fetch files to local temp), cleanup_downloads (remove downloaded files)
 - **Bulk Operations**: document_bulk_edit, document_selection_data, bulk_edit_objects
 - **Tags**: tag_list, tag_get, tag_create, tag_update, tag_delete
 - **Correspondents**: correspondent_list, correspondent_get, correspondent_create, correspondent_update, correspondent_delete
@@ -74,6 +76,9 @@ Use custom_field_query parameter with a JSON filter expression on document_list.
 
 ## Bulk Operations
 Use document_bulk_edit for batch operations across multiple documents. Methods: set_correspondent, set_document_type, set_storage_path, add_tag, remove_tag, modify_tags, delete, reprocess, set_permissions, modify_custom_fields, rotate, delete_pages, split, merge, edit_pdf.
+
+## Document Downloads
+Use document_download to fetch document files to local temp storage. Specify variant: archived (default, OCR'd PDF/A), original (as uploaded), or thumbnail. Returns file paths. Use cleanup_downloads to remove files when done.
 
 ## API Version
 All requests use Paperless-ngx REST API version 9.`

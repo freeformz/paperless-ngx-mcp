@@ -165,6 +165,23 @@ func (c *Client) Delete(ctx context.Context, path string, params url.Values) (*h
 	return c.do(req)
 }
 
+// GetRaw performs a GET request and returns the raw response without reading the body.
+// Unlike Get, it does not set Accept: application/json or attempt caching.
+// The caller is responsible for closing the response body.
+func (c *Client) GetRaw(ctx context.Context, path string, params url.Values) (*http.Response, error) {
+	u := c.baseURL + path
+	if len(params) > 0 {
+		u += "?" + params.Encode()
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Token "+c.token)
+	return c.httpClient.Do(req)
+}
+
 // PostMultipart performs a POST request with multipart/form-data encoding.
 // Used for document uploads.
 func (c *Client) PostMultipart(ctx context.Context, path string, fields map[string]string, filePath string) (*http.Response, error) {

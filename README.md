@@ -5,7 +5,7 @@ MCP server for [Paperless-ngx](https://docs.paperless-ngx.com/) document managem
 ## Features
 
 - **100+ MCP tools** covering the full Paperless-ngx REST API v9
-- **Document management** — list, search, get, update, delete, upload, email
+- **Document management** — list, search, get, update, delete, upload, download, email
 - **Metadata CRUD** — tags, correspondents, document types, storage paths, custom fields
 - **Full-text search** with tag filtering, date ranges, and custom field queries
 - **Bulk operations** — batch edit, reprocess, merge, split, rotate, delete
@@ -64,13 +64,22 @@ go install github.com/freeformz/paperless-ngx-mcp@latest
 
 Generate an API token in Paperless-ngx under **Settings > Administration > Auth Tokens**.
 
+### CLI Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--download-concurrency` | 5 | Max parallel document downloads |
+
 ## Tools
 
 ### Documents
-`document_list`, `document_get`, `document_update`, `document_delete`, `document_upload`, `document_metadata`, `document_suggestions`, `document_next_asn`, `document_share_links`, `document_history`, `document_email`
+`document_list`, `document_get`, `document_update`, `document_delete`, `document_upload`, `document_download`, `document_metadata`, `document_suggestions`, `document_next_asn`, `document_share_links`, `document_history`, `document_email`
 
 ### Document Notes
 `document_note_list`, `document_note_add`, `document_note_delete`
+
+### Downloads
+`document_download`, `cleanup_downloads`
 
 ### Tags
 `tag_list`, `tag_get`, `tag_create`, `tag_update`, `tag_delete`
