@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,9 +20,10 @@ import (
 func registerDownloadTools(srv *server.MCPServer, client *Client, dl *Downloader) {
 	srv.AddTool(
 		mcp.NewTool("document_download",
-			mcp.WithDescription("Download one or more document files to local temp storage. Returns file paths for each document. Caller is responsible for cleanup via cleanup_downloads."),
+			mcp.WithDescription("Download one or more document files. By default saves to local temp storage and returns file paths (use cleanup_downloads to remove). Set content=true to return base64-encoded file content inline instead."),
 			mcp.WithString("ids", mcp.Description("JSON array of document IDs to download"), mcp.Required()),
 			mcp.WithString("variant", mcp.Description("File variant: archived (default, OCR'd PDF/A), original (as uploaded), or thumbnail")),
+			mcp.WithBoolean("content", mcp.Description("Return base64-encoded file content inline instead of saving to disk")),
 		),
 		handleDocumentDownload(client, dl),
 	)
@@ -36,9 +39,19 @@ func registerDownloadTools(srv *server.MCPServer, client *Client, dl *Downloader
 
 // downloadResult represents the outcome of downloading a single document.
 type downloadResult struct {
-	ID    int    `json:"id"`
-	Path  string `json:"path,omitempty"`
-	Error string `json:"error,omitempty"`
+	ID          int    `json:"id"`
+	Content     string `json:"content,omitempty"`      // base64-encoded file content (default mode)
+	ContentType string `json:"content_type,omitempty"` // MIME type
+	Filename    string `json:"filename,omitempty"`     // original filename from server
+	Path        string `json:"path,omitempty"`         // local file path (save_to_disk mode)
+	Error       string `json:"error,omitempty"`
+}
+
+// documentMeta holds metadata extracted from an HTTP download response.
+type documentMeta struct {
+	contentType string
+	filename    string
+	ext         string
 }
 
 func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFunc {
@@ -66,6 +79,8 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 			return errResult(fmt.Sprintf("invalid variant %q: must be archived, original, or thumbnail", variant)), nil
 		}
 
+		returnContent := request.GetBool("content", false)
+
 		results := make([]downloadResult, len(ids))
 
 		type downloadJob struct {
@@ -76,6 +91,43 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 		jobs := make(chan downloadJob)
 		var wg sync.WaitGroup
 
+		// processJob fetches and handles a single download job. Using a named
+		// function lets us use defer to ensure the response body is always closed.
+		processJob := func(job downloadJob) {
+			body, meta, err := fetchDocument(ctx, client, job.docID, variant)
+			if err != nil {
+				results[job.idx] = downloadResult{ID: job.docID, Error: err.Error()}
+				return
+			}
+			defer body.Close()
+
+			if returnContent {
+				data, readErr := io.ReadAll(body)
+				if readErr != nil {
+					results[job.idx] = downloadResult{ID: job.docID, Error: fmt.Sprintf("read body: %s", readErr)}
+					return
+				}
+				results[job.idx] = downloadResult{
+					ID:          job.docID,
+					Content:     base64.StdEncoding.EncodeToString(data),
+					ContentType: meta.contentType,
+					Filename:    meta.filename,
+				}
+			} else {
+				path, saveErr := saveDocument(dl, body, meta)
+				if saveErr != nil {
+					results[job.idx] = downloadResult{ID: job.docID, Error: saveErr.Error()}
+				} else {
+					results[job.idx] = downloadResult{
+						ID:          job.docID,
+						Path:        path,
+						ContentType: meta.contentType,
+						Filename:    meta.filename,
+					}
+				}
+			}
+		}
+
 		workerCount := min(dl.Concurrency(), len(ids))
 		for range workerCount {
 			wg.Go(func() {
@@ -84,12 +136,7 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 						results[job.idx] = downloadResult{ID: job.docID, Error: ctx.Err().Error()}
 						continue
 					}
-					path, err := downloadOne(ctx, client, dl, job.docID, variant)
-					if err != nil {
-						results[job.idx] = downloadResult{ID: job.docID, Error: err.Error()}
-					} else {
-						results[job.idx] = downloadResult{ID: job.docID, Path: path}
-					}
+					processJob(job)
 				}
 			})
 		}
@@ -109,14 +156,19 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 		wg.Wait()
 
 		resp := map[string]any{
-			"download_dir": dl.Dir(),
-			"results":      results,
+			"results": results,
+		}
+		if !returnContent {
+			resp["download_dir"] = dl.Dir()
 		}
 		return jsonResult(resp)
 	}
 }
 
-func downloadOne(ctx context.Context, client *Client, dl *Downloader, id int, variant string) (string, error) {
+// fetchDocument performs the HTTP request and returns the response body along with
+// document metadata. The caller MUST close the returned body on success to avoid
+// leaking the underlying HTTP connection. On error, the body is already closed.
+func fetchDocument(ctx context.Context, client *Client, id int, variant string) (io.ReadCloser, *documentMeta, error) {
 	var path string
 	params := url.Values{}
 
@@ -132,17 +184,36 @@ func downloadOne(ctx context.Context, client *Client, dl *Downloader, id int, va
 
 	resp, err := client.GetRaw(ctx, path, params)
 	if err != nil {
-		return "", fmt.Errorf("request failed: %w", err)
+		return nil, nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		detail := extractErrorDetail(resp)
-		return "", fmt.Errorf("HTTP %d for document %d: %s", resp.StatusCode, id, detail)
+		resp.Body.Close()
+		return nil, nil, fmt.Errorf("HTTP %d for document %d: %s", resp.StatusCode, id, detail)
 	}
 
-	ext := extensionFromResponse(resp)
-	filename, err := randomFileName(ext)
+	ct := resp.Header.Get("Content-Type")
+	if mediaType, _, parseErr := mime.ParseMediaType(ct); parseErr == nil {
+		ct = mediaType
+	}
+
+	meta := &documentMeta{
+		contentType: ct,
+		filename:    filenameFromResponse(resp),
+		ext:         extensionFromResponse(resp),
+	}
+	return resp.Body, meta, nil
+}
+
+// saveDocument streams document data to disk in the downloader's temp directory.
+// Creates the directory if it was removed since startup.
+func saveDocument(dl *Downloader, body io.Reader, meta *documentMeta) (string, error) {
+	if err := os.MkdirAll(dl.Dir(), 0o700); err != nil {
+		return "", fmt.Errorf("ensure download dir: %w", err)
+	}
+
+	filename, err := randomFileName(meta.ext)
 	if err != nil {
 		return "", fmt.Errorf("generate filename: %w", err)
 	}
@@ -153,8 +224,8 @@ func downloadOne(ctx context.Context, client *Client, dl *Downloader, id int, va
 		return "", fmt.Errorf("create file: %w", err)
 	}
 
-	if _, err := io.Copy(f, resp.Body); err != nil {
-		f.Close()
+	if _, err := io.Copy(f, body); err != nil {
+		_ = f.Close() // best-effort; already returning write error
 		os.Remove(dest)
 		return "", fmt.Errorf("write file: %w", err)
 	}

@@ -177,17 +177,26 @@ func randomFileName(ext string) (string, error) {
 	return name + ext, nil
 }
 
-// extensionFromResponse extracts a file extension from the HTTP response.
-// It checks Content-Disposition first, then falls back to Content-Type.
-func extensionFromResponse(resp *http.Response) string {
+// filenameFromResponse extracts the filename from the Content-Disposition header.
+// Returns empty string if no filename is found.
+func filenameFromResponse(resp *http.Response) string {
 	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
 		_, params, err := mime.ParseMediaType(cd)
 		if err == nil {
 			if filename, ok := params["filename"]; ok {
-				if ext := filepath.Ext(filename); ext != "" {
-					return ext
-				}
+				return filename
 			}
+		}
+	}
+	return ""
+}
+
+// extensionFromResponse extracts a file extension from the HTTP response.
+// It checks Content-Disposition first, then falls back to Content-Type.
+func extensionFromResponse(resp *http.Response) string {
+	if filename := filenameFromResponse(resp); filename != "" {
+		if ext := filepath.Ext(filename); ext != "" {
+			return ext
 		}
 	}
 

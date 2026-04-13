@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -328,6 +329,169 @@ func TestDocumentDownloadContextCancellation(t *testing.T) {
 	}
 	if cancelErrors == 0 {
 		t.Error("expected at least one context cancellation error")
+	}
+}
+
+// content mode tests (base64 inline)
+
+func TestDocumentDownloadContentMode(t *testing.T) {
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/documents/1/download/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Disposition", `attachment; filename="invoice.pdf"`)
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Write([]byte("%PDF-1.4 fake content"))
+	})
+
+	client := testClientAndServer(t, rh)
+	dl := testDownloader(t, 5)
+
+	result := callTool(t, handleDocumentDownload(client, dl), map[string]any{
+		"ids":     "[1]",
+		"content": true,
+	})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+
+	// Should not include download_dir in content mode
+	if m["download_dir"] != nil {
+		t.Errorf("unexpected download_dir in content mode")
+	}
+
+	results := m["results"].([]any)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	r0 := results[0].(map[string]any)
+	if r0["id"] != float64(1) {
+		t.Errorf("id = %v, want 1", r0["id"])
+	}
+	if r0["error"] != nil {
+		t.Errorf("unexpected error: %v", r0["error"])
+	}
+
+	// Should have content, not path
+	if r0["path"] != nil {
+		t.Errorf("unexpected path in content mode: %v", r0["path"])
+	}
+
+	content := r0["content"].(string)
+	decoded, err := base64.StdEncoding.DecodeString(content)
+	if err != nil {
+		t.Fatalf("decode base64: %s", err)
+	}
+	if string(decoded) != "%PDF-1.4 fake content" {
+		t.Errorf("decoded content = %q", string(decoded))
+	}
+
+	if r0["content_type"] != "application/pdf" {
+		t.Errorf("content_type = %v, want application/pdf", r0["content_type"])
+	}
+	if r0["filename"] != "invoice.pdf" {
+		t.Errorf("filename = %v, want invoice.pdf", r0["filename"])
+	}
+}
+
+func TestDocumentDownloadContentModeMultiple(t *testing.T) {
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/documents/1/download/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Disposition", `attachment; filename="doc1.pdf"`)
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Write([]byte("doc1-content"))
+	})
+	rh.Handle("GET", "/api/documents/2/download/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Disposition", `attachment; filename="doc2.pdf"`)
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Write([]byte("doc2-content"))
+	})
+
+	client := testClientAndServer(t, rh)
+	dl := testDownloader(t, 5)
+
+	result := callTool(t, handleDocumentDownload(client, dl), map[string]any{
+		"ids":     "[1,2]",
+		"content": true,
+	})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	results := m["results"].([]any)
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+
+	for i, r := range results {
+		rm := r.(map[string]any)
+		if rm["content"] == nil || rm["content"] == "" {
+			t.Errorf("result %d: missing content", i)
+		}
+		if rm["path"] != nil {
+			t.Errorf("result %d: unexpected path in content mode", i)
+		}
+	}
+}
+
+func TestDocumentDownloadDiskModeReturnsMetadata(t *testing.T) {
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/documents/1/download/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Disposition", `attachment; filename="invoice.pdf"`)
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Write([]byte("%PDF-1.4 fake content"))
+	})
+
+	client := testClientAndServer(t, rh)
+	dl := testDownloader(t, 5)
+
+	result := callTool(t, handleDocumentDownload(client, dl), map[string]any{
+		"ids": "[1]",
+	})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	results := m["results"].([]any)
+	r0 := results[0].(map[string]any)
+
+	if r0["content_type"] != "application/pdf" {
+		t.Errorf("content_type = %v, want application/pdf", r0["content_type"])
+	}
+	if r0["filename"] != "invoice.pdf" {
+		t.Errorf("filename = %v, want invoice.pdf", r0["filename"])
+	}
+	if r0["path"] == nil || r0["path"] == "" {
+		t.Error("expected path in disk mode")
+	}
+	if r0["content"] != nil {
+		t.Errorf("unexpected content in disk mode")
+	}
+}
+
+func TestDocumentDownloadDiskModeDirRecreated(t *testing.T) {
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/documents/1/download/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Disposition", `attachment; filename="doc.pdf"`)
+		w.Write([]byte("data"))
+	})
+
+	client := testClientAndServer(t, rh)
+	dl := testDownloader(t, 5)
+
+	// Remove the download dir to simulate it disappearing
+	os.RemoveAll(dl.Dir())
+
+	result := callTool(t, handleDocumentDownload(client, dl), map[string]any{
+		"ids": "[1]",
+	})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	results := m["results"].([]any)
+	r0 := results[0].(map[string]any)
+	if r0["error"] != nil {
+		t.Errorf("unexpected error: %v", r0["error"])
+	}
+	if r0["path"] == nil || r0["path"] == "" {
+		t.Error("expected path")
 	}
 }
 
