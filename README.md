@@ -79,7 +79,7 @@ Generate an API token in Paperless-ngx under **Settings > Administration > Auth 
 `document_note_list`, `document_note_add`, `document_note_delete`
 
 ### Downloads
-`document_download`, `cleanup_downloads`
+`document_download` (disk or base64 inline), `cleanup_downloads`
 
 ### Tags
 `tag_list`, `tag_get`, `tag_create`, `tag_update`, `tag_delete`

@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,9 +20,10 @@ import (
 func registerDownloadTools(srv *server.MCPServer, client *Client, dl *Downloader) {
 	srv.AddTool(
 		mcp.NewTool("document_download",
-			mcp.WithDescription("Download one or more document files to local temp storage. Returns file paths for each document. Caller is responsible for cleanup via cleanup_downloads."),
+			mcp.WithDescription("Download one or more document files. By default saves to local temp storage and returns file paths (use cleanup_downloads to remove). Set content=true to return base64-encoded file content inline instead."),
 			mcp.WithString("ids", mcp.Description("JSON array of document IDs to download"), mcp.Required()),
 			mcp.WithString("variant", mcp.Description("File variant: archived (default, OCR'd PDF/A), original (as uploaded), or thumbnail")),
+			mcp.WithBoolean("content", mcp.Description("Return base64-encoded file content inline instead of saving to disk")),
 		),
 		handleDocumentDownload(client, dl),
 	)
@@ -36,9 +39,20 @@ func registerDownloadTools(srv *server.MCPServer, client *Client, dl *Downloader
 
 // downloadResult represents the outcome of downloading a single document.
 type downloadResult struct {
-	ID    int    `json:"id"`
-	Path  string `json:"path,omitempty"`
-	Error string `json:"error,omitempty"`
+	ID          int    `json:"id"`
+	Content     string `json:"content,omitempty"`      // base64-encoded file content (default mode)
+	ContentType string `json:"content_type,omitempty"` // MIME type
+	Filename    string `json:"filename,omitempty"`     // original filename from server
+	Path        string `json:"path,omitempty"`         // local file path (save_to_disk mode)
+	Error       string `json:"error,omitempty"`
+}
+
+// fetchedDocument holds raw data from an HTTP download before encoding/saving.
+type fetchedDocument struct {
+	body        []byte
+	contentType string
+	filename    string
+	ext         string
 }
 
 func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFunc {
@@ -66,6 +80,8 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 			return errResult(fmt.Sprintf("invalid variant %q: must be archived, original, or thumbnail", variant)), nil
 		}
 
+		returnContent := request.GetBool("content", false)
+
 		results := make([]downloadResult, len(ids))
 
 		type downloadJob struct {
@@ -84,11 +100,30 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 						results[job.idx] = downloadResult{ID: job.docID, Error: ctx.Err().Error()}
 						continue
 					}
-					path, err := downloadOne(ctx, client, dl, job.docID, variant)
+					doc, err := fetchDocument(ctx, client, job.docID, variant)
 					if err != nil {
 						results[job.idx] = downloadResult{ID: job.docID, Error: err.Error()}
+						continue
+					}
+					if returnContent {
+						results[job.idx] = downloadResult{
+							ID:          job.docID,
+							Content:     base64.StdEncoding.EncodeToString(doc.body),
+							ContentType: doc.contentType,
+							Filename:    doc.filename,
+						}
 					} else {
-						results[job.idx] = downloadResult{ID: job.docID, Path: path}
+						path, err := saveDocument(dl, doc)
+						if err != nil {
+							results[job.idx] = downloadResult{ID: job.docID, Error: err.Error()}
+						} else {
+							results[job.idx] = downloadResult{
+								ID:          job.docID,
+								Path:        path,
+								ContentType: doc.contentType,
+								Filename:    doc.filename,
+							}
+						}
 					}
 				}
 			})
@@ -109,14 +144,17 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 		wg.Wait()
 
 		resp := map[string]any{
-			"download_dir": dl.Dir(),
-			"results":      results,
+			"results": results,
+		}
+		if !returnContent {
+			resp["download_dir"] = dl.Dir()
 		}
 		return jsonResult(resp)
 	}
 }
 
-func downloadOne(ctx context.Context, client *Client, dl *Downloader, id int, variant string) (string, error) {
+// fetchDocument performs the HTTP download and returns raw document data.
+func fetchDocument(ctx context.Context, client *Client, id int, variant string) (*fetchedDocument, error) {
 	var path string
 	params := url.Values{}
 
@@ -132,35 +170,48 @@ func downloadOne(ctx context.Context, client *Client, dl *Downloader, id int, va
 
 	resp, err := client.GetRaw(ctx, path, params)
 	if err != nil {
-		return "", fmt.Errorf("request failed: %w", err)
+		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		detail := extractErrorDetail(resp)
-		return "", fmt.Errorf("HTTP %d for document %d: %s", resp.StatusCode, id, detail)
+		return nil, fmt.Errorf("HTTP %d for document %d: %s", resp.StatusCode, id, detail)
 	}
 
-	ext := extensionFromResponse(resp)
-	filename, err := randomFileName(ext)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	if mediaType, _, parseErr := mime.ParseMediaType(ct); parseErr == nil {
+		ct = mediaType
+	}
+
+	return &fetchedDocument{
+		body:        body,
+		contentType: ct,
+		filename:    filenameFromResponse(resp),
+		ext:         extensionFromResponse(resp),
+	}, nil
+}
+
+// saveDocument writes fetched document data to disk in the downloader's temp directory.
+// Creates the directory if it was removed since startup.
+func saveDocument(dl *Downloader, doc *fetchedDocument) (string, error) {
+	if err := os.MkdirAll(dl.Dir(), 0o700); err != nil {
+		return "", fmt.Errorf("ensure download dir: %w", err)
+	}
+
+	filename, err := randomFileName(doc.ext)
 	if err != nil {
 		return "", fmt.Errorf("generate filename: %w", err)
 	}
 
 	dest := filepath.Join(dl.Dir(), filename)
-	f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
-	if err != nil {
-		return "", fmt.Errorf("create file: %w", err)
-	}
-
-	if _, err := io.Copy(f, resp.Body); err != nil {
-		f.Close()
-		os.Remove(dest)
+	if err := os.WriteFile(dest, doc.body, 0o600); err != nil {
 		return "", fmt.Errorf("write file: %w", err)
-	}
-	if err := f.Close(); err != nil {
-		os.Remove(dest)
-		return "", fmt.Errorf("close file: %w", err)
 	}
 
 	dl.TrackFile(dest)

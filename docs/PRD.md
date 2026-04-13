@@ -186,7 +186,7 @@ The primary search and filtering tool. Supports the full range of Paperless-ngx 
 
 ##### document_download
 
-Downloads one or more document files to a local temp directory. Files are downloaded in parallel with configurable concurrency (default 5, override with `--download-concurrency` CLI flag). Returns mixed results: each document ID gets either a file path on success or an error message on failure.
+Downloads one or more document files. By default, files are saved to a local temp directory and file paths are returned. Set `content=true` to return base64-encoded file content inline instead. Files are downloaded in parallel with configurable concurrency (default 5, override with `--download-concurrency` CLI flag). Returns mixed results: each document ID gets either a successful result or an error message.
 
 **Parameters:**
 
@@ -194,8 +194,9 @@ Downloads one or more document files to a local temp directory. Files are downlo
 |------|------|----------|-------------|
 | ids | string | yes | JSON array of document IDs to download |
 | variant | string | no | File variant: `archived` (default, OCR'd PDF/A), `original` (as uploaded), or `thumbnail` |
+| content | boolean | no | Return base64-encoded file content inline instead of saving to disk |
 
-**Returns:** JSON object with `download_dir` (instance temp directory) and `results` array. Each result contains `id` and either `path` (local file path) or `error` (error message).
+**Returns:** JSON object with `results` array. Each result contains `id`, `content_type`, `filename`, and either `path` (disk mode, default), `content` (base64 string, content mode), or `error`. Disk mode also includes `download_dir` at the top level.
 
 ##### cleanup_downloads
 
