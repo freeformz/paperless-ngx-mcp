@@ -17,7 +17,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// maxInlineSize is the maximum document size (100 MB) allowed for content mode.
+// maxInlineSize is the maximum document size (100 MiB) allowed for content mode.
 // Documents larger than this must use disk mode.
 const maxInlineSize = 100 * 1024 * 1024
 
@@ -115,7 +115,7 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 				if int64(len(data)) > maxInlineSize {
 					results[job.idx] = downloadResult{
 						ID:    job.docID,
-						Error: fmt.Sprintf("document exceeds maximum inline size (%d MB); use disk mode instead", maxInlineSize/(1024*1024)),
+						Error: fmt.Sprintf("document exceeds maximum inline size (%d MiB); use disk mode instead", maxInlineSize/(1024*1024)),
 					}
 					return
 				}
