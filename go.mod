@@ -3,7 +3,7 @@ module github.com/freeformz/paperless-ngx-mcp
 go 1.26.1
 
 require (
-	github.com/mark3labs/mcp-go v0.46.0
+	github.com/mark3labs/mcp-go v0.48.0
 	github.com/spf13/cobra v1.10.2
 )
 
