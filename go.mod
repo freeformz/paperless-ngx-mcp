@@ -1,9 +1,9 @@
 module github.com/freeformz/paperless-ngx-mcp
 
-go 1.26.3
+go 1.26.4
 
 require (
-	github.com/mark3labs/mcp-go v0.54.0
+	github.com/mark3labs/mcp-go v0.55.1
 	github.com/spf13/cobra v1.10.2
 )
 
