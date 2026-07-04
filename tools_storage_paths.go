@@ -66,7 +66,7 @@ func registerStoragePathTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("storage_path_test",
 			mcp.WithDescription("Test a storage path template against a document to see the resulting path."),
 			mcp.WithString("path", mcp.Description("Path template to test"), mcp.Required()),
-			withNumber("document_id", mcp.Description("Document ID to test against")),
+			withNumber("document_id", mcp.Description("Document ID to test against"), mcp.Required()),
 		),
 		handleStoragePathTest(client),
 	)
@@ -157,12 +157,12 @@ func handleStoragePathTest(client *Client) server.ToolHandlerFunc {
 		if errRes != nil {
 			return errRes, nil
 		}
-
-		body := map[string]any{"path": pathTemplate}
-		args := request.GetArguments()
-		if _, ok := args["document_id"]; ok {
-			body["document_id"] = int(request.GetFloat("document_id", 0))
+		docID, errRes := getRequiredInt(request, "document_id")
+		if errRes != nil {
+			return errRes, nil
 		}
+
+		body := map[string]any{"path": pathTemplate, "document": docID}
 
 		p := "/api/storage_paths/test/"
 		resp, err := client.Post(ctx, p, body)

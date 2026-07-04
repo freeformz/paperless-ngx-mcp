@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -133,9 +134,9 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("document_email",
 			mcp.WithDescription("Email one or more documents."),
 			mcp.WithString("documents", mcp.Description("JSON array of document IDs"), mcp.Required()),
-			mcp.WithString("subject", mcp.Description("Email subject")),
-			mcp.WithString("body", mcp.Description("Email body")),
-			mcp.WithString("to", mcp.Description("Recipient email address"), mcp.Required()),
+			mcp.WithString("subject", mcp.Description("Email subject"), mcp.Required()),
+			mcp.WithString("body", mcp.Description("Email message body"), mcp.Required()),
+			mcp.WithString("to", mcp.Description("Recipient email address(es), comma-separated"), mcp.Required()),
 		),
 		handleDocumentEmail(client),
 	)
@@ -263,29 +264,36 @@ func handleDocumentUpload(client *Client) server.ToolHandlerFunc {
 			return errResult("file_path must be a regular file"), nil
 		}
 
-		fields := map[string]string{}
+		fields := url.Values{}
 		if v := request.GetString("title", ""); v != "" {
-			fields["title"] = v
+			fields.Set("title", v)
 		}
 		if v := request.GetString("created", ""); v != "" {
-			fields["created"] = v
+			fields.Set("created", v)
 		}
 
 		args := request.GetArguments()
 		if _, ok := args["correspondent"]; ok {
-			fields["correspondent"] = strconv.Itoa(int(request.GetFloat("correspondent", 0)))
+			fields.Set("correspondent", strconv.Itoa(int(request.GetFloat("correspondent", 0))))
 		}
 		if _, ok := args["document_type"]; ok {
-			fields["document_type"] = strconv.Itoa(int(request.GetFloat("document_type", 0)))
+			fields.Set("document_type", strconv.Itoa(int(request.GetFloat("document_type", 0))))
 		}
 		if _, ok := args["storage_path"]; ok {
-			fields["storage_path"] = strconv.Itoa(int(request.GetFloat("storage_path", 0)))
+			fields.Set("storage_path", strconv.Itoa(int(request.GetFloat("storage_path", 0))))
 		}
 		if v := request.GetString("tags", ""); v != "" {
-			fields["tags"] = v
+			// The API expects repeated form fields for list values, not a JSON array.
+			var tagIDs []int
+			if err := json.Unmarshal([]byte(v), &tagIDs); err != nil {
+				return errResult(fmt.Sprintf("invalid tags JSON: %s", err)), nil
+			}
+			for _, tagID := range tagIDs {
+				fields.Add("tags", strconv.Itoa(tagID))
+			}
 		}
 		if _, ok := args["archive_serial_number"]; ok {
-			fields["archive_serial_number"] = strconv.Itoa(int(request.GetFloat("archive_serial_number", 0)))
+			fields.Set("archive_serial_number", strconv.Itoa(int(request.GetFloat("archive_serial_number", 0))))
 		}
 
 		path := "/api/documents/post_document/"
@@ -309,14 +317,19 @@ func handleDocumentEmail(client *Client) server.ToolHandlerFunc {
 		if errRes != nil {
 			return errRes, nil
 		}
-		body["to"] = to
+		body["addresses"] = to
 
-		if v := request.GetString("subject", ""); v != "" {
-			body["subject"] = v
+		subject, errRes := getRequiredString(request, "subject")
+		if errRes != nil {
+			return errRes, nil
 		}
-		if v := request.GetString("body", ""); v != "" {
-			body["body"] = v
+		body["subject"] = subject
+
+		message, errRes := getRequiredString(request, "body")
+		if errRes != nil {
+			return errRes, nil
 		}
+		body["message"] = message
 
 		path := "/api/documents/email/"
 		resp, err := client.Post(ctx, path, body)

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"net/http"
 	"testing"
 )
 
@@ -71,11 +73,20 @@ func TestTrashActionRequiresAction(t *testing.T) {
 
 func TestTaskGet(t *testing.T) {
 	taskID := "12345678-1234-1234-1234-123456789012"
+	var capturedTaskID string
 	rh := newRouteHandler(t)
-	rh.Handle("GET", "/api/tasks/"+taskID+"/", jsonHandler(t, 200, map[string]any{"task_id": taskID, "status": "SUCCESS"}))
+	rh.Handle("GET", "/api/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		capturedTaskID = r.URL.Query().Get("task_id")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]map[string]any{{"task_id": taskID, "status": "SUCCESS"}})
+	})
 	client := testClientAndServer(t, rh)
 	result := callTool(t, handleTaskGet(client), map[string]any{"id": taskID})
 	assertNotError(t, result)
+
+	if capturedTaskID != taskID {
+		t.Errorf("task_id query param = %q, want %q", capturedTaskID, taskID)
+	}
 }
 
 func TestTaskGetRequiresId(t *testing.T) {
@@ -87,7 +98,7 @@ func TestTaskGetRequiresId(t *testing.T) {
 func TestTaskGetAcceptsUppercaseUUID(t *testing.T) {
 	taskID := "12345678-1234-1234-1234-123456789ABC"
 	rh := newRouteHandler(t)
-	rh.Handle("GET", "/api/tasks/"+taskID+"/", jsonHandler(t, 200, map[string]any{"task_id": taskID, "status": "SUCCESS"}))
+	rh.Handle("GET", "/api/tasks/", jsonHandler(t, 200, []map[string]any{{"task_id": taskID, "status": "SUCCESS"}}))
 	client := testClientAndServer(t, rh)
 	result := callTool(t, handleTaskGet(client), map[string]any{"id": taskID})
 	assertNotError(t, result)
@@ -103,7 +114,7 @@ func TestTaskAcknowledge(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("POST", "/api/tasks/acknowledge/", jsonHandler(t, 200, map[string]any{"result": "ok"}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleTaskAcknowledge(client), map[string]any{"tasks": `["abc-123"]`})
+	result := callTool(t, handleTaskAcknowledge(client), map[string]any{"tasks": `[12, 34]`})
 	assertNotError(t, result)
 }
 
@@ -117,7 +128,7 @@ func TestTaskRun(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("POST", "/api/tasks/run/", jsonHandler(t, 200, map[string]any{"task_id": "new-123"}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleTaskRun(client), map[string]any{"task_name": "documents.tasks.index_reindex"})
+	result := callTool(t, handleTaskRun(client), map[string]any{"task_name": "index_optimize"})
 	assertNotError(t, result)
 }
 

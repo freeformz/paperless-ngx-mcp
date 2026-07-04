@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"testing"
 )
@@ -69,11 +71,45 @@ func TestMailAccountDelete(t *testing.T) {
 }
 
 func TestMailAccountTest(t *testing.T) {
+	var capturedBody map[string]any
 	rh := newRouteHandler(t)
-	rh.Handle("POST", "/api/mail_accounts/1/test/", jsonHandler(t, 200, map[string]any{"result": "ok"}))
+	rh.Handle("GET", "/api/mail_accounts/1/", jsonHandler(t, 200, map[string]any{
+		"id":            1,
+		"name":          "Gmail",
+		"imap_server":   "imap.gmail.com",
+		"imap_port":     993,
+		"imap_security": 2,
+		"username":      "user@gmail.com",
+		"password":      "**********",
+	}))
+	rh.Handle("POST", "/api/mail_accounts/test/", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &capturedBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.Write([]byte(`{"success":true}`))
+	})
 	client := testClientAndServer(t, rh)
 	result := callTool(t, handleMailAccountTest(client), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
+
+	if capturedBody["id"] != float64(1) {
+		t.Errorf("id = %v, want 1", capturedBody["id"])
+	}
+	if capturedBody["imap_server"] != "imap.gmail.com" {
+		t.Errorf("imap_server = %v, want imap.gmail.com", capturedBody["imap_server"])
+	}
+	if capturedBody["password"] != "**********" {
+		t.Errorf("password = %v, want obfuscated placeholder", capturedBody["password"])
+	}
+}
+
+func TestMailAccountTestAccountNotFound(t *testing.T) {
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/mail_accounts/99/", jsonHandler(t, 404, map[string]any{"detail": "Not found."}))
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleMailAccountTest(client), map[string]any{"id": float64(99)})
+	assertIsError(t, result)
 }
 
 func TestMailAccountProcess(t *testing.T) {
@@ -162,11 +198,26 @@ func TestProcessedMailGet(t *testing.T) {
 }
 
 func TestProcessedMailBulkDelete(t *testing.T) {
+	var capturedBody map[string]any
 	rh := newRouteHandler(t)
-	rh.Handle("POST", "/api/processed_mail/bulk_delete/", jsonHandler(t, 200, map[string]any{"result": "ok"}))
+	rh.Handle("POST", "/api/processed_mail/bulk_delete/", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &capturedBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.Write([]byte(`{"result":"OK"}`))
+	})
 	client := testClientAndServer(t, rh)
 	result := callTool(t, handleProcessedMailBulkDelete(client), map[string]any{"ids": "[1, 2, 3]"})
 	assertNotError(t, result)
+
+	mailIDs, ok := capturedBody["mail_ids"].([]any)
+	if !ok || len(mailIDs) != 3 {
+		t.Errorf("mail_ids = %v, want [1 2 3]", capturedBody["mail_ids"])
+	}
+	if _, ok := capturedBody["ids"]; ok {
+		t.Error("body should not contain 'ids' — the API field is 'mail_ids'")
+	}
 }
 
 func TestProcessedMailBulkDeleteRequiresIds(t *testing.T) {

@@ -459,8 +459,8 @@ Removes downloaded document files. With no arguments, removes all files in the i
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
 | `task_list` | GET | `/api/tasks/` | List background tasks |
-| `task_get` | GET | `/api/tasks/{id}/` | Get task details |
-| `task_acknowledge` | POST | `/api/tasks/acknowledge/` | Acknowledge tasks |
+| `task_get` | GET | `/api/tasks/?task_id={uuid}` | Get task details by task UUID |
+| `task_acknowledge` | POST | `/api/tasks/acknowledge/` | Acknowledge tasks (integer task IDs) |
 | `task_run` | POST | `/api/tasks/run/` | Run system task (admin only) |
 
 #### Logs
