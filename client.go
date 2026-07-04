@@ -186,14 +186,17 @@ func (c *Client) GetRaw(ctx context.Context, path string, params url.Values) (*h
 }
 
 // PostMultipart performs a POST request with multipart/form-data encoding.
-// Used for document uploads.
-func (c *Client) PostMultipart(ctx context.Context, path string, fields map[string]string, filePath string) (*http.Response, error) {
+// Used for document uploads. Multi-valued fields (e.g., tags) are written as
+// repeated form fields with the same name, as expected by DRF list fields.
+func (c *Client) PostMultipart(ctx context.Context, path string, fields url.Values, filePath string) (*http.Response, error) {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 
-	for key, val := range fields {
-		if err := writer.WriteField(key, val); err != nil {
-			return nil, fmt.Errorf("write field %s: %w", key, err)
+	for key, vals := range fields {
+		for _, val := range vals {
+			if err := writer.WriteField(key, val); err != nil {
+				return nil, fmt.Errorf("write field %s: %w", key, err)
+			}
 		}
 	}
 

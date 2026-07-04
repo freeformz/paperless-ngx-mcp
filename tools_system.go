@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"regexp"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -26,17 +27,17 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 	), handlePaginatedList(client, "/api/tasks/"))
 
 	srv.AddTool(mcp.NewTool("task_get",
-		mcp.WithDescription("Get background task details."),
+		mcp.WithDescription("Get background task details by task UUID (as returned by document_upload)."),
 		mcp.WithString("id", mcp.Description("Task UUID"), mcp.Required()),
 	), handleTaskGet(client))
 
 	srv.AddTool(mcp.NewTool("task_acknowledge",
 		mcp.WithDescription("Acknowledge completed tasks to clear them from the list."),
-		mcp.WithString("tasks", mcp.Description("JSON array of task UUIDs to acknowledge"), mcp.Required()),
+		mcp.WithString("tasks", mcp.Description("JSON array of integer task IDs (the id field from task_list, not the task UUID)"), mcp.Required()),
 	), handleTaskAcknowledge(client))
 
 	srv.AddTool(mcp.NewTool("task_run",
-		mcp.WithDescription("Run a system task (admin only). E.g., index_optimize, index_reindex."),
+		mcp.WithDescription("Run a system task (admin only). One of: index_optimize, train_classifier, check_sanity."),
 		mcp.WithString("task_name", mcp.Description("Task name to run"), mcp.Required()),
 	), handleTaskRun(client))
 
@@ -102,8 +103,10 @@ func handleTaskGet(client *Client) server.ToolHandlerFunc {
 		if !uuidPattern.MatchString(id) {
 			return errResult("id must be a valid UUID"), nil
 		}
-		path := fmt.Sprintf("/api/tasks/%s/", id)
-		resp, err := client.Get(ctx, path, nil)
+		// Tasks are keyed by integer pk; UUID lookup goes through the task_id filter.
+		path := "/api/tasks/"
+		params := url.Values{"task_id": {id}}
+		resp, err := client.Get(ctx, path, params)
 		return doRequest(resp, err, "GET", path)
 	}
 }

@@ -334,15 +334,39 @@ func TestDocumentHistory(t *testing.T) {
 }
 
 func TestDocumentEmail(t *testing.T) {
+	var capturedBody map[string]any
 	rh := newRouteHandler(t)
-	rh.Handle("POST", "/api/documents/email/", jsonHandler(t, 200, map[string]any{"result": "ok"}))
+	rh.Handle("POST", "/api/documents/email/", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &capturedBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.Write([]byte(`{"result":"ok"}`))
+	})
 	client := testClientAndServer(t, rh)
 	result := callTool(t, handleDocumentEmail(client), map[string]any{
 		"documents": "[1, 2]",
 		"to":        "user@example.com",
 		"subject":   "Document",
+		"body":      "Please find attached.",
 	})
 	assertNotError(t, result)
+
+	if capturedBody["addresses"] != "user@example.com" {
+		t.Errorf("addresses = %v, want user@example.com", capturedBody["addresses"])
+	}
+	if capturedBody["subject"] != "Document" {
+		t.Errorf("subject = %v, want Document", capturedBody["subject"])
+	}
+	if capturedBody["message"] != "Please find attached." {
+		t.Errorf("message = %v, want 'Please find attached.'", capturedBody["message"])
+	}
+	if _, ok := capturedBody["to"]; ok {
+		t.Error("body should not contain 'to' — the API field is 'addresses'")
+	}
+	if _, ok := capturedBody["body"]; ok {
+		t.Error("body should not contain 'body' — the API field is 'message'")
+	}
 }
 
 func TestDocumentEmailRequiresFields(t *testing.T) {
@@ -350,6 +374,56 @@ func TestDocumentEmailRequiresFields(t *testing.T) {
 	result := callTool(t, handleDocumentEmail(client), map[string]any{})
 	assertIsError(t, result)
 	result = callTool(t, handleDocumentEmail(client), map[string]any{"documents": "[1]"})
+	assertIsError(t, result)
+	result = callTool(t, handleDocumentEmail(client), map[string]any{"documents": "[1]", "to": "user@example.com"})
+	assertIsError(t, result)
+	result = callTool(t, handleDocumentEmail(client), map[string]any{"documents": "[1]", "to": "user@example.com", "subject": "Doc"})
+	assertIsError(t, result)
+}
+
+func TestDocumentUploadTagsAsRepeatedFields(t *testing.T) {
+	tmp := t.TempDir()
+	filePath := filepath.Join(tmp, "doc.pdf")
+	if err := os.WriteFile(filePath, []byte("pdf"), 0o644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	var capturedTags []string
+	rh := newRouteHandler(t)
+	rh.Handle("POST", "/api/documents/post_document/", func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatalf("parse multipart form: %v", err)
+		}
+		capturedTags = r.MultipartForm.Value["tags"]
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.Write([]byte(`"task-uuid"`))
+	})
+
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleDocumentUpload(client), map[string]any{
+		"file_path": filePath,
+		"tags":      "[3, 7]",
+	})
+	assertNotError(t, result)
+
+	if len(capturedTags) != 2 || capturedTags[0] != "3" || capturedTags[1] != "7" {
+		t.Errorf("tags form fields = %v, want [3 7]", capturedTags)
+	}
+}
+
+func TestDocumentUploadRejectsInvalidTagsJSON(t *testing.T) {
+	tmp := t.TempDir()
+	filePath := filepath.Join(tmp, "doc.pdf")
+	if err := os.WriteFile(filePath, []byte("pdf"), 0o644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	client := NewClient("http://unused", "unused")
+	result := callTool(t, handleDocumentUpload(client), map[string]any{
+		"file_path": filePath,
+		"tags":      "not-json",
+	})
 	assertIsError(t, result)
 }
 

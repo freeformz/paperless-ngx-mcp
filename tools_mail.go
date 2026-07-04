@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"maps"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -195,9 +197,39 @@ func handleMailAccountTest(client *Client) server.ToolHandlerFunc {
 		if errRes != nil {
 			return errRes, nil
 		}
-		path := fmt.Sprintf("/api/mail_accounts/%d/test/", id)
-		resp, err := client.Post(ctx, path, nil)
-		return doRequest(resp, err, "POST", path)
+
+		// The test endpoint is not a detail route: it expects the account's
+		// connection settings in the body. Passing the account id with an
+		// obfuscated password makes the server use the stored credentials.
+		getPath := fmt.Sprintf("/api/mail_accounts/%d/", id)
+		resp, err := client.Get(ctx, getPath, nil)
+		if err != nil {
+			return errResult(fmt.Sprintf("request failed: %s", err)), nil
+		}
+		defer resp.Body.Close()
+		data, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return errResult(fmt.Sprintf("read response: %s", readErr)), nil
+		}
+		if resp.StatusCode >= 400 {
+			return apiErrorResult(resp.StatusCode, data, "GET", getPath), nil
+		}
+
+		var account map[string]any
+		if err := json.Unmarshal(data, &account); err != nil {
+			return errResult(fmt.Sprintf("parse mail account: %s", err)), nil
+		}
+
+		body := map[string]any{"id": id, "password": "**********"}
+		for _, field := range []string{"name", "imap_server", "imap_port", "imap_security", "username", "password", "character_set", "is_token", "account_type"} {
+			if v, ok := account[field]; ok && v != nil {
+				body[field] = v
+			}
+		}
+
+		path := "/api/mail_accounts/test/"
+		testResp, err := client.Post(ctx, path, body)
+		return doRequest(testResp, err, "POST", path)
 	}
 }
 
@@ -277,9 +309,13 @@ func handleProcessedMailBulkDelete(client *Client) server.ToolHandlerFunc {
 		if err := setJSONField(body, request, "ids"); err != nil {
 			return errResult(err.Error()), nil
 		}
-		if _, ok := body["ids"]; !ok {
+		ids, ok := body["ids"]
+		if !ok {
 			return errResult("ids is required"), nil
 		}
+		// The API reads "mail_ids" and silently deletes nothing for other keys.
+		delete(body, "ids")
+		body["mail_ids"] = ids
 
 		path := "/api/processed_mail/bulk_delete/"
 		resp, err := client.Post(ctx, path, body)

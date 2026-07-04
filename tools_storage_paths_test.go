@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"testing"
 )
@@ -54,9 +56,29 @@ func TestStoragePathDelete(t *testing.T) {
 }
 
 func TestStoragePathTest(t *testing.T) {
+	var capturedBody map[string]any
 	rh := newRouteHandler(t)
-	rh.Handle("POST", "/api/storage_paths/test/", jsonHandler(t, 200, map[string]any{"path": "2024/invoice.pdf"}))
+	rh.Handle("POST", "/api/storage_paths/test/", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &capturedBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.Write([]byte(`"2024/invoice.pdf"`))
+	})
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleStoragePathTest(client), map[string]any{"path": "{created_year}/{title}.pdf"})
+	result := callTool(t, handleStoragePathTest(client), map[string]any{
+		"path":        "{created_year}/{title}.pdf",
+		"document_id": float64(42),
+	})
 	assertNotError(t, result)
+
+	if capturedBody["document"] != float64(42) {
+		t.Errorf("document = %v, want 42", capturedBody["document"])
+	}
+}
+
+func TestStoragePathTestRequiresDocument(t *testing.T) {
+	client := NewClient("http://unused", "unused")
+	result := callTool(t, handleStoragePathTest(client), map[string]any{"path": "{title}.pdf"})
+	assertIsError(t, result)
 }
