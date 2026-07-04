@@ -107,7 +107,7 @@ func handleTaskGet(client *Client) server.ToolHandlerFunc {
 		path := "/api/tasks/"
 		params := url.Values{"task_id": {id}}
 		resp, err := client.Get(ctx, path, params)
-		return doRequest(resp, err, "GET", path)
+		return doRequest(resp, err, "GET", path+"?"+params.Encode())
 	}
 }
 
