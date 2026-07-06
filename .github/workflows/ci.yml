@@ -13,9 +13,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: changes
         with:
           filters: |
@@ -26,7 +26,7 @@ jobs:
               - 'Makefile'
               - '.github/workflows/ci.yml'
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         if: steps.changes.outputs.go == 'true'
         with:
           go-version-file: go.mod
