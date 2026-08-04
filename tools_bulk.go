@@ -112,6 +112,14 @@ func handleBulkEditObjects(client *Client) server.ToolHandlerFunc {
 			return errResult(err.Error()), nil
 		}
 
+		// This endpoint mutates metadata objects without going through their
+		// resource paths, so Post's path-based invalidation misses their cache.
+		if client.cache != nil {
+			if prefix := cachePrefix("/api/" + objectType + "/"); prefix != "" {
+				client.cache.Invalidate(prefix)
+			}
+		}
+
 		path := "/api/bulk_edit_objects/"
 		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
