@@ -261,7 +261,9 @@ func sanitizeFilename(name string) string {
 	name = filepath.Base(strings.ReplaceAll(name, `\`, "/"))
 	var b strings.Builder
 	for _, r := range name {
-		if r < 0x20 || r == 0x7f || r == ':' {
+		// Control chars plus everything invalid in Windows filenames — the
+		// binary ships for win32 too, so names must be portable.
+		if r < 0x20 || r == 0x7f || strings.ContainsRune(`:<>"|?*`, r) {
 			b.WriteRune('_')
 			continue
 		}
