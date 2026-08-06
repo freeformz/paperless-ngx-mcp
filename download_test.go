@@ -344,6 +344,9 @@ func TestDownloadContentModeMixedBatch(t *testing.T) {
 	if r0["content"] == nil {
 		t.Error("PDF result should keep base64 content")
 	}
+	if note, _ := r0["note"].(string); !strings.Contains(note, "document_page_image") {
+		t.Errorf("PDF result note = %q, should point to document_page_image", note)
+	}
 	r1 := results[1].(map[string]any)
 	if r1["content"] != nil || r1["note"] == nil {
 		t.Error("image result should be delivered as an image block with a note")

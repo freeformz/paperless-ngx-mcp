@@ -199,7 +199,7 @@ Downloads one or more document files. By default, files are saved to disk and fi
 | content | boolean | no | Return file content inline instead of saving to disk (images as viewable image blocks, other types as base64) |
 | dest_dir | string | no | Save into this subdirectory of `PAPERLESS_MCP_DOWNLOAD_DIR` (error if that variable is unset, or if the path escapes it). Incompatible with `content=true`. |
 
-**Returns:** JSON object with `results` array. Each result contains `id`, `content_type`, `filename`, and either `path` (disk mode, default), `content` (base64 string, content mode, non-image types), a `note` (content mode, image delivered as an image block), or `error`. Disk mode also includes `download_dir` at the top level. In content mode, image files additionally appear as MCP image content blocks after the JSON summary.
+**Returns:** JSON object with `results` array. Each result contains `id`, `content_type`, `filename`, and either `path` (disk mode, default), `content` (base64 string, content mode, non-image types), a `note` (content mode, image delivered as an image block), or `error`. Disk mode also includes `download_dir` at the top level. In content mode, image files additionally appear as MCP image content blocks after the JSON summary, and PDF results carry a `note` pointing agents at `document_page_image` for viewing pages as images.
 
 ##### document_page_image
 

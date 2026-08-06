@@ -213,6 +213,9 @@ func contentModeResult(results []downloadResult) (*mcp.CallToolResult, error) {
 			images = append(images, mcp.NewImageContent(img.base64Data(), img.mimeType))
 		} else {
 			r.Content = base64.StdEncoding.EncodeToString(r.raw)
+			if r.ContentType == "application/pdf" {
+				r.Note = "to view this document's pages as images, use document_page_image"
+			}
 		}
 	}
 
