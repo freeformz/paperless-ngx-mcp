@@ -230,6 +230,15 @@ func longestEdge(img image.Image) int {
 	return max(b.Dx(), b.Dy())
 }
 
+// scaleToWidth resizes an image so its width equals w, preserving aspect.
+func scaleToWidth(img image.Image, w int) image.Image {
+	b := img.Bounds()
+	h := max(b.Dy()*w/b.Dx(), 1)
+	out := image.NewRGBA(image.Rect(0, 0, w, h))
+	draw.CatmullRom.Scale(out, out.Bounds(), img, b, draw.Src, nil)
+	return out
+}
+
 // scaleToEdge resizes an image so its longest edge equals edge, preserving aspect.
 func scaleToEdge(img image.Image, edge int) image.Image {
 	b := img.Bounds()

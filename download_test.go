@@ -341,6 +341,13 @@ func TestDownloadContentModeOversizedImageDownscaled(t *testing.T) {
 	if edge := max(img.Bounds().Dx(), img.Bounds().Dy()); edge > maxImageEdge {
 		t.Errorf("longest edge %d exceeds cap %d", edge, maxImageEdge)
 	}
+
+	// The JSON summary's content_type must match the re-encoded bytes.
+	m := resultJSON(t, result)
+	r0 := m["results"].([]any)[0].(map[string]any)
+	if r0["content_type"] != "image/jpeg" {
+		t.Errorf("content_type = %v, want image/jpeg after re-encode", r0["content_type"])
+	}
 }
 
 func TestDownloadContentModeMixedBatch(t *testing.T) {

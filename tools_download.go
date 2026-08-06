@@ -210,6 +210,9 @@ func contentModeResult(results []downloadResult) (*mcp.CallToolResult, error) {
 				continue
 			}
 			r.Note = fmt.Sprintf("returned as image content block %d", len(images)+1)
+			// Normalization may re-encode (e.g. PNG -> JPEG); keep the JSON
+			// summary consistent with the actual bytes in the image block.
+			r.ContentType = img.mimeType
 			images = append(images, mcp.NewImageContent(img.base64Data(), img.mimeType))
 		} else {
 			r.Content = base64.StdEncoding.EncodeToString(r.raw)

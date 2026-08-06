@@ -237,6 +237,19 @@ func TestDocumentPageImageImageDocument(t *testing.T) {
 	}
 }
 
+func TestDocumentPageImageImageDocumentRespectsMaxWidth(t *testing.T) {
+	client := pdfDocumentServer(t, "43", "image/png", makeTestPNG(t, 400, 300))
+
+	result := callTool(t, handleDocumentPageImage(client), map[string]any{"id": 43, "max_width": 300})
+	assertNotError(t, result)
+
+	img := decodeResultImage(t, resultImage(t, result))
+	b := img.Bounds()
+	if b.Dx() != 300 || b.Dy() != 225 {
+		t.Errorf("dimensions = %dx%d, want 300x225 (scaled to max_width)", b.Dx(), b.Dy())
+	}
+}
+
 func TestDocumentPageImageImageDocumentPageOutOfRange(t *testing.T) {
 	client := pdfDocumentServer(t, "42", "image/png", makeTestPNG(t, 40, 30))
 

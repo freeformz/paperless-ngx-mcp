@@ -105,6 +105,9 @@ func handleDocumentPageImage(client *Client) server.ToolHandlerFunc {
 					return errResult(decErr.Error()), nil
 				}
 			}
+			if img.Bounds().Dx() > maxWidth {
+				img = scaleToWidth(img, maxWidth)
+			}
 			rendered, err = encodeImage(img, format, grayscale)
 			if err != nil {
 				return errResult(fmt.Sprintf("encode document %d image: %s", id, err)), nil
