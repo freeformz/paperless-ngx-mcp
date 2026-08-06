@@ -92,11 +92,36 @@ func (d *Downloader) ResolveDestDir(destDir string) (string, error) {
 	if !dirWithin(d.baseDir, dir) {
 		return "", fmt.Errorf("dest_dir %q is outside the configured download directory", destDir)
 	}
+	// Resolve symlinks in the longest existing prefix BEFORE MkdirAll:
+	// otherwise MkdirAll would follow a symlinked path segment and create
+	// directories outside the base before any check could reject it.
+	existing := dir
+	for {
+		if _, err := os.Lstat(existing); err == nil {
+			break
+		}
+		parent := filepath.Dir(existing)
+		if parent == existing {
+			break
+		}
+		existing = parent
+	}
+	resolvedPrefix, err := filepath.EvalSymlinks(existing)
+	if err != nil {
+		return "", fmt.Errorf("resolve dest_dir: %w", err)
+	}
+	if !dirWithin(d.baseDir, resolvedPrefix) {
+		return "", fmt.Errorf("dest_dir %q resolves outside the configured download directory", destDir)
+	}
+	remainder, err := filepath.Rel(existing, dir)
+	if err != nil {
+		return "", fmt.Errorf("resolve dest_dir: %w", err)
+	}
+	dir = filepath.Join(resolvedPrefix, remainder)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create dest_dir: %w", err)
 	}
-	// Re-check after resolving symlinks: a link inside the base directory
-	// must not redirect writes outside it.
+	// Final re-check: the fully resolved path must still be inside the base.
 	resolved, err := filepath.EvalSymlinks(dir)
 	if err != nil {
 		return "", fmt.Errorf("resolve dest_dir: %w", err)
@@ -258,14 +283,20 @@ func sanitizeFilename(name string) string {
 
 // createUniqueFile creates a new file named filename in dir, de-duplicating
 // collisions with a numeric suffix (name-1.ext, name-2.ext, ...). An empty
-// filename falls back to a random name with the given extension.
+// filename falls back to a random name. A filename without an extension gets
+// ext (derived from the response Content-Type) appended.
 func createUniqueFile(dir, filename, ext string) (*os.File, string, error) {
+	if ext != "" && !strings.HasPrefix(ext, ".") {
+		ext = "." + ext
+	}
 	if filename == "" {
 		name, err := randomFileName(ext)
 		if err != nil {
 			return nil, "", fmt.Errorf("generate filename: %w", err)
 		}
 		filename = name
+	} else if filepath.Ext(filename) == "" {
+		filename += ext
 	}
 	fext := filepath.Ext(filename)
 	base := strings.TrimSuffix(filename, fext)

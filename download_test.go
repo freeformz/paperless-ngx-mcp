@@ -129,6 +129,37 @@ func TestResolveDestDirSymlinkEscape(t *testing.T) {
 	if _, err := dl.ResolveDestDir("sneaky"); err == nil {
 		t.Error("expected error for symlink escaping the base dir")
 	}
+
+	// A path THROUGH the symlink must be rejected before MkdirAll runs —
+	// otherwise MkdirAll would follow the link and create dirs outside base.
+	if _, err := dl.ResolveDestDir("sneaky/sub"); err == nil {
+		t.Error("expected error for path through an escaping symlink")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "sub")); !os.IsNotExist(err) {
+		t.Error("ResolveDestDir created a directory outside the base via a symlink")
+	}
+}
+
+func TestDownloadFilenameWithoutExtensionGetsOne(t *testing.T) {
+	base := t.TempDir()
+	dl := testDownloaderWithBase(t, base)
+
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/documents/1/download/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Disposition", `attachment; filename="invoice"`)
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Write([]byte("%PDF-1.4 fake content"))
+	})
+	client := testClientAndServer(t, rh)
+
+	result := callTool(t, handleDocumentDownload(client, dl), map[string]any{"ids": "[1]"})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	r0 := m["results"].([]any)[0].(map[string]any)
+	if name := filepath.Base(r0["path"].(string)); name != "invoice.pdf" {
+		t.Errorf("filename = %q, want invoice.pdf (extension from Content-Type)", name)
+	}
 }
 
 func TestDownloadToBaseDirPreservesFilenameAndSkipsTracking(t *testing.T) {

@@ -23,7 +23,7 @@ const maxInlineSize = 100 * 1024 * 1024
 func registerDownloadTools(srv *server.MCPServer, client *Client, dl *Downloader) {
 	srv.AddTool(
 		mcp.NewTool("document_download",
-			mcp.WithDescription("Download one or more document files. By default saves to local temp storage and returns file paths (use cleanup_downloads to remove). Set content=true to return base64-encoded file content inline instead."),
+			mcp.WithDescription("Download one or more document files. By default saves to local storage and returns file paths (use cleanup_downloads to remove temp-dir files). Set content=true to return file content inline instead: image files come back as viewable MCP image content blocks, other types as base64 JSON."),
 			mcp.WithString("ids", mcp.Description("JSON array of document IDs to download"), mcp.Required()),
 			mcp.WithString("variant", mcp.Description("File variant: archived (default, OCR'd PDF/A), original (as uploaded), or thumbnail")),
 			mcp.WithBoolean("content", mcp.Description("Return file content inline instead of saving to disk. Image files come back as viewable MCP image content; other types as base64 in JSON.")),
