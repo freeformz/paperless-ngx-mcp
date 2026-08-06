@@ -46,7 +46,7 @@ func TestSanitizeFilename(t *testing.T) {
 		{".", ""},
 		{"", ""},
 		{"a:b\x00c.pdf", "a_b_c.pdf"},
-		{`inv<oice>"x"|y?z*.pdf`, "inv_oice___x__y_z_.pdf"},
+		{`inv<oice>"x"|y?z*.pdf`, "inv_oice__x__y_z_.pdf"},
 		{"  spaced.pdf  ", "spaced.pdf"},
 	}
 	for _, tt := range tests {
