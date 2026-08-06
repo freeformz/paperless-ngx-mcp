@@ -15,6 +15,7 @@ func NewServer(client *Client, dl *Downloader) *server.MCPServer {
 
 	registerDocumentTools(srv, client)
 	registerDownloadTools(srv, client, dl)
+	registerPageImageTools(srv, client)
 	registerTagTools(srv, client)
 	registerCorrespondentTools(srv, client)
 	registerDocumentTypeTools(srv, client)
@@ -37,7 +38,7 @@ const serverInstructions = `Paperless-ngx MCP server — manage documents and me
 ## Tool Categories
 - **Documents**: document_list (search/filter), document_get, document_update, document_delete, document_upload, document_download, document_metadata, document_suggestions, document_next_asn, document_share_links, document_history, document_email
 - **Document Notes**: document_note_list, document_note_add, document_note_delete
-- **Downloads**: document_download (fetch files, base64 or disk), cleanup_downloads (remove downloaded files)
+- **Downloads**: document_download (fetch files, inline or disk), cleanup_downloads (remove downloaded files), document_page_image (render a page as a viewable image)
 - **Bulk Operations**: document_bulk_edit, document_selection_data, bulk_edit_objects
 - **Tags**: tag_list, tag_get, tag_create, tag_update, tag_delete
 - **Correspondents**: correspondent_list, correspondent_get, correspondent_create, correspondent_update, correspondent_delete
@@ -78,7 +79,10 @@ Use custom_field_query parameter with a JSON filter expression on document_list.
 Use document_bulk_edit for batch operations across multiple documents. Methods: set_correspondent, set_document_type, set_storage_path, add_tag, remove_tag, modify_tags, delete, reprocess, set_permissions, modify_custom_fields, rotate, delete_pages, split, merge, edit_pdf.
 
 ## Document Downloads
-Use document_download to fetch document files. By default, files are saved to local temp storage and file paths are returned — use cleanup_downloads to remove when done. Set content=true to return base64-encoded file content inline instead (no cleanup needed). Specify variant: archived (default, OCR'd PDF/A), original (as uploaded), or thumbnail.
+Use document_download to fetch document files. By default, files are saved to local temp storage and file paths are returned — use cleanup_downloads to remove when done. Set content=true to return file content inline instead (no cleanup needed): image files come back as viewable MCP image content, other types as base64 JSON. Specify variant: archived (default, OCR'd PDF/A), original (as uploaded), or thumbnail. If the server is configured with PAPERLESS_MCP_DOWNLOAD_DIR, disk downloads go there (optionally into a dest_dir subdirectory) with their real filenames, and cleanup_downloads leaves them alone.
+
+## Viewing Documents
+Use document_page_image to actually see a document page — essential when OCR content is missing or garbled (handwriting, bad scans, stamps, diagrams). Render the full page first; if fine detail is illegible, call it again with region=[x0,y0,x1,y1] (fractions of page width/height, 0-1) to re-render that area at high resolution.
 
 ## API Version
 All requests use Paperless-ngx REST API version 9.`

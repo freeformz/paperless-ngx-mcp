@@ -68,6 +68,7 @@ The server is configured entirely via environment variables:
 |----------|----------|-------------|
 | `PAPERLESS_URL` | yes | Base URL of the Paperless-ngx instance (e.g., `https://paperless.example.com`) |
 | `PAPERLESS_TOKEN` | yes | API authentication token |
+| `PAPERLESS_MCP_DOWNLOAD_DIR` | no | Directory for `document_download` disk saves. When set, downloads land here (or in a `dest_dir` subdirectory of it) with their real filenames, are never touched by `cleanup_downloads`, and remain after the server exits. When unset, downloads use a per-instance temp directory. |
 
 The server always uses Paperless-ngx API version 9. These are passed via the MCP server configuration (`.mcp.json` or MCPB manifest) as environment variables, which is compatible with CoWork and MCPB bundle format.
 
@@ -102,7 +103,8 @@ Tools are organized into tiers. Tier 1 (document-centric) tools are implemented 
 | `document_share_links` | GET | `/api/documents/{id}/share_links/` | List share links for a document |
 | `document_history` | GET | `/api/documents/{id}/history/` | Get audit trail for a document |
 | `document_email` | POST | `/api/documents/email/` | Email one or more documents |
-| `document_download` | GET | `/api/documents/{id}/download/` | Download document files to local temp storage |
+| `document_download` | GET | `/api/documents/{id}/download/` | Download document files to disk or inline (images as viewable MCP image content) |
+| `document_page_image` | GET | `/api/documents/{id}/download/` | Render a document page (or region) as a viewable image |
 | `cleanup_downloads` | — | — | Clean up downloaded document files |
 
 ##### document_list
@@ -186,7 +188,7 @@ The primary search and filtering tool. Supports the full range of Paperless-ngx 
 
 ##### document_download
 
-Downloads one or more document files. By default, files are saved to a local temp directory and file paths are returned. Set `content=true` to return base64-encoded file content inline instead. Files are downloaded in parallel with configurable concurrency (default 5, override with `--download-concurrency` CLI flag). Returns mixed results: each document ID gets either a successful result or an error message.
+Downloads one or more document files. By default, files are saved to disk and file paths are returned: to a per-instance temp directory, or to `PAPERLESS_MCP_DOWNLOAD_DIR` when configured (optionally into a `dest_dir` subdirectory of it). Saved files keep the document's real filename (sanitised, de-duplicated with a numeric suffix on collision). Set `content=true` to return file content inline instead: image files (PNG, JPEG, WebP, GIF) come back as MCP image content blocks the model can see, subject to the image size discipline (longest edge ≤ 1568 px, oversized images downscaled and re-encoded as JPEG); other types come back as base64 in the JSON summary. Files are downloaded in parallel with configurable concurrency (default 5, override with `--download-concurrency` CLI flag). Returns mixed results: each document ID gets either a successful result or an error message.
 
 **Parameters:**
 
@@ -194,13 +196,33 @@ Downloads one or more document files. By default, files are saved to a local tem
 |------|------|----------|-------------|
 | ids | string | yes | JSON array of document IDs to download |
 | variant | string | no | File variant: `archived` (default, OCR'd PDF/A), `original` (as uploaded), or `thumbnail` |
-| content | boolean | no | Return base64-encoded file content inline instead of saving to disk |
+| content | boolean | no | Return file content inline instead of saving to disk (images as viewable image blocks, other types as base64) |
+| dest_dir | string | no | Save into this subdirectory of `PAPERLESS_MCP_DOWNLOAD_DIR` (error if that variable is unset, or if the path escapes it). Incompatible with `content=true`. |
 
-**Returns:** JSON object with `results` array. Each result contains `id`, `content_type`, `filename`, and either `path` (disk mode, default), `content` (base64 string, content mode), or `error`. Disk mode also includes `download_dir` at the top level.
+**Returns:** JSON object with `results` array. Each result contains `id`, `content_type`, `filename`, and either `path` (disk mode, default), `content` (base64 string, content mode, non-image types), a `note` (content mode, image delivered as an image block), or `error`. Disk mode also includes `download_dir` at the top level. In content mode, image files additionally appear as MCP image content blocks after the JSON summary.
+
+##### document_page_image
+
+Renders one page of a document as an image the model can see. This is the tool for reading documents whose OCR `content` is missing or garbled (handwriting, bad scans, stamps, diagrams). PDFs are rasterized in-process by PDFium compiled to WebAssembly (via `go-pdfium`/wazero — pure Go, no cgo, no external binaries). Documents whose archived file is itself an image are served directly as a single page. The optional `region` re-renders the page at a higher resolution computed from the region size before cropping, so small areas (a phone number, a dollar amount) come back at high effective DPI rather than as an upscaled blur.
+
+Output follows the image size discipline: longest edge capped at 1568 px, grayscale JPEG (quality 80) by default, downscale-and-retry if the encoded image exceeds ~1.5 MB.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| id | integer | yes | Document ID |
+| page | integer | no | Page number, 1-indexed (default: 1) |
+| max_width | integer | no | Maximum rendered width in pixels, clamped to 200–2000 (default: 1500) |
+| region | string | no | Crop region as JSON `[x0,y0,x1,y1]`, values as fractions (0–1) of page width/height |
+| grayscale | boolean | no | Render grayscale (default: true; ~3x smaller with no legibility loss on scans) |
+| format | string | no | Output format: `jpeg` (default) or `png` |
+
+**Returns:** A text block noting document ID, page number, total page count, rendered pixel dimensions, and region (if any), followed by an MCP image content block. Errors are returned for out-of-range pages (naming the actual page count) and non-PDF, non-image documents (naming the content type).
 
 ##### cleanup_downloads
 
-Removes downloaded document files. With no arguments, removes all files in the instance's download directory. With a file list, removes only those specific files (validated to be inside the download directory).
+Removes downloaded document files. With no arguments, removes all files in the instance's temp download directory. With a file list, removes only those specific files (validated to be inside the temp download directory). Files saved to `PAPERLESS_MCP_DOWNLOAD_DIR` are never tracked or removed by this tool — they are the user's to manage.
 
 **Parameters:**
 

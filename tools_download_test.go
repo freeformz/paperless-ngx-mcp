@@ -18,7 +18,7 @@ import (
 
 func testDownloader(t *testing.T, concurrency int) *Downloader {
 	t.Helper()
-	dl, err := NewDownloader(concurrency)
+	dl, err := NewDownloader(concurrency, "")
 	if err != nil {
 		t.Fatalf("create downloader: %s", err)
 	}

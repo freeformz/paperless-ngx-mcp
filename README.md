@@ -61,6 +61,7 @@ go install github.com/freeformz/paperless-ngx-mcp@latest
 |----------|----------|-------------|
 | `PAPERLESS_URL` | yes | Base URL of the Paperless-ngx instance |
 | `PAPERLESS_TOKEN` | yes | API authentication token |
+| `PAPERLESS_MCP_DOWNLOAD_DIR` | no | Directory for document downloads. When set, files are saved here (or in a `dest_dir` subdirectory) with their real filenames and are left alone by `cleanup_downloads`. When unset, a per-instance temp directory is used. |
 
 Generate an API token in Paperless-ngx under **Settings > Administration > Auth Tokens**.
 
@@ -78,8 +79,10 @@ Generate an API token in Paperless-ngx under **Settings > Administration > Auth 
 ### Document Notes
 `document_note_list`, `document_note_add`, `document_note_delete`
 
-### Downloads
-`document_download` (disk or base64 inline), `cleanup_downloads`
+### Downloads & Page Images
+`document_download` (disk or inline; images come back as viewable MCP image content), `document_page_image` (render a PDF page or region as an image the model can see — for handwriting and bad scans where OCR fails), `cleanup_downloads`
+
+PDF rendering happens in-process via [go-pdfium](https://github.com/klippa-app/go-pdfium)'s WebAssembly runtime (PDFium compiled to wasm, executed by [wazero](https://wazero.io)) — pure Go, no cgo, no external binaries to install.
 
 ### Tags
 `tag_list`, `tag_get`, `tag_create`, `tag_update`, `tag_delete`

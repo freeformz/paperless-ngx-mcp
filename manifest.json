@@ -22,6 +22,12 @@
       "description": "API authentication token. Generate one in Paperless-ngx under Settings > Administration > Auth Tokens.",
       "required": true,
       "sensitive": true
+    },
+    "download_dir": {
+      "type": "directory",
+      "title": "Download Directory",
+      "description": "Optional directory for document downloads. When set, downloaded files are saved here with their real filenames and are not auto-cleaned. When unset, a temp directory is used.",
+      "required": false
     }
   },
   "server": {
@@ -32,7 +38,8 @@
       "args": ["mcp"],
       "env": {
         "PAPERLESS_URL": "${user_config.paperless_url}",
-        "PAPERLESS_TOKEN": "${user_config.paperless_token}"
+        "PAPERLESS_TOKEN": "${user_config.paperless_token}",
+        "PAPERLESS_MCP_DOWNLOAD_DIR": "${user_config.download_dir}"
       },
       "platform_overrides": {
         "win32": {
@@ -46,6 +53,8 @@
     {"name": "document_list", "description": "Search and list documents"},
     {"name": "document_get", "description": "Get document details"},
     {"name": "document_update", "description": "Update document metadata"},
+    {"name": "document_download", "description": "Download document files"},
+    {"name": "document_page_image", "description": "Render a document page as a viewable image"},
     {"name": "tag_list", "description": "List tags"},
     {"name": "correspondent_list", "description": "List correspondents"},
     {"name": "document_type_list", "description": "List document types"}
