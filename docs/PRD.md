@@ -136,8 +136,13 @@ The primary search and filtering tool. Supports the full range of Paperless-ngx 
 | ordering | string | no | Sort field (prefix `-` for descending) |
 | page | integer | no | Page number (default: 1) |
 | page_size | integer | no | Results per page (default: 25, max: 100000) |
+| full_content | boolean | no | Include full document content instead of a truncated snippet (default: false) |
+| content_snippet_bytes | integer | no | Max bytes of document content per result (default: 500; 0 disables truncation) |
+| include_all_ids | boolean | no | Include the `all` array of every matching document ID (default: false) |
 
 **Returns:** Paginated document list with count, next/previous page URLs, and document objects. Each document object includes API URLs for download (`/api/documents/{id}/download/`), preview (`/api/documents/{id}/preview/`), and thumbnail (`/api/documents/{id}/thumb/`) — these are unauthenticated URL paths relative to `PAPERLESS_URL` that require a token to fetch. When `query` is used, includes `__search_hit__` with score, highlights, and rank.
+
+By default each document's `content` (OCR text) is truncated to a snippet (default 500 bytes, adjustable with `content_snippet_bytes`; `content_truncated: true` marks truncated entries) and the unbounded `all` ID array is omitted — full OCR content can be huge, making default responses unusable for MCP clients. Use `document_get` for full content of a single document, `full_content` (or `content_snippet_bytes: 0`) to disable truncation, and `include_all_ids` to keep the `all` array (e.g., to feed `document_bulk_edit`).
 
 ##### document_get
 
@@ -245,7 +250,7 @@ Removes downloaded document files. With no arguments, removes all files in the i
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
 | `document_bulk_edit` | POST | `/api/documents/bulk_edit/` | Bulk edit documents |
-| `document_selection_data` | POST | `/api/documents/selection_data/` | Get aggregated metadata counts for a selection |
+| `document_selection_data` | POST | `/api/documents/selection_data/` | Get aggregated metadata counts for a selection (objects with zero matching documents are omitted) |
 
 ##### document_bulk_edit
 
@@ -358,7 +363,7 @@ Removes downloaded document files. With no arguments, removes all files in the i
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
 | `search_autocomplete` | GET | `/api/search/autocomplete/` | Autocomplete search terms |
-| `search_global` | GET | `/api/search/` | Global search across all object types |
+| `search_global` | GET | `/api/search/` | Global search across all object types (document content truncated to a snippet unless `full_content` is set) |
 
 #### Statistics
 
@@ -392,7 +397,7 @@ Removes downloaded document files. With no arguments, removes all files in the i
 
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
-| `user_list` | GET | `/api/users/` | List users |
+| `user_list` | GET | `/api/users/` | List users (`inherited_permissions` omitted unless `include_permissions` is set) |
 | `user_get` | GET | `/api/users/{id}/` | Get user details |
 | `user_create` | POST | `/api/users/` | Create user |
 | `user_update` | PATCH | `/api/users/{id}/` | Update user |
@@ -403,7 +408,7 @@ Removes downloaded document files. With no arguments, removes all files in the i
 
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
-| `profile_get` | GET | `/api/profile/` | Get current user's profile |
+| `profile_get` | GET | `/api/profile/` | Get current user's profile (the `auth_token` field is redacted so the API token never enters a transcript) |
 | `profile_update` | PATCH | `/api/profile/` | Update current user's profile |
 
 #### Groups
@@ -480,7 +485,7 @@ Removes downloaded document files. With no arguments, removes all files in the i
 
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
-| `task_list` | GET | `/api/tasks/` | List background tasks |
+| `task_list` | GET | `/api/tasks/` | List background tasks (the endpoint returns all tasks unpaginated; pagination is applied client-side with a `count`/`page`/`next_page` envelope) |
 | `task_get` | GET | `/api/tasks/?task_id={uuid}` | Get task details by task UUID |
 | `task_acknowledge` | POST | `/api/tasks/acknowledge/` | Acknowledge tasks (integer task IDs) |
 | `task_run` | POST | `/api/tasks/run/` | Run system task (admin only) |
@@ -490,7 +495,7 @@ Removes downloaded document files. With no arguments, removes all files in the i
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
 | `log_list` | GET | `/api/logs/` | List available log files |
-| `log_get` | GET | `/api/logs/{id}/` | Get log contents |
+| `log_get` | GET | `/api/logs/{id}/` | Get log contents (`tail` parameter, default last 100 lines; returns `total_lines` and `lines`) |
 
 #### Trash
 
@@ -515,6 +520,18 @@ Removes downloaded document files. With no arguments, removes all files in the i
 | `config_list` | GET | `/api/config/` | List app configuration |
 | `config_get` | GET | `/api/config/{id}/` | Get config entry |
 | `config_update` | PATCH | `/api/config/{id}/` | Update config entry |
+
+## Response Shaping
+
+Paperless-ngx API responses can be far too large for MCP clients (full OCR text per list result, unbounded ID arrays, thousands of unpaginated tasks). The server reshapes responses to keep tool output compact:
+
+- **Content truncation**: `document_list` and `search_global` truncate each document's `content` to a snippet (default 500 bytes, adjustable per call with `content_snippet_bytes`; `0` disables truncation), marking truncated entries with `content_truncated: true`. Opt out per-call with `full_content: true`, or use `document_get` for one document's full text.
+- **`all` ID array stripped**: every paginated list response omits Paperless's unbounded `all` array of matching IDs. `document_list` can re-include it with `include_all_ids: true`.
+- **Client-side task pagination**: `/api/tasks/` ignores pagination and returns every task; `task_list` paginates the array client-side.
+- **Log tailing**: `log_get` returns only the last `tail` lines (default 100) with a `total_lines` count.
+- **Selection data filtering**: `document_selection_data` omits objects with `document_count: 0`.
+- **Slim user lists**: `user_list` omits the large `inherited_permissions` list unless `include_permissions: true`.
+- **Token redaction**: `profile_get` replaces `auth_token` with `[redacted]`.
 
 ## MCP Server Instructions
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 )
@@ -29,8 +30,89 @@ func TestTaskList(t *testing.T) {
 	rh.Handle("GET", "/api/tasks/", jsonHandler(t, 200, tasks))
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handlePaginatedList(client, "/api/tasks/"), nil)
+	result := callTool(t, handleTaskList(client), nil)
 	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	if m["count"] != float64(1) {
+		t.Errorf("count = %v, want 1", m["count"])
+	}
+	if len(m["results"].([]any)) != 1 {
+		t.Errorf("results length = %d, want 1", len(m["results"].([]any)))
+	}
+}
+
+func TestTaskListPaginatesClientSide(t *testing.T) {
+	// The tasks endpoint ignores pagination and returns a bare array of all
+	// tasks; the handler must slice it client-side.
+	tasks := make([]map[string]any, 60)
+	for i := range tasks {
+		tasks[i] = map[string]any{"id": i, "status": "SUCCESS"}
+	}
+
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/tasks/", jsonHandler(t, 200, tasks))
+
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleTaskList(client), map[string]any{"page": float64(2), "page_size": float64(25)})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	if m["count"] != float64(60) {
+		t.Errorf("count = %v, want 60", m["count"])
+	}
+	results := m["results"].([]any)
+	if len(results) != 25 {
+		t.Errorf("results length = %d, want 25", len(results))
+	}
+	if first := results[0].(map[string]any)["id"]; first != float64(25) {
+		t.Errorf("first result id = %v, want 25", first)
+	}
+	if m["next_page"] != float64(3) {
+		t.Errorf("next_page = %v, want 3", m["next_page"])
+	}
+}
+
+func TestTaskListHugePaginationDoesNotPanic(t *testing.T) {
+	tasks := []map[string]any{{"id": 0}, {"id": 1}}
+
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/tasks/", jsonHandler(t, 200, tasks))
+
+	client := testClientAndServer(t, rh)
+	// Values large enough that (page-1)*pageSize overflows int.
+	result := callTool(t, handleTaskList(client), map[string]any{
+		"page":      float64(1e15),
+		"page_size": float64(1e15),
+	})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	if len(m["results"].([]any)) != 0 {
+		t.Errorf("results length = %d, want 0 for a page past the end", len(m["results"].([]any)))
+	}
+	if m["count"] != float64(2) {
+		t.Errorf("count = %v, want 2", m["count"])
+	}
+}
+
+func TestTaskListLastPageHasNoNextPage(t *testing.T) {
+	tasks := []map[string]any{{"id": 0}, {"id": 1}, {"id": 2}}
+
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/tasks/", jsonHandler(t, 200, tasks))
+
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleTaskList(client), map[string]any{"page": float64(1), "page_size": float64(5)})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	if _, ok := m["next_page"]; ok {
+		t.Error("next_page should be absent on the last page")
+	}
+	if len(m["results"].([]any)) != 3 {
+		t.Errorf("results length = %d, want 3", len(m["results"].([]any)))
+	}
 }
 
 func TestLogList(t *testing.T) {
@@ -144,6 +226,60 @@ func TestLogGet(t *testing.T) {
 	client := testClientAndServer(t, rh)
 	result := callTool(t, handleLogGet(client), map[string]any{"id": "paperless"})
 	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	if m["total_lines"] != float64(2) {
+		t.Errorf("total_lines = %v, want 2", m["total_lines"])
+	}
+	if len(m["lines"].([]any)) != 2 {
+		t.Errorf("lines length = %d, want 2", len(m["lines"].([]any)))
+	}
+}
+
+func TestLogGetTail(t *testing.T) {
+	lines := make([]string, 250)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("line %d", i)
+	}
+
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/logs/celery/", jsonHandler(t, 200, lines))
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleLogGet(client), map[string]any{"id": "celery", "tail": float64(10)})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	if m["total_lines"] != float64(250) {
+		t.Errorf("total_lines = %v, want 250", m["total_lines"])
+	}
+	got := m["lines"].([]any)
+	if len(got) != 10 {
+		t.Errorf("lines length = %d, want 10", len(got))
+	}
+	if got[0] != "line 240" {
+		t.Errorf("first line = %v, want line 240", got[0])
+	}
+	if got[9] != "line 249" {
+		t.Errorf("last line = %v, want line 249", got[9])
+	}
+}
+
+func TestLogGetDefaultTail(t *testing.T) {
+	lines := make([]string, 250)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("line %d", i)
+	}
+
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/logs/celery/", jsonHandler(t, 200, lines))
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleLogGet(client), map[string]any{"id": "celery"})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	if len(m["lines"].([]any)) != 100 {
+		t.Errorf("lines length = %d, want default tail of 100", len(m["lines"].([]any)))
+	}
 }
 
 func TestLogGetRequiresId(t *testing.T) {

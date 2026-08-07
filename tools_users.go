@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -12,11 +13,12 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 	// Users
 	srv.AddTool(
 		mcp.NewTool("user_list",
-			mcp.WithDescription("List users."),
+			mcp.WithDescription("List users. Inherited permissions are omitted unless include_permissions is set; use user_get for full details."),
 			withNumber("page", mcp.Description("Page number (default: 1)")),
 			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
+			mcp.WithBoolean("include_permissions", mcp.Description("Include the inherited_permissions list for each user (default: false)")),
 		),
-		handlePaginatedList(client, "/api/users/"),
+		handleUserList(client),
 	)
 	srv.AddTool(
 		mcp.NewTool("user_get",
@@ -115,9 +117,9 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 	// Profile
 	srv.AddTool(
 		mcp.NewTool("profile_get",
-			mcp.WithDescription("Get the current user's profile."),
+			mcp.WithDescription("Get the current user's profile. The API auth token is redacted."),
 		),
-		handleSimpleGet(client, "/api/profile/"),
+		handleProfileGet(client),
 	)
 	srv.AddTool(
 		mcp.NewTool("profile_update",
@@ -129,6 +131,51 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 		),
 		handleProfileUpdate(client),
 	)
+}
+
+// handleUserList lists users, stripping the large inherited_permissions list
+// from each result unless include_permissions is set.
+func handleUserList(client *Client) server.ToolHandlerFunc {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		params := url.Values{}
+		addPaginationParams(params, request)
+		path := "/api/users/"
+		resp, err := client.Get(ctx, path, params)
+		return doRequestJSON(resp, err, "GET", path, func(v any) any {
+			m, ok := v.(map[string]any)
+			if !ok {
+				return v
+			}
+			delete(m, "all")
+			if !request.GetBool("include_permissions", false) {
+				if results, ok := m["results"].([]any); ok {
+					for _, r := range results {
+						if user, ok := r.(map[string]any); ok {
+							delete(user, "inherited_permissions")
+						}
+					}
+				}
+			}
+			return v
+		})
+	}
+}
+
+// handleProfileGet returns the current user's profile with the API auth token
+// redacted so it never lands in a conversation transcript.
+func handleProfileGet(client *Client) server.ToolHandlerFunc {
+	return func(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		path := "/api/profile/"
+		resp, err := client.Get(ctx, path, nil)
+		return doRequestJSON(resp, err, "GET", path, func(v any) any {
+			if m, ok := v.(map[string]any); ok {
+				if _, ok := m["auth_token"]; ok {
+					m["auth_token"] = "[redacted]"
+				}
+			}
+			return v
+		})
+	}
 }
 
 func handleUserCreate(client *Client) server.ToolHandlerFunc {

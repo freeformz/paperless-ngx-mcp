@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -87,6 +88,127 @@ func doRequest(resp *http.Response, err error, method, path string) (*mcp.CallTo
 	}
 
 	return rawJSONResult(body)
+}
+
+// doRequestJSON is like doRequest but decodes the response body as JSON and
+// applies transform to the decoded value before returning it. Error responses
+// and non-JSON bodies pass through unchanged.
+func doRequestJSON(resp *http.Response, err error, method, path string, transform func(v any) any) (*mcp.CallToolResult, error) {
+	if err != nil {
+		return errResult(fmt.Sprintf("request failed: %s", err)), nil
+	}
+	defer resp.Body.Close()
+
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return errResult(fmt.Sprintf("read response: %s", readErr)), nil
+	}
+
+	if resp.StatusCode >= 400 {
+		return apiErrorResult(resp.StatusCode, body, method, path), nil
+	}
+
+	if len(body) == 0 {
+		return mcp.NewToolResultText("success"), nil
+	}
+
+	var v any
+	if unmarshalErr := json.Unmarshal(body, &v); unmarshalErr != nil {
+		return rawJSONResult(body)
+	}
+	return jsonResult(transform(v))
+}
+
+// defaultContentSnippetLen is the default maximum number of bytes of document
+// content kept in list and search results.
+const defaultContentSnippetLen = 500
+
+// getContentSnippetLen extracts the content_snippet_bytes parameter.
+// Returns the default when absent; 0 disables truncation.
+func getContentSnippetLen(request mcp.CallToolRequest) (int, *mcp.CallToolResult) {
+	n := int(request.GetFloat("content_snippet_bytes", defaultContentSnippetLen))
+	if n < 0 {
+		return 0, errResult("content_snippet_bytes must be a non-negative integer")
+	}
+	return n, nil
+}
+
+// truncateUTF8 shortens s to at most n bytes without splitting a UTF-8 rune.
+func truncateUTF8(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
+}
+
+// truncateContentFields truncates the "content" field of each object in items
+// to limit bytes, marking truncated entries with content_truncated.
+// A limit of 0 (or less) disables truncation.
+func truncateContentFields(items any, limit int) {
+	if limit <= 0 {
+		return
+	}
+	arr, ok := items.([]any)
+	if !ok {
+		return
+	}
+	for _, item := range arr {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		s, ok := m["content"].(string)
+		if !ok || len(s) <= limit {
+			continue
+		}
+		m["content"] = truncateUTF8(s, limit)
+		m["content_truncated"] = true
+	}
+}
+
+// paginateArray slices a bare JSON array response into a paginated envelope.
+// Used for endpoints (e.g., /api/tasks/) that ignore pagination parameters.
+func paginateArray(v any, page, pageSize int) any {
+	arr, ok := v.([]any)
+	if !ok {
+		return v
+	}
+	// page and pageSize are client-controlled; clamp overflow-to-negative
+	// results to "past the end" so slicing can never panic.
+	start := (page - 1) * pageSize
+	if start < 0 || start > len(arr) {
+		start = len(arr)
+	}
+	end := start + pageSize
+	if end < start || end > len(arr) {
+		end = len(arr)
+	}
+	out := map[string]any{
+		"count":     len(arr),
+		"page":      page,
+		"page_size": pageSize,
+		"results":   arr[start:end],
+	}
+	if end < len(arr) {
+		out["next_page"] = page + 1
+	}
+	return out
+}
+
+// getPagination extracts page and page_size from the request with defaults.
+func getPagination(request mcp.CallToolRequest) (page, pageSize int) {
+	page = int(request.GetFloat("page", 1))
+	if page < 1 {
+		page = 1
+	}
+	pageSize = int(request.GetFloat("page_size", 25))
+	if pageSize < 1 {
+		pageSize = 25
+	}
+	return page, pageSize
 }
 
 // addPaginationParams adds page and page_size query parameters if provided in the request.
@@ -205,13 +327,23 @@ func handleSimpleGet(client *Client, path string) server.ToolHandlerFunc {
 	}
 }
 
+// stripAllIDs removes the unbounded "all" ID array Paperless includes
+// alongside each page of a list response. Only document_list offers an
+// opt-out (include_all_ids) for bulk-select workflows.
+func stripAllIDs(v any) any {
+	if m, ok := v.(map[string]any); ok {
+		delete(m, "all")
+	}
+	return v
+}
+
 // handlePaginatedList returns a handler that GETs a paginated list endpoint.
 func handlePaginatedList(client *Client, path string) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		params := url.Values{}
 		addPaginationParams(params, request)
 		resp, err := client.Get(ctx, path, params)
-		return doRequest(resp, err, "GET", path)
+		return doRequestJSON(resp, err, "GET", path, stripAllIDs)
 	}
 }
 

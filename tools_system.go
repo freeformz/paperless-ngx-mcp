@@ -21,10 +21,10 @@ var (
 func registerSystemTools(srv *server.MCPServer, client *Client) {
 	// Tasks
 	srv.AddTool(mcp.NewTool("task_list",
-		mcp.WithDescription("List background tasks (e.g., document consumption)."),
+		mcp.WithDescription("List background tasks (e.g., document consumption). Paginated; use page to iterate."),
 		withNumber("page", mcp.Description("Page number (default: 1)")),
 		withNumber("page_size", mcp.Description("Results per page (default: 25)")),
-	), handlePaginatedList(client, "/api/tasks/"))
+	), handleTaskList(client))
 
 	srv.AddTool(mcp.NewTool("task_get",
 		mcp.WithDescription("Get background task details by task UUID (as returned by document_upload)."),
@@ -47,8 +47,9 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 	), handleSimpleGet(client, "/api/logs/"))
 
 	srv.AddTool(mcp.NewTool("log_get",
-		mcp.WithDescription("Get log file contents."),
+		mcp.WithDescription("Get the last lines of a log file (default: last 100)."),
 		mcp.WithString("id", mcp.Description("Log file name"), mcp.Required()),
+		withNumber("tail", mcp.Description("Number of lines to return from the end of the log (default: 100)")),
 	), handleLogGet(client))
 
 	// Trash
@@ -92,6 +93,20 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 		withNumber("id", mcp.Description("Config entry ID"), mcp.Required()),
 		mcp.WithString("body", mcp.Description("JSON object with fields to update"), mcp.Required()),
 	), handleConfigUpdate(client))
+}
+
+// handleTaskList lists background tasks. The /api/tasks/ endpoint ignores
+// pagination parameters and returns a bare array of every task, so pagination
+// is applied client-side.
+func handleTaskList(client *Client) server.ToolHandlerFunc {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		page, pageSize := getPagination(request)
+		path := "/api/tasks/"
+		resp, err := client.Get(ctx, path, nil)
+		return doRequestJSON(resp, err, "GET", path, func(v any) any {
+			return paginateArray(v, page, pageSize)
+		})
+	}
 }
 
 func handleTaskGet(client *Client) server.ToolHandlerFunc {
@@ -150,9 +165,22 @@ func handleLogGet(client *Client) server.ToolHandlerFunc {
 		if !logNamePattern.MatchString(id) {
 			return errResult("id must contain only alphanumeric characters, dots, hyphens, and underscores"), nil
 		}
+		tail := int(request.GetFloat("tail", 100))
+		if tail < 1 {
+			tail = 100
+		}
 		path := fmt.Sprintf("/api/logs/%s/", id)
 		resp, err := client.Get(ctx, path, nil)
-		return doRequest(resp, err, "GET", path)
+		return doRequestJSON(resp, err, "GET", path, func(v any) any {
+			lines, ok := v.([]any)
+			if !ok {
+				return v
+			}
+			return map[string]any{
+				"total_lines": len(lines),
+				"lines":       lines[max(len(lines)-tail, 0):],
+			}
+		})
 	}
 }
 

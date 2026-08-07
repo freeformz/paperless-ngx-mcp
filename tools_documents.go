@@ -16,7 +16,7 @@ import (
 func registerDocumentTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_list",
-			mcp.WithDescription("List/search documents with filtering and full-text search. Returns paginated results."),
+			mcp.WithDescription("List/search documents with filtering and full-text search. Returns paginated results. Document content is truncated to a snippet; use document_get or full_content for the complete text."),
 			mcp.WithString("query", mcp.Description("Full-text search query")),
 			withNumber("more_like_id", mcp.Description("Find documents similar to this document ID")),
 			withNumber("correspondent_id", mcp.Description("Filter by correspondent ID")),
@@ -38,6 +38,9 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			mcp.WithString("ordering", mcp.Description("Sort field (prefix - for descending)")),
 			withNumber("page", mcp.Description("Page number (default: 1)")),
 			withNumber("page_size", mcp.Description("Results per page (default: 25, max: 100000)")),
+			mcp.WithBoolean("full_content", mcp.Description("Include full document content in results instead of a truncated snippet (default: false)")),
+			withNumber("content_snippet_bytes", mcp.Description("Max bytes of document content per result (default: 500; 0 disables truncation)")),
+			mcp.WithBoolean("include_all_ids", mcp.Description("Include the 'all' array of every matching document ID (default: false)")),
 		),
 		handleDocumentList(client),
 	)
@@ -193,9 +196,26 @@ func handleDocumentList(client *Client) server.ToolHandlerFunc {
 		addIntParam(params, request, "owner_id", "owner__id")
 		addStringParam(params, request, "ordering", "ordering")
 
+		snippetLen, errRes := getContentSnippetLen(request)
+		if errRes != nil {
+			return errRes, nil
+		}
+
 		path := "/api/documents/"
 		resp, err := client.Get(ctx, path, params)
-		return doRequest(resp, err, "GET", path)
+		return doRequestJSON(resp, err, "GET", path, func(v any) any {
+			m, ok := v.(map[string]any)
+			if !ok {
+				return v
+			}
+			if !request.GetBool("full_content", false) {
+				truncateContentFields(m["results"], snippetLen)
+			}
+			if !request.GetBool("include_all_ids", false) {
+				delete(m, "all")
+			}
+			return v
+		})
 	}
 }
 

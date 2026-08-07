@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -28,6 +29,102 @@ func TestJsonResult(t *testing.T) {
 	m := resultJSON(t, result)
 	if m["key"] != "value" {
 		t.Errorf("got %v, want value", m["key"])
+	}
+}
+
+func TestTruncateUTF8(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		n    int
+		want string
+	}{
+		{"shorter than limit", "hello", 10, "hello"},
+		{"exact limit", "hello", 5, "hello"},
+		{"ascii cut", "hello world", 5, "hello"},
+		{"multibyte boundary", "aé", 2, "a"}, // é is 2 bytes; cutting at 2 would split it
+		{"multibyte kept", "aé", 3, "aé"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := truncateUTF8(tt.in, tt.n); got != tt.want {
+				t.Errorf("truncateUTF8(%q, %d) = %q, want %q", tt.in, tt.n, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetContentSnippetLen(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    map[string]any
+		want    int
+		wantErr bool
+	}{
+		{"absent uses default", map[string]any{}, defaultContentSnippetLen, false},
+		{"explicit value", map[string]any{"content_snippet_bytes": float64(1000)}, 1000, false},
+		{"zero disables truncation", map[string]any{"content_snippet_bytes": float64(0)}, 0, false},
+		{"negative rejected", map[string]any{"content_snippet_bytes": float64(-1)}, 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, errRes := getContentSnippetLen(makeRequest(tt.args))
+			if (errRes != nil) != tt.wantErr {
+				t.Fatalf("getContentSnippetLen(%v) errRes = %v, wantErr %v", tt.args, errRes, tt.wantErr)
+			}
+			if !tt.wantErr && got != tt.want {
+				t.Errorf("getContentSnippetLen(%v) = %d, want %d", tt.args, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTruncateContentFieldsDisabled(t *testing.T) {
+	long := strings.Repeat("z", 5000)
+	items := []any{map[string]any{"content": long}}
+	truncateContentFields(items, 0)
+
+	doc := items[0].(map[string]any)
+	if len(doc["content"].(string)) != 5000 {
+		t.Errorf("content length = %d, want 5000 (truncation disabled)", len(doc["content"].(string)))
+	}
+	if _, ok := doc["content_truncated"]; ok {
+		t.Error("content_truncated should be absent when truncation is disabled")
+	}
+}
+
+func TestTruncateContentFieldsCustomLength(t *testing.T) {
+	items := []any{map[string]any{"content": "abcdefghijklmnop"}}
+	truncateContentFields(items, 10)
+
+	doc := items[0].(map[string]any)
+	if doc["content"] != "abcdefghij" {
+		t.Errorf("content = %q, want %q", doc["content"], "abcdefghij")
+	}
+	if doc["content_truncated"] != true {
+		t.Error("content_truncated should be true")
+	}
+}
+
+func TestHandlePaginatedListStripsAllIDs(t *testing.T) {
+	body := map[string]any{
+		"count":   2,
+		"all":     []int{1, 2, 3, 4, 5, 6, 7, 8},
+		"results": []map[string]any{{"id": 1}, {"id": 2}},
+	}
+
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/correspondents/", jsonHandler(t, 200, body))
+	client := testClientAndServer(t, rh)
+
+	result := callTool(t, handlePaginatedList(client, "/api/correspondents/"), nil)
+	assertNotError(t, result)
+	m := resultJSON(t, result)
+	if _, ok := m["all"]; ok {
+		t.Error("all ID array should be stripped by default")
+	}
+	if m["count"] != float64(2) {
+		t.Errorf("count = %v, want 2", m["count"])
 	}
 }
 
