@@ -41,6 +41,12 @@ func mcpCmd() *cobra.Command {
 				return fmt.Errorf("PAPERLESS_TOKEN environment variable is required")
 			}
 
+			snippetLen, err := contentSnippetLenFromEnv(os.Getenv("PAPERLESS_MCP_CONTENT_SNIPPET_BYTES"))
+			if err != nil {
+				return err
+			}
+			contentSnippetLen = snippetLen
+
 			dl, err := NewDownloader(downloadConcurrency, downloadDirFromEnv(os.Getenv("PAPERLESS_MCP_DOWNLOAD_DIR")))
 			if err != nil {
 				return fmt.Errorf("create downloader: %w", err)

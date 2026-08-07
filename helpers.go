@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -119,10 +120,29 @@ func doRequestJSON(resp *http.Response, err error, method, path string, transfor
 	return jsonResult(transform(v))
 }
 
+// defaultContentSnippetLen is the default maximum number of bytes of document
+// content kept in list and search results.
+const defaultContentSnippetLen = 500
+
 // contentSnippetLen is the maximum number of bytes of document content kept in
-// list and search results. Full content is available via document_get or the
-// full_content parameter.
-const contentSnippetLen = 500
+// list and search results, configurable via PAPERLESS_MCP_CONTENT_SNIPPET_BYTES
+// (0 disables truncation). Full content is always available via document_get or
+// the full_content parameter.
+var contentSnippetLen = defaultContentSnippetLen
+
+// contentSnippetLenFromEnv parses the PAPERLESS_MCP_CONTENT_SNIPPET_BYTES
+// value. Empty means the default; 0 disables truncation.
+func contentSnippetLenFromEnv(s string) (int, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return defaultContentSnippetLen, nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("PAPERLESS_MCP_CONTENT_SNIPPET_BYTES must be a non-negative integer, got %q", s)
+	}
+	return n, nil
+}
 
 // truncateUTF8 shortens s to at most n bytes without splitting a UTF-8 rune.
 func truncateUTF8(s string, n int) string {
@@ -137,7 +157,11 @@ func truncateUTF8(s string, n int) string {
 
 // truncateContentFields truncates the "content" field of each object in items
 // to contentSnippetLen bytes, marking truncated entries with content_truncated.
+// A contentSnippetLen of 0 disables truncation.
 func truncateContentFields(items any) {
+	if contentSnippetLen <= 0 {
+		return
+	}
 	arr, ok := items.([]any)
 	if !ok {
 		return

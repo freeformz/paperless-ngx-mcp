@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -50,6 +51,68 @@ func TestTruncateUTF8(t *testing.T) {
 				t.Errorf("truncateUTF8(%q, %d) = %q, want %q", tt.in, tt.n, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestContentSnippetLenFromEnv(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		want    int
+		wantErr bool
+	}{
+		{"empty uses default", "", defaultContentSnippetLen, false},
+		{"whitespace uses default", "  ", defaultContentSnippetLen, false},
+		{"explicit value", "1000", 1000, false},
+		{"zero disables truncation", "0", 0, false},
+		{"negative rejected", "-1", 0, true},
+		{"non-numeric rejected", "abc", 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := contentSnippetLenFromEnv(tt.in)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("contentSnippetLenFromEnv(%q) error = %v, wantErr %v", tt.in, err, tt.wantErr)
+			}
+			if !tt.wantErr && got != tt.want {
+				t.Errorf("contentSnippetLenFromEnv(%q) = %d, want %d", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTruncateContentFieldsDisabled(t *testing.T) {
+	orig := contentSnippetLen
+	t.Cleanup(func() { contentSnippetLen = orig })
+	contentSnippetLen = 0
+
+	long := strings.Repeat("z", 5000)
+	items := []any{map[string]any{"content": long}}
+	truncateContentFields(items)
+
+	doc := items[0].(map[string]any)
+	if len(doc["content"].(string)) != 5000 {
+		t.Errorf("content length = %d, want 5000 (truncation disabled)", len(doc["content"].(string)))
+	}
+	if _, ok := doc["content_truncated"]; ok {
+		t.Error("content_truncated should be absent when truncation is disabled")
+	}
+}
+
+func TestTruncateContentFieldsCustomLength(t *testing.T) {
+	orig := contentSnippetLen
+	t.Cleanup(func() { contentSnippetLen = orig })
+	contentSnippetLen = 10
+
+	items := []any{map[string]any{"content": "abcdefghijklmnop"}}
+	truncateContentFields(items)
+
+	doc := items[0].(map[string]any)
+	if doc["content"] != "abcdefghij" {
+		t.Errorf("content = %q, want %q", doc["content"], "abcdefghij")
+	}
+	if doc["content_truncated"] != true {
+		t.Error("content_truncated should be true")
 	}
 }
 

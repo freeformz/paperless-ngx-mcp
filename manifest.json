@@ -29,6 +29,14 @@
       "description": "Optional directory for document downloads. When set, downloaded files are saved here with their real filenames and are not auto-cleaned. When unset, a temp directory is used.",
       "required": false,
       "default": ""
+    },
+    "content_snippet_bytes": {
+      "type": "number",
+      "title": "Content Snippet Length (bytes)",
+      "description": "Maximum bytes of document OCR content included per result in document_list and search_global. Set to 0 to disable truncation entirely.",
+      "required": false,
+      "default": 500,
+      "min": 0
     }
   },
   "server": {
@@ -40,7 +48,8 @@
       "env": {
         "PAPERLESS_URL": "${user_config.paperless_url}",
         "PAPERLESS_TOKEN": "${user_config.paperless_token}",
-        "PAPERLESS_MCP_DOWNLOAD_DIR": "${user_config.download_dir}"
+        "PAPERLESS_MCP_DOWNLOAD_DIR": "${user_config.download_dir}",
+        "PAPERLESS_MCP_CONTENT_SNIPPET_BYTES": "${user_config.content_snippet_bytes}"
       },
       "platform_overrides": {
         "win32": {
