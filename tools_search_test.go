@@ -55,8 +55,8 @@ func TestSearchGlobalTruncatesDocumentContent(t *testing.T) {
 
 	m := resultJSON(t, result)
 	doc := m["documents"].([]any)[0].(map[string]any)
-	if got := len(doc["content"].(string)); got != contentSnippetLen {
-		t.Errorf("content length = %d, want %d", got, contentSnippetLen)
+	if got := len(doc["content"].(string)); got != defaultContentSnippetLen {
+		t.Errorf("content length = %d, want %d", got, defaultContentSnippetLen)
 	}
 	if doc["content_truncated"] != true {
 		t.Error("content_truncated should be true")

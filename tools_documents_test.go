@@ -48,8 +48,8 @@ func TestDocumentListTruncatesContent(t *testing.T) {
 
 	m := resultJSON(t, result)
 	doc := m["results"].([]any)[0].(map[string]any)
-	if got := len(doc["content"].(string)); got != contentSnippetLen {
-		t.Errorf("content length = %d, want %d", got, contentSnippetLen)
+	if got := len(doc["content"].(string)); got != defaultContentSnippetLen {
+		t.Errorf("content length = %d, want %d", got, defaultContentSnippetLen)
 	}
 	if doc["content_truncated"] != true {
 		t.Error("content_truncated should be true")
@@ -88,6 +88,49 @@ func TestDocumentListFullContent(t *testing.T) {
 	if _, ok := m["all"]; !ok {
 		t.Error("all ID array should be present with include_all_ids=true")
 	}
+}
+
+func TestDocumentListCustomSnippetBytes(t *testing.T) {
+	docs := paginatedResponse([]map[string]any{{"id": 1, "content": strings.Repeat("x", 100)}}, 1)
+
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/documents/", jsonHandler(t, 200, docs))
+
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleDocumentList(client), map[string]any{"content_snippet_bytes": float64(10)})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	doc := m["results"].([]any)[0].(map[string]any)
+	if got := len(doc["content"].(string)); got != 10 {
+		t.Errorf("content length = %d, want 10", got)
+	}
+	if doc["content_truncated"] != true {
+		t.Error("content_truncated should be true")
+	}
+}
+
+func TestDocumentListZeroSnippetBytesDisablesTruncation(t *testing.T) {
+	docs := paginatedResponse([]map[string]any{{"id": 1, "content": strings.Repeat("x", 2000)}}, 1)
+
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/documents/", jsonHandler(t, 200, docs))
+
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleDocumentList(client), map[string]any{"content_snippet_bytes": float64(0)})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	doc := m["results"].([]any)[0].(map[string]any)
+	if got := len(doc["content"].(string)); got != 2000 {
+		t.Errorf("content length = %d, want 2000 (untruncated)", got)
+	}
+}
+
+func TestDocumentListNegativeSnippetBytesRejected(t *testing.T) {
+	client := NewClient("http://unused", "unused")
+	result := callTool(t, handleDocumentList(client), map[string]any{"content_snippet_bytes": float64(-5)})
+	assertIsError(t, result)
 }
 
 func TestDocumentListShortContentNotMarkedTruncated(t *testing.T) {

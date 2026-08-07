@@ -62,7 +62,6 @@ go install github.com/freeformz/paperless-ngx-mcp@latest
 | `PAPERLESS_URL` | yes | Base URL of the Paperless-ngx instance |
 | `PAPERLESS_TOKEN` | yes | API authentication token |
 | `PAPERLESS_MCP_DOWNLOAD_DIR` | no | Directory for document downloads. When set, files are saved here (or in a `dest_dir` subdirectory) with their real filenames and are left alone by `cleanup_downloads`. When unset, a per-instance temp directory is used. |
-| `PAPERLESS_MCP_CONTENT_SNIPPET_BYTES` | no | Maximum bytes of document OCR content per result in `document_list`/`search_global` (default: 500). Set to `0` to disable truncation. |
 
 Generate an API token in Paperless-ngx under **Settings > Administration > Auth Tokens**.
 
@@ -74,7 +73,7 @@ Generate an API token in Paperless-ngx under **Settings > Administration > Auth 
 
 ## Tools
 
-Responses are shaped to stay compact for MCP clients: document `content` in list/search results is truncated to a snippet — default 500 bytes, configurable via `PAPERLESS_MCP_CONTENT_SNIPPET_BYTES` (`full_content: true` opts out per call; `document_get` returns full text), the unbounded `all` ID array is stripped from paginated lists (`include_all_ids: true` on `document_list` re-includes it), `task_list` is paginated client-side, `log_get` returns only the last `tail` lines (default 100), `document_selection_data` omits zero-count objects, `user_list` omits `inherited_permissions` unless `include_permissions: true`, and `profile_get` redacts the API auth token.
+Responses are shaped to stay compact for MCP clients: document `content` in list/search results is truncated to a snippet — default 500 bytes, adjustable per call with `content_snippet_bytes` (0 disables); `full_content: true` opts out and `document_get` returns full text — the unbounded `all` ID array is stripped from paginated lists (`include_all_ids: true` on `document_list` re-includes it), `task_list` is paginated client-side, `log_get` returns only the last `tail` lines (default 100), `document_selection_data` omits zero-count objects, `user_list` omits `inherited_permissions` unless `include_permissions: true`, and `profile_get` redacts the API auth token.
 
 ### Documents
 `document_list`, `document_get`, `document_update`, `document_delete`, `document_upload`, `document_download`, `document_metadata`, `document_suggestions`, `document_next_asn`, `document_share_links`, `document_history`, `document_email`

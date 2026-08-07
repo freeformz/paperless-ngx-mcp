@@ -73,6 +73,29 @@ func TestTaskListPaginatesClientSide(t *testing.T) {
 	}
 }
 
+func TestTaskListHugePaginationDoesNotPanic(t *testing.T) {
+	tasks := []map[string]any{{"id": 0}, {"id": 1}}
+
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/tasks/", jsonHandler(t, 200, tasks))
+
+	client := testClientAndServer(t, rh)
+	// Values large enough that (page-1)*pageSize overflows int.
+	result := callTool(t, handleTaskList(client), map[string]any{
+		"page":      float64(1e15),
+		"page_size": float64(1e15),
+	})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	if len(m["results"].([]any)) != 0 {
+		t.Errorf("results length = %d, want 0 for a page past the end", len(m["results"].([]any)))
+	}
+	if m["count"] != float64(2) {
+		t.Errorf("count = %v, want 2", m["count"])
+	}
+}
+
 func TestTaskListLastPageHasNoNextPage(t *testing.T) {
 	tasks := []map[string]any{{"id": 0}, {"id": 1}, {"id": 2}}
 

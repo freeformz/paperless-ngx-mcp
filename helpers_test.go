@@ -54,41 +54,35 @@ func TestTruncateUTF8(t *testing.T) {
 	}
 }
 
-func TestContentSnippetLenFromEnv(t *testing.T) {
+func TestGetContentSnippetLen(t *testing.T) {
 	tests := []struct {
 		name    string
-		in      string
+		args    map[string]any
 		want    int
 		wantErr bool
 	}{
-		{"empty uses default", "", defaultContentSnippetLen, false},
-		{"whitespace uses default", "  ", defaultContentSnippetLen, false},
-		{"explicit value", "1000", 1000, false},
-		{"zero disables truncation", "0", 0, false},
-		{"negative rejected", "-1", 0, true},
-		{"non-numeric rejected", "abc", 0, true},
+		{"absent uses default", map[string]any{}, defaultContentSnippetLen, false},
+		{"explicit value", map[string]any{"content_snippet_bytes": float64(1000)}, 1000, false},
+		{"zero disables truncation", map[string]any{"content_snippet_bytes": float64(0)}, 0, false},
+		{"negative rejected", map[string]any{"content_snippet_bytes": float64(-1)}, 0, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := contentSnippetLenFromEnv(tt.in)
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("contentSnippetLenFromEnv(%q) error = %v, wantErr %v", tt.in, err, tt.wantErr)
+			got, errRes := getContentSnippetLen(makeRequest(tt.args))
+			if (errRes != nil) != tt.wantErr {
+				t.Fatalf("getContentSnippetLen(%v) errRes = %v, wantErr %v", tt.args, errRes, tt.wantErr)
 			}
 			if !tt.wantErr && got != tt.want {
-				t.Errorf("contentSnippetLenFromEnv(%q) = %d, want %d", tt.in, got, tt.want)
+				t.Errorf("getContentSnippetLen(%v) = %d, want %d", tt.args, got, tt.want)
 			}
 		})
 	}
 }
 
 func TestTruncateContentFieldsDisabled(t *testing.T) {
-	orig := contentSnippetLen
-	t.Cleanup(func() { contentSnippetLen = orig })
-	contentSnippetLen = 0
-
 	long := strings.Repeat("z", 5000)
 	items := []any{map[string]any{"content": long}}
-	truncateContentFields(items)
+	truncateContentFields(items, 0)
 
 	doc := items[0].(map[string]any)
 	if len(doc["content"].(string)) != 5000 {
@@ -100,12 +94,8 @@ func TestTruncateContentFieldsDisabled(t *testing.T) {
 }
 
 func TestTruncateContentFieldsCustomLength(t *testing.T) {
-	orig := contentSnippetLen
-	t.Cleanup(func() { contentSnippetLen = orig })
-	contentSnippetLen = 10
-
 	items := []any{map[string]any{"content": "abcdefghijklmnop"}}
-	truncateContentFields(items)
+	truncateContentFields(items, 10)
 
 	doc := items[0].(map[string]any)
 	if doc["content"] != "abcdefghij" {

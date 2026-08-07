@@ -25,6 +25,7 @@ func registerSearchTools(srv *server.MCPServer, client *Client) {
 			withNumber("page", mcp.Description("Page number (default: 1)")),
 			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 			mcp.WithBoolean("full_content", mcp.Description("Include full document content in results instead of a truncated snippet (default: false)")),
+			withNumber("content_snippet_bytes", mcp.Description("Max bytes of document content per result (default: 500; 0 disables truncation)")),
 		),
 		handleSearchGlobal(client),
 	)
@@ -63,11 +64,16 @@ func handleSearchGlobal(client *Client) server.ToolHandlerFunc {
 		params := url.Values{"query": {query}}
 		addPaginationParams(params, request)
 
+		snippetLen, errRes := getContentSnippetLen(request)
+		if errRes != nil {
+			return errRes, nil
+		}
+
 		path := "/api/search/"
 		resp, err := client.Get(ctx, path, params)
 		return doRequestJSON(resp, err, "GET", path, func(v any) any {
 			if m, ok := v.(map[string]any); ok && !request.GetBool("full_content", false) {
-				truncateContentFields(m["documents"])
+				truncateContentFields(m["documents"], snippetLen)
 			}
 			return v
 		})

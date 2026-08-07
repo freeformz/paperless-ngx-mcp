@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -124,22 +123,12 @@ func doRequestJSON(resp *http.Response, err error, method, path string, transfor
 // content kept in list and search results.
 const defaultContentSnippetLen = 500
 
-// contentSnippetLen is the maximum number of bytes of document content kept in
-// list and search results, configurable via PAPERLESS_MCP_CONTENT_SNIPPET_BYTES
-// (0 disables truncation). Full content is always available via document_get or
-// the full_content parameter.
-var contentSnippetLen = defaultContentSnippetLen
-
-// contentSnippetLenFromEnv parses the PAPERLESS_MCP_CONTENT_SNIPPET_BYTES
-// value. Empty means the default; 0 disables truncation.
-func contentSnippetLenFromEnv(s string) (int, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return defaultContentSnippetLen, nil
-	}
-	n, err := strconv.Atoi(s)
-	if err != nil || n < 0 {
-		return 0, fmt.Errorf("PAPERLESS_MCP_CONTENT_SNIPPET_BYTES must be a non-negative integer, got %q", s)
+// getContentSnippetLen extracts the content_snippet_bytes parameter.
+// Returns the default when absent; 0 disables truncation.
+func getContentSnippetLen(request mcp.CallToolRequest) (int, *mcp.CallToolResult) {
+	n := int(request.GetFloat("content_snippet_bytes", defaultContentSnippetLen))
+	if n < 0 {
+		return 0, errResult("content_snippet_bytes must be a non-negative integer")
 	}
 	return n, nil
 }
@@ -156,10 +145,10 @@ func truncateUTF8(s string, n int) string {
 }
 
 // truncateContentFields truncates the "content" field of each object in items
-// to contentSnippetLen bytes, marking truncated entries with content_truncated.
-// A contentSnippetLen of 0 disables truncation.
-func truncateContentFields(items any) {
-	if contentSnippetLen <= 0 {
+// to limit bytes, marking truncated entries with content_truncated.
+// A limit of 0 (or less) disables truncation.
+func truncateContentFields(items any, limit int) {
+	if limit <= 0 {
 		return
 	}
 	arr, ok := items.([]any)
@@ -172,10 +161,10 @@ func truncateContentFields(items any) {
 			continue
 		}
 		s, ok := m["content"].(string)
-		if !ok || len(s) <= contentSnippetLen {
+		if !ok || len(s) <= limit {
 			continue
 		}
-		m["content"] = truncateUTF8(s, contentSnippetLen)
+		m["content"] = truncateUTF8(s, limit)
 		m["content_truncated"] = true
 	}
 }
@@ -187,8 +176,16 @@ func paginateArray(v any, page, pageSize int) any {
 	if !ok {
 		return v
 	}
-	start := min((page-1)*pageSize, len(arr))
-	end := min(start+pageSize, len(arr))
+	// page and pageSize are client-controlled; clamp overflow-to-negative
+	// results to "past the end" so slicing can never panic.
+	start := (page - 1) * pageSize
+	if start < 0 || start > len(arr) {
+		start = len(arr)
+	}
+	end := start + pageSize
+	if end < start || end > len(arr) {
+		end = len(arr)
+	}
 	out := map[string]any{
 		"count":     len(arr),
 		"page":      page,

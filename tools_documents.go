@@ -39,6 +39,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			withNumber("page", mcp.Description("Page number (default: 1)")),
 			withNumber("page_size", mcp.Description("Results per page (default: 25, max: 100000)")),
 			mcp.WithBoolean("full_content", mcp.Description("Include full document content in results instead of a truncated snippet (default: false)")),
+			withNumber("content_snippet_bytes", mcp.Description("Max bytes of document content per result (default: 500; 0 disables truncation)")),
 			mcp.WithBoolean("include_all_ids", mcp.Description("Include the 'all' array of every matching document ID (default: false)")),
 		),
 		handleDocumentList(client),
@@ -195,6 +196,11 @@ func handleDocumentList(client *Client) server.ToolHandlerFunc {
 		addIntParam(params, request, "owner_id", "owner__id")
 		addStringParam(params, request, "ordering", "ordering")
 
+		snippetLen, errRes := getContentSnippetLen(request)
+		if errRes != nil {
+			return errRes, nil
+		}
+
 		path := "/api/documents/"
 		resp, err := client.Get(ctx, path, params)
 		return doRequestJSON(resp, err, "GET", path, func(v any) any {
@@ -203,7 +209,7 @@ func handleDocumentList(client *Client) server.ToolHandlerFunc {
 				return v
 			}
 			if !request.GetBool("full_content", false) {
-				truncateContentFields(m["results"])
+				truncateContentFields(m["results"], snippetLen)
 			}
 			if !request.GetBool("include_all_ids", false) {
 				delete(m, "all")

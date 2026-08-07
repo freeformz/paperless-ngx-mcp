@@ -69,7 +69,6 @@ The server is configured entirely via environment variables:
 | `PAPERLESS_URL` | yes | Base URL of the Paperless-ngx instance (e.g., `https://paperless.example.com`) |
 | `PAPERLESS_TOKEN` | yes | API authentication token |
 | `PAPERLESS_MCP_DOWNLOAD_DIR` | no | Directory for `document_download` disk saves. When set, downloads land here (or in a `dest_dir` subdirectory of it) with their real filenames, are never touched by `cleanup_downloads`, and remain after the server exits. When unset, downloads use a per-instance temp directory. |
-| `PAPERLESS_MCP_CONTENT_SNIPPET_BYTES` | no | Maximum bytes of document OCR content included per result in `document_list` and `search_global` (default: 500). Set to `0` to disable truncation entirely. |
 
 The server always uses Paperless-ngx API version 9. These are passed via the MCP server configuration (`.mcp.json` or MCPB manifest) as environment variables, which is compatible with CoWork and MCPB bundle format.
 
@@ -138,11 +137,12 @@ The primary search and filtering tool. Supports the full range of Paperless-ngx 
 | page | integer | no | Page number (default: 1) |
 | page_size | integer | no | Results per page (default: 25, max: 100000) |
 | full_content | boolean | no | Include full document content instead of a truncated snippet (default: false) |
+| content_snippet_bytes | integer | no | Max bytes of document content per result (default: 500; 0 disables truncation) |
 | include_all_ids | boolean | no | Include the `all` array of every matching document ID (default: false) |
 
 **Returns:** Paginated document list with count, next/previous page URLs, and document objects. Each document object includes API URLs for download (`/api/documents/{id}/download/`), preview (`/api/documents/{id}/preview/`), and thumbnail (`/api/documents/{id}/thumb/`) — these are unauthenticated URL paths relative to `PAPERLESS_URL` that require a token to fetch. When `query` is used, includes `__search_hit__` with score, highlights, and rank.
 
-By default each document's `content` (OCR text) is truncated to a snippet (default 500 bytes, configurable via `PAPERLESS_MCP_CONTENT_SNIPPET_BYTES`; `content_truncated: true` marks truncated entries) and the unbounded `all` ID array is omitted — full OCR content can be huge, making default responses unusable for MCP clients. Use `document_get` for full content of a single document, `full_content` to disable truncation, and `include_all_ids` to keep the `all` array (e.g., to feed `document_bulk_edit`).
+By default each document's `content` (OCR text) is truncated to a snippet (default 500 bytes, adjustable with `content_snippet_bytes`; `content_truncated: true` marks truncated entries) and the unbounded `all` ID array is omitted — full OCR content can be huge, making default responses unusable for MCP clients. Use `document_get` for full content of a single document, `full_content` (or `content_snippet_bytes: 0`) to disable truncation, and `include_all_ids` to keep the `all` array (e.g., to feed `document_bulk_edit`).
 
 ##### document_get
 
@@ -525,7 +525,7 @@ Removes downloaded document files. With no arguments, removes all files in the i
 
 Paperless-ngx API responses can be far too large for MCP clients (full OCR text per list result, unbounded ID arrays, thousands of unpaginated tasks). The server reshapes responses to keep tool output compact:
 
-- **Content truncation**: `document_list` and `search_global` truncate each document's `content` to a snippet (default 500 bytes, configurable via `PAPERLESS_MCP_CONTENT_SNIPPET_BYTES`; `0` disables truncation), marking truncated entries with `content_truncated: true`. Opt out per-call with `full_content: true`, or use `document_get` for one document's full text.
+- **Content truncation**: `document_list` and `search_global` truncate each document's `content` to a snippet (default 500 bytes, adjustable per call with `content_snippet_bytes`; `0` disables truncation), marking truncated entries with `content_truncated: true`. Opt out per-call with `full_content: true`, or use `document_get` for one document's full text.
 - **`all` ID array stripped**: every paginated list response omits Paperless's unbounded `all` array of matching IDs. `document_list` can re-include it with `include_all_ids: true`.
 - **Client-side task pagination**: `/api/tasks/` ignores pagination and returns every task; `task_list` paginates the array client-side.
 - **Log tailing**: `log_get` returns only the last `tail` lines (default 100) with a `total_lines` count.
