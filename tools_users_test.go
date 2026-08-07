@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -9,8 +10,51 @@ func TestUserList(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/users/", jsonHandler(t, 200, paginatedResponse([]map[string]any{{"id": 1, "username": "admin"}}, 1)))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handlePaginatedList(client, "/api/users/"), nil)
+	result := callTool(t, handleUserList(client), nil)
 	assertNotError(t, result)
+}
+
+func TestUserListStripsInheritedPermissions(t *testing.T) {
+	users := []map[string]any{{
+		"id":                    1,
+		"username":              "admin",
+		"inherited_permissions": []string{"documents.view_document", "documents.change_document"},
+	}}
+
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/users/", jsonHandler(t, 200, paginatedResponse(users, 1)))
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleUserList(client), nil)
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	user := m["results"].([]any)[0].(map[string]any)
+	if _, ok := user["inherited_permissions"]; ok {
+		t.Error("inherited_permissions should be stripped by default")
+	}
+	if user["username"] != "admin" {
+		t.Errorf("username = %v, want admin", user["username"])
+	}
+}
+
+func TestUserListIncludePermissions(t *testing.T) {
+	users := []map[string]any{{
+		"id":                    1,
+		"username":              "admin",
+		"inherited_permissions": []string{"documents.view_document"},
+	}}
+
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/users/", jsonHandler(t, 200, paginatedResponse(users, 1)))
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleUserList(client), map[string]any{"include_permissions": true})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	user := m["results"].([]any)[0].(map[string]any)
+	if _, ok := user["inherited_permissions"]; !ok {
+		t.Error("inherited_permissions should be present with include_permissions=true")
+	}
 }
 
 func TestUserGet(t *testing.T) {
@@ -123,8 +167,28 @@ func TestProfileGet(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/profile/", jsonHandler(t, 200, map[string]any{"email": "admin@example.com"}))
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleSimpleGet(client, "/api/profile/"), nil)
+	result := callTool(t, handleProfileGet(client), nil)
 	assertNotError(t, result)
+}
+
+func TestProfileGetRedactsAuthToken(t *testing.T) {
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/profile/", jsonHandler(t, 200, map[string]any{
+		"email":      "admin@example.com",
+		"auth_token": "super-secret-token",
+	}))
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleProfileGet(client), nil)
+	assertNotError(t, result)
+
+	text := resultText(t, result)
+	if strings.Contains(text, "super-secret-token") {
+		t.Error("auth_token leaked into result")
+	}
+	m := resultJSON(t, result)
+	if m["auth_token"] != "[redacted]" {
+		t.Errorf("auth_token = %v, want [redacted]", m["auth_token"])
+	}
 }
 
 func TestProfileUpdate(t *testing.T) {

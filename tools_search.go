@@ -20,10 +20,11 @@ func registerSearchTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("search_global",
-			mcp.WithDescription("Global search across all object types (documents, tags, correspondents, etc.)."),
+			mcp.WithDescription("Global search across all object types (documents, tags, correspondents, etc.). Document content is truncated to a snippet; use document_get or full_content for the complete text."),
 			mcp.WithString("query", mcp.Description("Search query"), mcp.Required()),
 			withNumber("page", mcp.Description("Page number (default: 1)")),
 			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
+			mcp.WithBoolean("full_content", mcp.Description("Include full document content in results instead of a truncated snippet (default: false)")),
 		),
 		handleSearchGlobal(client),
 	)
@@ -64,6 +65,11 @@ func handleSearchGlobal(client *Client) server.ToolHandlerFunc {
 
 		path := "/api/search/"
 		resp, err := client.Get(ctx, path, params)
-		return doRequest(resp, err, "GET", path)
+		return doRequestJSON(resp, err, "GET", path, func(v any) any {
+			if m, ok := v.(map[string]any); ok && !request.GetBool("full_content", false) {
+				truncateContentFields(m["documents"])
+			}
+			return v
+		})
 	}
 }

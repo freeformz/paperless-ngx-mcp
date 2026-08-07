@@ -39,6 +39,38 @@ func TestDocumentSelectionData(t *testing.T) {
 	assertNotError(t, result)
 }
 
+func TestDocumentSelectionDataFiltersZeroCounts(t *testing.T) {
+	rh := newRouteHandler(t)
+	rh.Handle("POST", "/api/documents/selection_data/", jsonHandler(t, 200, map[string]any{
+		"selected_correspondents": []any{
+			map[string]any{"id": 1, "document_count": 2},
+			map[string]any{"id": 2, "document_count": 0},
+			map[string]any{"id": 3, "document_count": 0},
+		},
+		"selected_tags": []any{
+			map[string]any{"id": 9, "document_count": 0},
+		},
+	}))
+
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleDocumentSelectionData(client), map[string]any{
+		"documents": "[1, 2]",
+	})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	correspondents := m["selected_correspondents"].([]any)
+	if len(correspondents) != 1 {
+		t.Errorf("selected_correspondents length = %d, want 1", len(correspondents))
+	}
+	if id := correspondents[0].(map[string]any)["id"]; id != float64(1) {
+		t.Errorf("remaining correspondent id = %v, want 1", id)
+	}
+	if tags := m["selected_tags"].([]any); len(tags) != 0 {
+		t.Errorf("selected_tags length = %d, want 0", len(tags))
+	}
+}
+
 func TestBulkEditObjects(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("POST", "/api/bulk_edit_objects/", jsonHandler(t, 200, map[string]any{"result": "ok"}))

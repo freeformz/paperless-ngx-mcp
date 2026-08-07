@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -20,7 +21,7 @@ func registerBulkTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_selection_data",
-			mcp.WithDescription("Get aggregated metadata counts for a selection of documents. Useful for previewing bulk changes."),
+			mcp.WithDescription("Get aggregated metadata counts for a selection of documents. Useful for previewing bulk changes. Objects with zero matching documents are omitted."),
 			mcp.WithString("documents", mcp.Description("JSON array of document IDs"), mcp.Required()),
 		),
 		handleDocumentSelectionData(client),
@@ -81,7 +82,34 @@ func handleDocumentSelectionData(client *Client) server.ToolHandlerFunc {
 
 		path := "/api/documents/selection_data/"
 		resp, err := client.Post(ctx, path, body)
-		return doRequest(resp, err, "POST", path)
+		// The endpoint returns every object in the instance, almost all with
+		// document_count: 0 — keep only objects present in the selection.
+		return doRequestJSON(resp, err, "POST", path, func(v any) any {
+			m, ok := v.(map[string]any)
+			if !ok {
+				return v
+			}
+			for key, val := range m {
+				if !strings.HasPrefix(key, "selected_") {
+					continue
+				}
+				arr, ok := val.([]any)
+				if !ok {
+					continue
+				}
+				filtered := make([]any, 0, len(arr))
+				for _, item := range arr {
+					if obj, ok := item.(map[string]any); ok {
+						if count, ok := obj["document_count"].(float64); ok && count == 0 {
+							continue
+						}
+					}
+					filtered = append(filtered, item)
+				}
+				m[key] = filtered
+			}
+			return v
+		})
 	}
 }
 

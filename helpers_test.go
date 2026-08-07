@@ -31,6 +31,50 @@ func TestJsonResult(t *testing.T) {
 	}
 }
 
+func TestTruncateUTF8(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		n    int
+		want string
+	}{
+		{"shorter than limit", "hello", 10, "hello"},
+		{"exact limit", "hello", 5, "hello"},
+		{"ascii cut", "hello world", 5, "hello"},
+		{"multibyte boundary", "aé", 2, "a"}, // é is 2 bytes; cutting at 2 would split it
+		{"multibyte kept", "aé", 3, "aé"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := truncateUTF8(tt.in, tt.n); got != tt.want {
+				t.Errorf("truncateUTF8(%q, %d) = %q, want %q", tt.in, tt.n, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHandlePaginatedListStripsAllIDs(t *testing.T) {
+	body := map[string]any{
+		"count":   2,
+		"all":     []int{1, 2, 3, 4, 5, 6, 7, 8},
+		"results": []map[string]any{{"id": 1}, {"id": 2}},
+	}
+
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/correspondents/", jsonHandler(t, 200, body))
+	client := testClientAndServer(t, rh)
+
+	result := callTool(t, handlePaginatedList(client, "/api/correspondents/"), nil)
+	assertNotError(t, result)
+	m := resultJSON(t, result)
+	if _, ok := m["all"]; ok {
+		t.Error("all ID array should be stripped by default")
+	}
+	if m["count"] != float64(2) {
+		t.Errorf("count = %v, want 2", m["count"])
+	}
+}
+
 func TestRawJSONResult(t *testing.T) {
 	result, err := rawJSONResult([]byte(`{"a":1}`))
 	if err != nil {

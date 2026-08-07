@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -37,6 +38,47 @@ func TestSearchGlobal(t *testing.T) {
 	client := testClientAndServer(t, rh)
 	result := callTool(t, handleSearchGlobal(client), map[string]any{"query": "test"})
 	assertNotError(t, result)
+}
+
+func TestSearchGlobalTruncatesDocumentContent(t *testing.T) {
+	longContent := strings.Repeat("y", 3000)
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/search/", jsonHandler(t, 200, map[string]any{
+		"total":     1,
+		"documents": []map[string]any{{"id": 1, "content": longContent}},
+		"tags":      []map[string]any{{"id": 7, "name": "invoices"}},
+	}))
+
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleSearchGlobal(client), map[string]any{"query": "test"})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	doc := m["documents"].([]any)[0].(map[string]any)
+	if got := len(doc["content"].(string)); got != contentSnippetLen {
+		t.Errorf("content length = %d, want %d", got, contentSnippetLen)
+	}
+	if doc["content_truncated"] != true {
+		t.Error("content_truncated should be true")
+	}
+}
+
+func TestSearchGlobalFullContent(t *testing.T) {
+	longContent := strings.Repeat("y", 3000)
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/search/", jsonHandler(t, 200, map[string]any{
+		"documents": []map[string]any{{"id": 1, "content": longContent}},
+	}))
+
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleSearchGlobal(client), map[string]any{"query": "test", "full_content": true})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	doc := m["documents"].([]any)[0].(map[string]any)
+	if got := len(doc["content"].(string)); got != 3000 {
+		t.Errorf("content length = %d, want 3000 (untruncated)", got)
+	}
 }
 
 func TestStatistics(t *testing.T) {

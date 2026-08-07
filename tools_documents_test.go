@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -25,6 +26,87 @@ func TestDocumentList(t *testing.T) {
 	m := resultJSON(t, result)
 	if m["count"] != float64(2) {
 		t.Errorf("count = %v, want 2", m["count"])
+	}
+}
+
+func TestDocumentListTruncatesContent(t *testing.T) {
+	longContent := strings.Repeat("x", 2000)
+	docs := map[string]any{
+		"count":    1,
+		"next":     nil,
+		"previous": nil,
+		"all":      []int{1, 2, 3, 4, 5},
+		"results":  []map[string]any{{"id": 1, "title": "Invoice", "content": longContent}},
+	}
+
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/documents/", jsonHandler(t, 200, docs))
+
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleDocumentList(client), nil)
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	doc := m["results"].([]any)[0].(map[string]any)
+	if got := len(doc["content"].(string)); got != contentSnippetLen {
+		t.Errorf("content length = %d, want %d", got, contentSnippetLen)
+	}
+	if doc["content_truncated"] != true {
+		t.Error("content_truncated should be true")
+	}
+	if _, ok := m["all"]; ok {
+		t.Error("all ID array should be stripped by default")
+	}
+}
+
+func TestDocumentListFullContent(t *testing.T) {
+	longContent := strings.Repeat("x", 2000)
+	docs := map[string]any{
+		"count":   1,
+		"all":     []int{1},
+		"results": []map[string]any{{"id": 1, "content": longContent}},
+	}
+
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/documents/", jsonHandler(t, 200, docs))
+
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleDocumentList(client), map[string]any{
+		"full_content":    true,
+		"include_all_ids": true,
+	})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	doc := m["results"].([]any)[0].(map[string]any)
+	if got := len(doc["content"].(string)); got != 2000 {
+		t.Errorf("content length = %d, want 2000 (untruncated)", got)
+	}
+	if _, ok := doc["content_truncated"]; ok {
+		t.Error("content_truncated should be absent with full_content=true")
+	}
+	if _, ok := m["all"]; !ok {
+		t.Error("all ID array should be present with include_all_ids=true")
+	}
+}
+
+func TestDocumentListShortContentNotMarkedTruncated(t *testing.T) {
+	docs := paginatedResponse([]map[string]any{{"id": 1, "content": "short"}}, 1)
+
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/documents/", jsonHandler(t, 200, docs))
+
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleDocumentList(client), nil)
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	doc := m["results"].([]any)[0].(map[string]any)
+	if doc["content"] != "short" {
+		t.Errorf("content = %v, want short", doc["content"])
+	}
+	if _, ok := doc["content_truncated"]; ok {
+		t.Error("content_truncated should be absent for short content")
 	}
 }
 

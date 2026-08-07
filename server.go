@@ -58,6 +58,9 @@ const serverInstructions = `Paperless-ngx MCP server — manage documents and me
 ## Pagination
 All list endpoints support page (default: 1) and page_size (default: 25) parameters. Responses include count, next, previous, and results fields.
 
+## Response Shaping
+Responses are trimmed to stay compact. Document content in document_list/search_global results is truncated to a snippet (content_truncated: true marks truncated entries) — use document_get for full text or pass full_content: true. Paginated lists omit the "all" ID array (include_all_ids: true on document_list re-includes it for bulk workflows). log_get returns only the last 100 lines by default (tail parameter). document_selection_data omits objects with zero matching documents. user_list omits inherited_permissions unless include_permissions: true.
+
 ## Document Search
 Use document_list with query for full-text search. Results include __search_hit__ with score, highlights, and rank.
 
