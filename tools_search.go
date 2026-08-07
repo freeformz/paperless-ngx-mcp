@@ -26,6 +26,7 @@ func registerSearchTools(srv *server.MCPServer, client *Client) {
 			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 			mcp.WithBoolean("full_content", mcp.Description("Include full document content in results instead of a truncated snippet (default: false)")),
 			withNumber("content_snippet_bytes", mcp.Description("Max bytes of document content per result (default: 500; 0 disables truncation)")),
+			mcp.WithBoolean("include_notes", mcp.Description("Include full note objects in document results (default: false — notes are replaced with notes_count; use document_note_list for full notes)")),
 		),
 		handleSearchGlobal(client),
 	)
@@ -72,8 +73,15 @@ func handleSearchGlobal(client *Client) server.ToolHandlerFunc {
 		path := "/api/search/"
 		resp, err := client.Get(ctx, path, params)
 		return doRequestJSON(resp, err, "GET", path, func(v any) any {
-			if m, ok := v.(map[string]any); ok && !request.GetBool("full_content", false) {
+			m, ok := v.(map[string]any)
+			if !ok {
+				return v
+			}
+			if !request.GetBool("full_content", false) {
 				truncateContentFields(m["documents"], snippetLen)
+			}
+			if !request.GetBool("include_notes", false) {
+				stripNotesFields(m["documents"])
 			}
 			return v
 		})

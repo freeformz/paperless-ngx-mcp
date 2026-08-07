@@ -169,6 +169,30 @@ func truncateContentFields(items any, limit int) {
 	}
 }
 
+// stripNotesFields replaces the "notes" array of each object in items with a
+// notes_count field, keeping list results compact. Full notes are available
+// via document_note_list or document_get.
+func stripNotesFields(items any) {
+	arr, ok := items.([]any)
+	if !ok {
+		return
+	}
+	for _, item := range arr {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		notes, ok := m["notes"].([]any)
+		if !ok {
+			continue
+		}
+		delete(m, "notes")
+		if len(notes) > 0 {
+			m["notes_count"] = len(notes)
+		}
+	}
+}
+
 // paginateArray slices a bare JSON array response into a paginated envelope.
 // Used for endpoints (e.g., /api/tasks/) that ignore pagination parameters.
 func paginateArray(v any, page, pageSize int) any {
