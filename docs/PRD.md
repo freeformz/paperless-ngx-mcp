@@ -139,10 +139,11 @@ The primary search and filtering tool. Supports the full range of Paperless-ngx 
 | full_content | boolean | no | Include full document content instead of a truncated snippet (default: false) |
 | content_snippet_bytes | integer | no | Max bytes of document content per result (default: 500; 0 disables truncation) |
 | include_all_ids | boolean | no | Include the `all` array of every matching document ID (default: false) |
+| include_notes | boolean | no | Include full note objects in results (default: false — notes are replaced with `notes_count`) |
 
 **Returns:** Paginated document list with count, next/previous page URLs, and document objects. Each document object includes API URLs for download (`/api/documents/{id}/download/`), preview (`/api/documents/{id}/preview/`), and thumbnail (`/api/documents/{id}/thumb/`) — these are unauthenticated URL paths relative to `PAPERLESS_URL` that require a token to fetch. When `query` is used, includes `__search_hit__` with score, highlights, and rank.
 
-By default each document's `content` (OCR text) is truncated to a snippet (default 500 bytes, adjustable with `content_snippet_bytes`; `content_truncated: true` marks truncated entries) and the unbounded `all` ID array is omitted — full OCR content can be huge, making default responses unusable for MCP clients. Use `document_get` for full content of a single document, `full_content` (or `content_snippet_bytes: 0`) to disable truncation, and `include_all_ids` to keep the `all` array (e.g., to feed `document_bulk_edit`).
+By default each document's `content` (OCR text) is truncated to a snippet (default 500 bytes, adjustable with `content_snippet_bytes`; `content_truncated: true` marks truncated entries) and the unbounded `all` ID array is omitted — full OCR content can be huge, making default responses unusable for MCP clients. Use `document_get` for full content of a single document, `full_content` (or `content_snippet_bytes: 0`) to disable truncation, and `include_all_ids` to keep the `all` array (e.g., to feed `document_bulk_edit`). Each document's `notes` array is likewise replaced with a `notes_count` field (omitted when zero) — notes are unbounded and can dominate response size. Pass `include_notes: true` to keep full note objects, or use `document_note_list`/`document_get` for a single document's notes.
 
 ##### document_get
 
@@ -363,7 +364,7 @@ Removes downloaded document files. With no arguments, removes all files in the i
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
 | `search_autocomplete` | GET | `/api/search/autocomplete/` | Autocomplete search terms |
-| `search_global` | GET | `/api/search/` | Global search across all object types (document content truncated to a snippet unless `full_content` is set) |
+| `search_global` | GET | `/api/search/` | Global search across all object types (document content truncated to a snippet unless `full_content` is set; notes replaced with `notes_count` unless `include_notes` is set) |
 
 #### Statistics
 
@@ -526,6 +527,7 @@ Removes downloaded document files. With no arguments, removes all files in the i
 Paperless-ngx API responses can be far too large for MCP clients (full OCR text per list result, unbounded ID arrays, thousands of unpaginated tasks). The server reshapes responses to keep tool output compact:
 
 - **Content truncation**: `document_list` and `search_global` truncate each document's `content` to a snippet (default 500 bytes, adjustable per call with `content_snippet_bytes`; `0` disables truncation), marking truncated entries with `content_truncated: true`. Opt out per-call with `full_content: true`, or use `document_get` for one document's full text.
+- **Notes stripped**: `document_list` and `search_global` replace each document's unbounded `notes` array with a `notes_count` field (omitted when zero). Opt out per-call with `include_notes: true`, or use `document_note_list`/`document_get` for one document's full notes.
 - **`all` ID array stripped**: every paginated list response omits Paperless's unbounded `all` array of matching IDs. `document_list` can re-include it with `include_all_ids: true`.
 - **Client-side task pagination**: `/api/tasks/` ignores pagination and returns every task; `task_list` paginates the array client-side.
 - **Log tailing**: `log_get` returns only the last `tail` lines (default 100) with a `total_lines` count.

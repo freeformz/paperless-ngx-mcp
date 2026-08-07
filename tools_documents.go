@@ -41,6 +41,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			mcp.WithBoolean("full_content", mcp.Description("Include full document content in results instead of a truncated snippet (default: false)")),
 			withNumber("content_snippet_bytes", mcp.Description("Max bytes of document content per result (default: 500; 0 disables truncation)")),
 			mcp.WithBoolean("include_all_ids", mcp.Description("Include the 'all' array of every matching document ID (default: false)")),
+			mcp.WithBoolean("include_notes", mcp.Description("Include full note objects in results (default: false — notes are replaced with notes_count; use document_note_list for full notes)")),
 		),
 		handleDocumentList(client),
 	)
@@ -210,6 +211,9 @@ func handleDocumentList(client *Client) server.ToolHandlerFunc {
 			}
 			if !request.GetBool("full_content", false) {
 				truncateContentFields(m["results"], snippetLen)
+			}
+			if !request.GetBool("include_notes", false) {
+				stripNotesFields(m["results"])
 			}
 			if !request.GetBool("include_all_ids", false) {
 				delete(m, "all")

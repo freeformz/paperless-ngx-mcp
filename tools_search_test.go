@@ -63,6 +63,43 @@ func TestSearchGlobalTruncatesDocumentContent(t *testing.T) {
 	}
 }
 
+func TestSearchGlobalStripsNotes(t *testing.T) {
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/search/", jsonHandler(t, 200, map[string]any{
+		"documents": []map[string]any{{"id": 1, "notes": []map[string]any{{"id": 10, "note": "verbose"}}}},
+	}))
+
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleSearchGlobal(client), map[string]any{"query": "test"})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	doc := m["documents"].([]any)[0].(map[string]any)
+	if _, ok := doc["notes"]; ok {
+		t.Error("notes should be stripped by default")
+	}
+	if doc["notes_count"] != float64(1) {
+		t.Errorf("notes_count = %v, want 1", doc["notes_count"])
+	}
+}
+
+func TestSearchGlobalIncludeNotes(t *testing.T) {
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/search/", jsonHandler(t, 200, map[string]any{
+		"documents": []map[string]any{{"id": 1, "notes": []map[string]any{{"id": 10, "note": "verbose"}}}},
+	}))
+
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleSearchGlobal(client), map[string]any{"query": "test", "include_notes": true})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	doc := m["documents"].([]any)[0].(map[string]any)
+	if notes, ok := doc["notes"].([]any); !ok || len(notes) != 1 {
+		t.Fatalf("notes = %v, want 1 full note with include_notes=true", doc["notes"])
+	}
+}
+
 func TestSearchGlobalFullContent(t *testing.T) {
 	longContent := strings.Repeat("y", 3000)
 	rh := newRouteHandler(t)

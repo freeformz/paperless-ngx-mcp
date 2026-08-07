@@ -106,6 +106,38 @@ func TestTruncateContentFieldsCustomLength(t *testing.T) {
 	}
 }
 
+func TestStripNotesFields(t *testing.T) {
+	items := []any{
+		map[string]any{"id": 1, "notes": []any{
+			map[string]any{"id": 10, "note": "first"},
+			map[string]any{"id": 11, "note": "second"},
+		}},
+		map[string]any{"id": 2, "notes": []any{}},
+		map[string]any{"id": 3},
+	}
+	stripNotesFields(items)
+
+	withNotes := items[0].(map[string]any)
+	if _, ok := withNotes["notes"]; ok {
+		t.Error("notes should be stripped")
+	}
+	if withNotes["notes_count"] != 2 {
+		t.Errorf("notes_count = %v, want 2", withNotes["notes_count"])
+	}
+
+	empty := items[1].(map[string]any)
+	if _, ok := empty["notes"]; ok {
+		t.Error("empty notes array should be stripped")
+	}
+	if _, ok := empty["notes_count"]; ok {
+		t.Error("notes_count should be absent for empty notes")
+	}
+
+	if _, ok := items[2].(map[string]any)["notes_count"]; ok {
+		t.Error("notes_count should be absent when notes field is missing")
+	}
+}
+
 func TestHandlePaginatedListStripsAllIDs(t *testing.T) {
 	body := map[string]any{
 		"count":   2,

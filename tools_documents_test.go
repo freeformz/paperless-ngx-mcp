@@ -153,6 +153,57 @@ func TestDocumentListShortContentNotMarkedTruncated(t *testing.T) {
 	}
 }
 
+func TestDocumentListStripsNotes(t *testing.T) {
+	docs := paginatedResponse([]map[string]any{
+		{"id": 1, "notes": []map[string]any{{"id": 10, "note": "Review: long note text"}}},
+		{"id": 2, "notes": []map[string]any{}},
+	}, 2)
+
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/documents/", jsonHandler(t, 200, docs))
+
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleDocumentList(client), nil)
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	doc := m["results"].([]any)[0].(map[string]any)
+	if _, ok := doc["notes"]; ok {
+		t.Error("notes should be stripped by default")
+	}
+	if doc["notes_count"] != float64(1) {
+		t.Errorf("notes_count = %v, want 1", doc["notes_count"])
+	}
+
+	noNotes := m["results"].([]any)[1].(map[string]any)
+	if _, ok := noNotes["notes_count"]; ok {
+		t.Error("notes_count should be absent for documents without notes")
+	}
+}
+
+func TestDocumentListIncludeNotes(t *testing.T) {
+	docs := paginatedResponse([]map[string]any{
+		{"id": 1, "notes": []map[string]any{{"id": 10, "note": "keep me"}}},
+	}, 1)
+
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/documents/", jsonHandler(t, 200, docs))
+
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleDocumentList(client), map[string]any{"include_notes": true})
+	assertNotError(t, result)
+
+	m := resultJSON(t, result)
+	doc := m["results"].([]any)[0].(map[string]any)
+	notes, ok := doc["notes"].([]any)
+	if !ok || len(notes) != 1 {
+		t.Fatalf("notes = %v, want 1 full note with include_notes=true", doc["notes"])
+	}
+	if _, ok := doc["notes_count"]; ok {
+		t.Error("notes_count should be absent with include_notes=true")
+	}
+}
+
 func TestDocumentListWithQuery(t *testing.T) {
 	var capturedQuery string
 	ts := newRouteHandler(t)
