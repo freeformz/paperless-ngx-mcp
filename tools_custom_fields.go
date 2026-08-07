@@ -67,7 +67,7 @@ func handleCustomFieldList(client *Client) server.ToolHandlerFunc {
 
 		path := "/api/custom_fields/"
 		resp, err := client.Get(ctx, path, params)
-		return doRequestJSON(resp, err, "GET", path, stripAllIDsTransform(request))
+		return doRequestJSON(resp, err, "GET", path, stripAllIDs)
 	}
 }
 

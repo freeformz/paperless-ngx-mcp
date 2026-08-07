@@ -81,7 +81,7 @@ func handleStoragePathList(client *Client) server.ToolHandlerFunc {
 
 		path := "/api/storage_paths/"
 		resp, err := client.Get(ctx, path, params)
-		return doRequestJSON(resp, err, "GET", path, stripAllIDsTransform(request))
+		return doRequestJSON(resp, err, "GET", path, stripAllIDs)
 	}
 }
 

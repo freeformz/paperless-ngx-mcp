@@ -70,7 +70,7 @@ func handleDocumentTypeList(client *Client) server.ToolHandlerFunc {
 
 		path := "/api/document_types/"
 		resp, err := client.Get(ctx, path, params)
-		return doRequestJSON(resp, err, "GET", path, stripAllIDsTransform(request))
+		return doRequestJSON(resp, err, "GET", path, stripAllIDs)
 	}
 }
 

@@ -78,7 +78,7 @@ func handleTagList(client *Client) server.ToolHandlerFunc {
 
 		path := "/api/tags/"
 		resp, err := client.Get(ctx, path, params)
-		return doRequestJSON(resp, err, "GET", path, stripAllIDsTransform(request))
+		return doRequestJSON(resp, err, "GET", path, stripAllIDs)
 	}
 }
 

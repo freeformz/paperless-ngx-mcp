@@ -306,16 +306,14 @@ func handleSimpleGet(client *Client, path string) server.ToolHandlerFunc {
 	}
 }
 
-// stripAllIDsTransform returns a transform that removes the unbounded "all" ID
-// array Paperless includes alongside each page of a list response, unless the
-// request sets include_all_ids.
-func stripAllIDsTransform(request mcp.CallToolRequest) func(v any) any {
-	return func(v any) any {
-		if m, ok := v.(map[string]any); ok && !request.GetBool("include_all_ids", false) {
-			delete(m, "all")
-		}
-		return v
+// stripAllIDs removes the unbounded "all" ID array Paperless includes
+// alongside each page of a list response. Only document_list offers an
+// opt-out (include_all_ids) for bulk-select workflows.
+func stripAllIDs(v any) any {
+	if m, ok := v.(map[string]any); ok {
+		delete(m, "all")
 	}
+	return v
 }
 
 // handlePaginatedList returns a handler that GETs a paginated list endpoint.
@@ -324,7 +322,7 @@ func handlePaginatedList(client *Client, path string) server.ToolHandlerFunc {
 		params := url.Values{}
 		addPaginationParams(params, request)
 		resp, err := client.Get(ctx, path, params)
-		return doRequestJSON(resp, err, "GET", path, stripAllIDsTransform(request))
+		return doRequestJSON(resp, err, "GET", path, stripAllIDs)
 	}
 }
 

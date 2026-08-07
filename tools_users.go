@@ -146,9 +146,7 @@ func handleUserList(client *Client) server.ToolHandlerFunc {
 			if !ok {
 				return v
 			}
-			if !request.GetBool("include_all_ids", false) {
-				delete(m, "all")
-			}
+			delete(m, "all")
 			if !request.GetBool("include_permissions", false) {
 				if results, ok := m["results"].([]any); ok {
 					for _, r := range results {
