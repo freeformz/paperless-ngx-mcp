@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"sync"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -24,10 +23,11 @@ const maxInlineSize = 100 * 1024 * 1024
 func registerDownloadTools(srv *server.MCPServer, client *Client, dl *Downloader) {
 	srv.AddTool(
 		mcp.NewTool("document_download",
-			mcp.WithDescription("Download one or more document files. By default saves to local temp storage and returns file paths (use cleanup_downloads to remove). Set content=true to return base64-encoded file content inline instead."),
+			mcp.WithDescription("Download one or more document files. By default saves to local storage and returns file paths (use cleanup_downloads to remove temp-dir files). Set content=true to return file content inline instead: image files come back as viewable MCP image content blocks, other types as base64 JSON."),
 			mcp.WithString("ids", mcp.Description("JSON array of document IDs to download"), mcp.Required()),
 			mcp.WithString("variant", mcp.Description("File variant: archived (default, OCR'd PDF/A), original (as uploaded), or thumbnail")),
-			mcp.WithBoolean("content", mcp.Description("Return base64-encoded file content inline instead of saving to disk")),
+			mcp.WithBoolean("content", mcp.Description("Return file content inline instead of saving to disk. Image files come back as viewable MCP image content; other types as base64 in JSON.")),
+			mcp.WithString("dest_dir", mcp.Description("Save into this subdirectory of the configured download directory (requires PAPERLESS_MCP_DOWNLOAD_DIR on the server). Files saved there are not removed by cleanup_downloads.")),
 		),
 		handleDocumentDownload(client, dl),
 	)
@@ -48,7 +48,10 @@ type downloadResult struct {
 	ContentType string `json:"content_type,omitempty"` // MIME type
 	Filename    string `json:"filename,omitempty"`     // original filename from server
 	Path        string `json:"path,omitempty"`         // local file path; populated in the default disk-download mode
+	Note        string `json:"note,omitempty"`         // set when the content is delivered as an MCP image block instead
 	Error       string `json:"error,omitempty"`
+
+	raw []byte // raw file bytes in content mode, before base64/image conversion
 }
 
 // documentMeta holds metadata extracted from an HTTP download response.
@@ -84,6 +87,18 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 		}
 
 		returnContent := request.GetBool("content", false)
+
+		destDir := request.GetString("dest_dir", "")
+		var saveDir string
+		if !returnContent {
+			var err error
+			saveDir, err = dl.ResolveDestDir(destDir)
+			if err != nil {
+				return errResult(err.Error()), nil
+			}
+		} else if destDir != "" {
+			return errResult("dest_dir cannot be combined with content=true"), nil
+		}
 
 		results := make([]downloadResult, len(ids))
 
@@ -121,12 +136,12 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 				}
 				results[job.idx] = downloadResult{
 					ID:          job.docID,
-					Content:     base64.StdEncoding.EncodeToString(data),
 					ContentType: meta.contentType,
 					Filename:    meta.filename,
+					raw:         data,
 				}
 			} else {
-				path, saveErr := saveDocument(dl, body, meta)
+				path, saveErr := saveDocument(dl, saveDir, body, meta)
 				if saveErr != nil {
 					results[job.idx] = downloadResult{ID: job.docID, Error: saveErr.Error()}
 				} else {
@@ -167,14 +182,52 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 		close(jobs)
 		wg.Wait()
 
-		resp := map[string]any{
-			"results": results,
+		if returnContent {
+			return contentModeResult(results)
 		}
-		if !returnContent {
-			resp["download_dir"] = dl.Dir()
+		resp := map[string]any{
+			"results":      results,
+			"download_dir": saveDir,
 		}
 		return jsonResult(resp)
 	}
+}
+
+// contentModeResult builds the tool result for content=true downloads. Image
+// files become MCP image content blocks the model can see; everything else is
+// base64 inside the JSON text summary.
+func contentModeResult(results []downloadResult) (*mcp.CallToolResult, error) {
+	var images []mcp.Content
+	for i := range results {
+		r := &results[i]
+		if r.raw == nil {
+			continue
+		}
+		if imageMimeTypes[r.ContentType] {
+			img, err := normalizeInlineImage(r.raw, r.ContentType)
+			if err != nil {
+				r.Error = fmt.Sprintf("prepare image: %s", err)
+				continue
+			}
+			r.Note = fmt.Sprintf("returned as image content block %d", len(images)+1)
+			// Normalization may re-encode (e.g. PNG -> JPEG); keep the JSON
+			// summary consistent with the actual bytes in the image block.
+			r.ContentType = img.mimeType
+			images = append(images, mcp.NewImageContent(img.base64Data(), img.mimeType))
+		} else {
+			r.Content = base64.StdEncoding.EncodeToString(r.raw)
+			if r.ContentType == "application/pdf" {
+				r.Note = "to view this document's pages as images, use document_page_image"
+			}
+		}
+	}
+
+	summary, err := json.MarshalIndent(map[string]any{"results": results}, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshal result: %w", err)
+	}
+	content := append([]mcp.Content{mcp.NewTextContent(string(summary))}, images...)
+	return &mcp.CallToolResult{Content: content}, nil
 }
 
 // fetchDocument performs the HTTP request and returns the response body along with
@@ -218,22 +271,18 @@ func fetchDocument(ctx context.Context, client *Client, id int, variant string) 
 	return resp.Body, meta, nil
 }
 
-// saveDocument streams document data to disk in the downloader's temp directory.
-// Creates the directory if it was removed since startup.
-func saveDocument(dl *Downloader, body io.Reader, meta *documentMeta) (string, error) {
-	if err := os.MkdirAll(dl.Dir(), 0o700); err != nil {
+// saveDocument streams document data to disk in dir, preserving the document's
+// real filename (sanitised, de-duplicated) when the server provides one.
+// Creates the directory if it was removed since startup. Only files in the
+// downloader's temp directory are tracked for cleanup_downloads.
+func saveDocument(dl *Downloader, dir string, body io.Reader, meta *documentMeta) (string, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("ensure download dir: %w", err)
 	}
 
-	filename, err := randomFileName(meta.ext)
+	f, dest, err := createUniqueFile(dir, sanitizeFilename(meta.filename), meta.ext)
 	if err != nil {
-		return "", fmt.Errorf("generate filename: %w", err)
-	}
-
-	dest := filepath.Join(dl.Dir(), filename)
-	f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
-	if err != nil {
-		return "", fmt.Errorf("create file: %w", err)
+		return "", err
 	}
 
 	if _, err := io.Copy(f, body); err != nil {
@@ -246,7 +295,9 @@ func saveDocument(dl *Downloader, body io.Reader, meta *documentMeta) (string, e
 		return "", fmt.Errorf("close file: %w", err)
 	}
 
-	dl.TrackFile(dest)
+	if dir == dl.Dir() {
+		dl.TrackFile(dest)
+	}
 	return dest, nil
 }
 

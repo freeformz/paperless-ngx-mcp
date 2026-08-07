@@ -12,9 +12,11 @@ import (
 	"sync"
 )
 
-// Downloader manages document file downloads into a per-instance temp directory.
+// Downloader manages document file downloads into a per-instance temp directory,
+// or an optional user-configured base directory.
 type Downloader struct {
-	dir         string
+	dir         string // per-instance temp dir; cleanup tools operate only here
+	baseDir     string // optional user-configured dir (PAPERLESS_MCP_DOWNLOAD_DIR); never cleaned up
 	concurrency int
 	mu          sync.Mutex // protects file tracking
 	files       map[string]struct{}
@@ -23,9 +25,27 @@ type Downloader struct {
 // NewDownloader creates a Downloader with a unique temp directory under os.TempDir().
 // The directory is created immediately. The caller should remove it when finished,
 // for example with os.RemoveAll(d.Dir()).
-func NewDownloader(concurrency int) (*Downloader, error) {
+//
+// baseDir, if non-empty, redirects downloads to that directory instead of the
+// temp dir. It is created if missing. Files saved there are not tracked and are
+// never touched by cleanup_downloads.
+func NewDownloader(concurrency int, baseDir string) (*Downloader, error) {
 	if concurrency < 1 {
 		return nil, fmt.Errorf("concurrency must be >= 1, got %d", concurrency)
+	}
+	if baseDir != "" {
+		abs, err := filepath.Abs(baseDir)
+		if err != nil {
+			return nil, fmt.Errorf("resolve download base dir: %w", err)
+		}
+		if err := os.MkdirAll(abs, 0o700); err != nil {
+			return nil, fmt.Errorf("create download base dir: %w", err)
+		}
+		resolved, err := filepath.EvalSymlinks(abs)
+		if err != nil {
+			return nil, fmt.Errorf("resolve download base dir symlinks: %w", err)
+		}
+		baseDir = resolved
 	}
 	dir, err := os.MkdirTemp("", "paperless-ngx-mcp-")
 	if err != nil {
@@ -33,14 +53,93 @@ func NewDownloader(concurrency int) (*Downloader, error) {
 	}
 	return &Downloader{
 		dir:         dir,
+		baseDir:     baseDir,
 		concurrency: concurrency,
 		files:       make(map[string]struct{}),
 	}, nil
 }
 
-// Dir returns the instance download directory path.
+// Dir returns the instance temp download directory path.
 func (d *Downloader) Dir() string {
 	return d.dir
+}
+
+// BaseDir returns the user-configured download directory, or "" if unset.
+func (d *Downloader) BaseDir() string {
+	return d.baseDir
+}
+
+// ResolveDestDir resolves the effective destination directory for a download.
+// destDir may only select the configured base directory or a subdirectory of
+// it; requesting one without a configured base directory is an error. With no
+// destDir, downloads go to the base directory if configured, else the temp dir.
+func (d *Downloader) ResolveDestDir(destDir string) (string, error) {
+	if destDir == "" {
+		if d.baseDir != "" {
+			return d.baseDir, nil
+		}
+		return d.dir, nil
+	}
+	if d.baseDir == "" {
+		return "", fmt.Errorf("dest_dir requires the PAPERLESS_MCP_DOWNLOAD_DIR environment variable to be set on the server")
+	}
+	dir := destDir
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(d.baseDir, dir)
+	}
+	dir = filepath.Clean(dir)
+	// Lexical containment check before creating anything.
+	if !dirWithin(d.baseDir, dir) {
+		return "", fmt.Errorf("dest_dir %q is outside the configured download directory", destDir)
+	}
+	// Resolve symlinks in the longest existing prefix BEFORE MkdirAll:
+	// otherwise MkdirAll would follow a symlinked path segment and create
+	// directories outside the base before any check could reject it.
+	existing := dir
+	for {
+		if _, err := os.Lstat(existing); err == nil {
+			break
+		}
+		parent := filepath.Dir(existing)
+		if parent == existing {
+			break
+		}
+		existing = parent
+	}
+	resolvedPrefix, err := filepath.EvalSymlinks(existing)
+	if err != nil {
+		return "", fmt.Errorf("resolve dest_dir: %w", err)
+	}
+	if !dirWithin(d.baseDir, resolvedPrefix) {
+		return "", fmt.Errorf("dest_dir %q resolves outside the configured download directory", destDir)
+	}
+	remainder, err := filepath.Rel(existing, dir)
+	if err != nil {
+		return "", fmt.Errorf("resolve dest_dir: %w", err)
+	}
+	dir = filepath.Join(resolvedPrefix, remainder)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("create dest_dir: %w", err)
+	}
+	// Final re-check: the fully resolved path must still be inside the base.
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return "", fmt.Errorf("resolve dest_dir: %w", err)
+	}
+	if !dirWithin(d.baseDir, resolved) {
+		return "", fmt.Errorf("dest_dir %q resolves outside the configured download directory", destDir)
+	}
+	return resolved, nil
+}
+
+// dirWithin reports whether dir is base itself or a subdirectory of base.
+// Both paths must be absolute and cleaned.
+func dirWithin(base, dir string) bool {
+	rel, err := filepath.Rel(base, dir)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // Concurrency returns the max parallel download limit.
@@ -154,6 +253,70 @@ func (d *Downloader) CleanupFiles(paths []string) ([]string, []string, error) {
 	}
 
 	return removed, failed, nil
+}
+
+// sanitizeFilename reduces a server-provided filename to a safe base name for
+// local saving. Returns "" if nothing usable remains.
+func sanitizeFilename(name string) string {
+	name = filepath.Base(strings.ReplaceAll(name, `\`, "/"))
+	var b strings.Builder
+	for _, r := range name {
+		// Control chars plus everything invalid in Windows filenames — the
+		// binary ships for win32 too, so names must be portable.
+		if r < 0x20 || r == 0x7f || strings.ContainsRune(`:<>"|?*`, r) {
+			b.WriteRune('_')
+			continue
+		}
+		b.WriteRune(r)
+	}
+	name = strings.TrimSpace(b.String())
+	if name == "" || name == "." || name == ".." {
+		return ""
+	}
+	if runes := []rune(name); len(runes) > 150 {
+		ext := filepath.Ext(name)
+		if len(ext) > 20 {
+			ext = ""
+		}
+		name = string(runes[:150-len([]rune(ext))]) + ext
+	}
+	return name
+}
+
+// createUniqueFile creates a new file named filename in dir, de-duplicating
+// collisions with a numeric suffix (name-1.ext, name-2.ext, ...). An empty
+// filename falls back to a random name. A filename without an extension gets
+// ext (derived from the response Content-Type) appended.
+func createUniqueFile(dir, filename, ext string) (*os.File, string, error) {
+	if ext != "" && !strings.HasPrefix(ext, ".") {
+		ext = "." + ext
+	}
+	if filename == "" {
+		name, err := randomFileName(ext)
+		if err != nil {
+			return nil, "", fmt.Errorf("generate filename: %w", err)
+		}
+		filename = name
+	} else if filepath.Ext(filename) == "" {
+		filename += ext
+	}
+	fext := filepath.Ext(filename)
+	base := strings.TrimSuffix(filename, fext)
+	for i := range 1000 {
+		name := filename
+		if i > 0 {
+			name = fmt.Sprintf("%s-%d%s", base, i, fext)
+		}
+		dest := filepath.Join(dir, name)
+		f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
+		if err == nil {
+			return f, dest, nil
+		}
+		if !os.IsExist(err) {
+			return nil, "", fmt.Errorf("create file: %w", err)
+		}
+	}
+	return nil, "", fmt.Errorf("too many existing files named %s in %s", filename, dir)
 }
 
 // randomHex returns n random bytes as a hex string (2n chars).

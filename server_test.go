@@ -7,7 +7,7 @@ import (
 
 func TestNewServer(t *testing.T) {
 	client := NewClient("http://localhost", "test-token")
-	dl, err := NewDownloader(5)
+	dl, err := NewDownloader(5, "")
 	if err != nil {
 		t.Fatalf("create downloader: %s", err)
 	}
