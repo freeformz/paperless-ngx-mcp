@@ -61,6 +61,23 @@ func TestSanitizeFilename(t *testing.T) {
 	}
 }
 
+func TestDownloadDirFromEnv(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"", ""},
+		{"/Users/me/Downloads", "/Users/me/Downloads"},
+		{"${user_config.download_dir}", ""},
+		{"/${user_config.download_dir}", ""},
+	}
+	for _, tt := range tests {
+		if got := downloadDirFromEnv(tt.in); got != tt.want {
+			t.Errorf("downloadDirFromEnv(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
 func TestResolveDestDirNoBase(t *testing.T) {
 	dl := testDownloaderWithBase(t, "")
 
