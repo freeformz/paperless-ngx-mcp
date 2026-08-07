@@ -255,6 +255,18 @@ func (d *Downloader) CleanupFiles(paths []string) ([]string, []string, error) {
 	return removed, failed, nil
 }
 
+// downloadDirFromEnv validates the PAPERLESS_MCP_DOWNLOAD_DIR value. MCPB
+// hosts pass template placeholders like "${user_config.download_dir}" through
+// unsubstituted when the optional setting is empty; treat any value still
+// containing a template as unset rather than trying to create it as a path.
+func downloadDirFromEnv(value string) string {
+	if strings.Contains(value, "${") {
+		fmt.Fprintf(os.Stderr, "ignoring PAPERLESS_MCP_DOWNLOAD_DIR with unsubstituted template: %q\n", value)
+		return ""
+	}
+	return value
+}
+
 // sanitizeFilename reduces a server-provided filename to a safe base name for
 // local saving. Returns "" if nothing usable remains.
 func sanitizeFilename(name string) string {

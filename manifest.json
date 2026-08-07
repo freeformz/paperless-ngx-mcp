@@ -27,7 +27,8 @@
       "type": "directory",
       "title": "Download Directory",
       "description": "Optional directory for document downloads. When set, downloaded files are saved here with their real filenames and are not auto-cleaned. When unset, a temp directory is used.",
-      "required": false
+      "required": false,
+      "default": ""
     }
   },
   "server": {
