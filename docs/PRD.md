@@ -550,7 +550,7 @@ The MCP server provides inline instructions via `WithInstructions` that guide ag
 
 ## Technical Requirements
 
-- **Language**: Go 1.26.1 (managed via mise, pinned in `.mise.toml`)
+- **Language**: Go 1.27.0 (managed via mise, pinned in `.mise.toml`)
 - **MCP SDK**: github.com/mark3labs/mcp-go
 - **CLI**: github.com/spf13/cobra
 - **HTTP**: net/http (stdlib)
@@ -579,7 +579,7 @@ paperless-ngx-mcp/
 ├── models.go               # API response/request structs
 ├── Makefile                # Build, test, release targets
 ├── Dockerfile              # Multi-stage build
-├── .mise.toml              # mise tool versions (Go 1.26.1)
+├── .mise.toml              # mise tool versions (Go 1.27.0)
 ├── .goreleaser.yaml        # GoReleaser config with MCPB bundles
 ├── manifest.json           # MCPB bundle manifest
 ├── .mcp.json               # Local development MCP config
