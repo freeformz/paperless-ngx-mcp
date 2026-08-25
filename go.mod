@@ -1,10 +1,10 @@
 module github.com/freeformz/paperless-ngx-mcp
 
-go 1.26.5
+go 1.27.0
 
 require (
 	github.com/klippa-app/go-pdfium v1.19.6
-	github.com/mark3labs/mcp-go v0.57.0
+	github.com/mark3labs/mcp-go v1.0.0-beta.1
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/image v0.44.0
 )
