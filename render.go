@@ -177,7 +177,7 @@ func parseRegion(s string) ([4]float64, error) {
 func validateRegion(r [4]float64) error {
 	if r[0] < 0 || r[1] < 0 || r[2] > 1 || r[3] > 1 || r[0] >= r[2] || r[1] >= r[3] {
 		var hint string
-		if r[2] > 1 || r[3] > 1 {
+		if r[0] > 1 || r[1] > 1 || r[2] > 1 || r[3] > 1 {
 			hint = " — values look like pixel coordinates, but the region must be fractions of page width/height, e.g. [0,0,0.5,0.5] for the top-left quarter"
 		}
 		return fmt.Errorf("invalid region [%g,%g,%g,%g]: values must satisfy 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1%s", r[0], r[1], r[2], r[3], hint)

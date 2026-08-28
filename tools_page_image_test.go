@@ -198,13 +198,15 @@ func TestDocumentPageImageInvalidRegion(t *testing.T) {
 
 func TestDocumentPageImagePixelRegionHint(t *testing.T) {
 	client := NewClient("http://unused", "unused")
-	result := callTool(t, handleDocumentPageImage(client), map[string]any{
-		"id":     1,
-		"region": "[0,0,1000,700]",
-	})
-	assertIsError(t, result)
-	if msg := resultText(t, result); !strings.Contains(msg, "pixel coordinates") {
-		t.Errorf("error %q should hint that pixel coordinates are not accepted", msg)
+	for _, region := range []string{"[0,0,1000,700]", "[2,0,0.5,0.5]"} {
+		result := callTool(t, handleDocumentPageImage(client), map[string]any{
+			"id":     1,
+			"region": region,
+		})
+		assertIsError(t, result)
+		if msg := resultText(t, result); !strings.Contains(msg, "pixel coordinates") {
+			t.Errorf("region %q: error %q should hint that pixel coordinates are not accepted", region, msg)
+		}
 	}
 }
 
