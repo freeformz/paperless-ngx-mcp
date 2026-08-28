@@ -220,7 +220,7 @@ Output follows the image size discipline: longest edge capped at 1568 px, graysc
 | id | integer | yes | Document ID |
 | page | integer | no | Page number, 1-indexed (default: 1) |
 | max_width | integer | no | Maximum rendered width in pixels, clamped to 200–2000 (default: 1500) |
-| region | string | no | Crop region as JSON `[x0,y0,x1,y1]`, values as fractions (0–1) of page width/height, not pixels. Pixel-looking values (> 1) are rejected with a hint |
+| region | string | no | Crop region as JSON array `[x0,y0,x1,y1]`, values as fractions (0–1) of page width/height, not pixels. Pixel-looking values (> 1) are rejected with a hint |
 | grayscale | boolean | no | Render grayscale (default: true; ~3x smaller with no legibility loss on scans) |
 | format | string | no | Output format: `jpeg` (default) or `png` |
 
