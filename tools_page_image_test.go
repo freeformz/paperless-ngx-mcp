@@ -185,7 +185,7 @@ func TestDocumentPageImageRegion(t *testing.T) {
 
 func TestDocumentPageImageInvalidRegion(t *testing.T) {
 	client := NewClient("http://unused", "unused")
-	for _, region := range []string{"not json", "0.25,0.25,0.75,0.75", "[0.5,0,0.2,1]", "[-0.1,0,1,1]", "[0,0,1,1.5]", "[0.1,0.2,0.3]"} {
+	for _, region := range []string{"not json", "0.25,0.25,0.75,0.75", "[0.5,0,0.2,1]", "[-0.1,0,1,1]", "[0,0,1,1.5]", "[0.1,0.2,0.3]", "[0,0,0.5,0.5,0.9]"} {
 		result := callTool(t, handleDocumentPageImage(client), map[string]any{
 			"id":     1,
 			"region": region,

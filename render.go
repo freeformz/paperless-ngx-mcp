@@ -164,9 +164,14 @@ func renderPDFPage(req renderRequest) (*renderedImage, error) {
 // parseRegion parses a crop region given as a JSON array "[x0,y0,x1,y1]".
 func parseRegion(s string) ([4]float64, error) {
 	var r [4]float64
-	if err := json.Unmarshal([]byte(s), &r); err != nil {
-		return r, fmt.Errorf("invalid region %q: expected a JSON array [x0,y0,x1,y1] with values as fractions of page width/height (0-1)", s)
+	var vals []float64
+	if err := json.Unmarshal([]byte(s), &vals); err != nil {
+		return r, fmt.Errorf("invalid region %q: %w — expected a JSON array [x0,y0,x1,y1] with values as fractions of page width/height (0-1)", s, err)
 	}
+	if len(vals) != 4 {
+		return r, fmt.Errorf("invalid region %q: expected exactly 4 values [x0,y0,x1,y1], got %d", s, len(vals))
+	}
+	copy(r[:], vals)
 	if err := validateRegion(r); err != nil {
 		return r, err
 	}
