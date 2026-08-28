@@ -85,7 +85,7 @@ Use document_bulk_edit for batch operations across multiple documents. Methods: 
 Use document_download to fetch document files. By default, files are saved to local temp storage and file paths are returned — use cleanup_downloads to remove when done. Set content=true to return file content inline instead (no cleanup needed): image files come back as viewable MCP image content, other types as base64 JSON. Specify variant: archived (default, OCR'd PDF/A), original (as uploaded), or thumbnail. If the server is configured with PAPERLESS_MCP_DOWNLOAD_DIR, disk downloads go there (optionally into a dest_dir subdirectory) with their real filenames, and cleanup_downloads leaves them alone.
 
 ## Viewing Documents
-Use document_page_image to actually see a document page — essential when OCR content is missing or garbled (handwriting, bad scans, stamps, diagrams). Render the full page first; if fine detail is illegible, call it again with region=[x0,y0,x1,y1] (fractions of page width/height, 0-1) to re-render that area at high resolution.
+Use document_page_image to actually see a document page — essential when OCR content is missing or garbled (handwriting, bad scans, stamps, diagrams). Render the full page first; if fine detail is illegible, call it again with region=[x0,y0,x1,y1] (fractions of page width/height, 0-1 — NOT pixels; e.g. [0,0,0.5,0.5] is the top-left quarter) to re-render that area at high resolution.
 
 ## API Version
 All requests use Paperless-ngx REST API version 9.`

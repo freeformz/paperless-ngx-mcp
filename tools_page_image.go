@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 
@@ -17,7 +16,7 @@ func registerPageImageTools(srv *server.MCPServer, client *Client) {
 			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 			withNumber("page", mcp.Description("Page number, 1-indexed (default: 1)")),
 			withNumber("max_width", mcp.Description(fmt.Sprintf("Maximum rendered width in pixels, %d-%d (default: 1500)", minPageImageWidth, maxPageImageWidth))),
-			mcp.WithString("region", mcp.Description("Optional crop region as JSON [x0,y0,x1,y1] with values as fractions of page width/height (0-1). The region is re-rendered at higher resolution, so use it to zoom into fine detail like handwriting or small print.")),
+			mcp.WithString("region", mcp.Description("Optional crop region as JSON ARRAY [x0,y0,x1,y1] with values as FRACTIONS of page width/height (0-1), not pixels — e.g. [0,0,0.5,0.5] is the top-left quarter. The region is re-rendered at higher resolution, so use it to zoom into fine detail like handwriting or small print.")),
 			mcp.WithBoolean("grayscale", mcp.Description("Render in grayscale, ~3x smaller with no legibility loss on scans (default: true)")),
 			mcp.WithString("format", mcp.Description("Output image format: jpeg (default) or png")),
 		),
@@ -42,11 +41,8 @@ func handleDocumentPageImage(client *Client) server.ToolHandlerFunc {
 
 		var region *[4]float64
 		if regionStr := request.GetString("region", ""); regionStr != "" {
-			var r [4]float64
-			if err := json.Unmarshal([]byte(regionStr), &r); err != nil {
-				return errResult(fmt.Sprintf("invalid region JSON: %s (expected [x0,y0,x1,y1])", err)), nil
-			}
-			if err := validateRegion(r); err != nil {
+			r, err := parseRegion(regionStr)
+			if err != nil {
 				return errResult(err.Error()), nil
 			}
 			region = &r
