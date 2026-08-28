@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/gif"
@@ -160,10 +161,26 @@ func renderPDFPage(req renderRequest) (*renderedImage, error) {
 	return out, nil
 }
 
+// parseRegion parses a crop region given as a JSON array "[x0,y0,x1,y1]".
+func parseRegion(s string) ([4]float64, error) {
+	var r [4]float64
+	if err := json.Unmarshal([]byte(s), &r); err != nil {
+		return r, fmt.Errorf("invalid region %q: expected a JSON array [x0,y0,x1,y1] with values as fractions of page width/height (0-1)", s)
+	}
+	if err := validateRegion(r); err != nil {
+		return r, err
+	}
+	return r, nil
+}
+
 // validateRegion checks a normalized [x0,y0,x1,y1] region.
 func validateRegion(r [4]float64) error {
 	if r[0] < 0 || r[1] < 0 || r[2] > 1 || r[3] > 1 || r[0] >= r[2] || r[1] >= r[3] {
-		return fmt.Errorf("invalid region [%g,%g,%g,%g]: values must satisfy 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1", r[0], r[1], r[2], r[3])
+		hint := ""
+		if r[2] > 1 || r[3] > 1 {
+			hint = " — values look like pixel coordinates, but the region must be fractions of page width/height, e.g. [0,0,0.5,0.5] for the top-left quarter"
+		}
+		return fmt.Errorf("invalid region [%g,%g,%g,%g]: values must satisfy 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1%s", r[0], r[1], r[2], r[3], hint)
 	}
 	return nil
 }
