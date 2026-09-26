@@ -1,8 +1,17 @@
-.PHONY: build test vet staticcheck lint clean release release-snapshot test-coverage
+.PHONY: build install test vet staticcheck lint clean release release-snapshot test-coverage
+
+# Version from the latest git tag, without the leading "v" (matches GoReleaser's {{.Version}}).
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//')
+# Not GOBIN: tools like mise export GOBIN, which would silently override this default.
+INSTALL_DIR ?= $(HOME)/.local/bin
 
 # Build the binary
 build:
 	go build -o paperless-ngx-mcp .
+
+# Install into $(INSTALL_DIR) (default ~/.local/bin) with the version stamped in
+install:
+	GOBIN=$(INSTALL_DIR) go install -ldflags "-X main.version=$(VERSION)" .
 
 # Run tests
 test:
