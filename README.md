@@ -61,7 +61,7 @@ go install github.com/freeformz/paperless-ngx-mcp@latest
 |----------|----------|-------------|
 | `PAPERLESS_URL` | yes | Base URL of the Paperless-ngx instance |
 | `PAPERLESS_TOKEN` | yes | API authentication token |
-| `PAPERLESS_MCP_DOWNLOAD_DIR` | no | Directory for document downloads. When set, files are saved here (or in a `dest_dir` subdirectory) with their real filenames and are left alone by `cleanup_downloads`. When unset, a per-instance temp directory is used. |
+| `PAPERLESS_MCP_DOWNLOAD_DIR` | no | Directory for document downloads. When set, files are saved here (or in a `dest_dir` subdirectory) with their real filenames and are left alone by `cleanup_downloads`. When unset, a per-instance temp directory (`paperless-ngx-mcp-*` in the system temp dir) is used and deleted with its contents when the server shuts down: on stdin EOF, SIGINT, SIGTERM or SIGHUP, or when the MCP host exits mid-call. A server killed with SIGKILL can't clean up and leaves that directory behind. |
 
 Generate an API token in Paperless-ngx under **Settings > Administration > Auth Tokens**.
 

@@ -68,9 +68,17 @@ The server is configured entirely via environment variables:
 |----------|----------|-------------|
 | `PAPERLESS_URL` | yes | Base URL of the Paperless-ngx instance (e.g., `https://paperless.example.com`) |
 | `PAPERLESS_TOKEN` | yes | API authentication token |
-| `PAPERLESS_MCP_DOWNLOAD_DIR` | no | Directory for `document_download` disk saves. When set, downloads land here (or in a `dest_dir` subdirectory of it) with their real filenames, are never touched by `cleanup_downloads`, and remain after the server exits. When unset, downloads use a per-instance temp directory. |
+| `PAPERLESS_MCP_DOWNLOAD_DIR` | no | Directory for `document_download` disk saves. When set, downloads land here (or in a `dest_dir` subdirectory of it) with their real filenames, are never touched by `cleanup_downloads`, and remain after the server exits. When unset, downloads use a per-instance temp directory (`paperless-ngx-mcp-*` in the system temp dir) that is deleted with its contents on shutdown; see [Shutdown](#shutdown). |
 
 The server always uses Paperless-ngx API version 9. These are passed via the MCP server configuration (`.mcp.json` or MCPB manifest) as environment variables, which is compatible with CoWork and MCPB bundle format.
+
+### Shutdown
+
+The server shuts down when the MCP host closes stdin or sends SIGINT, SIGTERM or SIGHUP (on Windows: Ctrl-C/Ctrl-Break, or console close, logoff or system shutdown). In-flight tool calls are cancelled, then the per-instance temp download directory is deleted with everything in it before the process exits. Signal handling is installed before that directory is created, so a signal during startup can't leak it.
+
+A host that exits while a tool call is in flight closes the server's stdout as well as its stdin. SIGPIPE is ignored, so the failed write of the cancelled call's response is logged to stderr instead of killing the process, and the temp directory is still deleted.
+
+SIGKILL can't be caught. A server killed that way (`kill -9`, the OOM killer, or a host that escalates to SIGKILL when shutdown outlasts its grace period) leaves its temp directory behind, and the server doesn't remove it later. Delete leftover `paperless-ngx-mcp-*` directories from the system temp dir while no server is running. Files in `PAPERLESS_MCP_DOWNLOAD_DIR` are never removed.
 
 ### HTTP Client
 
@@ -722,6 +730,7 @@ Mirrors tasks-mcp release:
 - **Unit tests**: Mock HTTP responses to test tool handlers independently
 - **Integration tests**: Optional, require a running Paperless-ngx instance (skipped in CI by default)
 - **Client tests**: Test HTTP client request construction, header injection, error handling
+- **Shutdown tests**: `shutdown_test.go` (Unix only) runs the test binary as the `mcp` command in a subprocess, since its `TestMain` calls `main()` when `PAPERLESS_MCP_TEST_RUN_MAIN=1`, and checks that SIGINT, SIGTERM, SIGHUP and a host disconnect mid-call all remove the temp download directory
 - **Coverage threshold**: 70% minimum (enforced in CI)
 
 Test helpers should provide:
