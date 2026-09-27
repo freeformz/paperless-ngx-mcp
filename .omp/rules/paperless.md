@@ -1,3 +1,8 @@
+---
+description: How to use the Paperless-ngx MCP tools (search, update, bulk, pagination, notes)
+alwaysApply: true
+---
+
 ## Paperless-ngx MCP Tools
 
 You have access to a Paperless-ngx MCP server for managing documents and metadata.

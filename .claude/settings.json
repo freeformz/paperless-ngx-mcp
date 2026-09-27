@@ -1,5 +1,0 @@
-{
-  "enabledPlugins": {
-    "pyright-lsp@claude-plugins-official": true
-  }
-}

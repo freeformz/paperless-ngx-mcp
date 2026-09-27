@@ -550,7 +550,7 @@ The MCP server provides inline instructions via `WithInstructions` that guide ag
 
 ## Technical Requirements
 
-- **Language**: Go 1.27.0 (managed via mise, pinned in `.mise.toml`)
+- **Language**: Go 1.27.1 (managed via mise, pinned in `.mise.toml`)
 - **MCP SDK**: github.com/mark3labs/mcp-go
 - **CLI**: github.com/spf13/cobra
 - **HTTP**: net/http (stdlib)
@@ -579,18 +579,18 @@ paperless-ngx-mcp/
 ├── models.go               # API response/request structs
 ├── Makefile                # Build, test, release targets
 ├── Dockerfile              # Multi-stage build
-├── .mise.toml              # mise tool versions (Go 1.27.0)
+├── .mise.toml              # mise tool versions (Go 1.27.1)
 ├── .goreleaser.yaml        # GoReleaser config with MCPB bundles
 ├── manifest.json           # MCPB bundle manifest
-├── .mcp.json               # Local development MCP config
 ├── go.mod / go.sum         # Dependencies
 ├── .github/workflows/
 │   ├── ci.yml              # CI: vet, staticcheck, test, coverage, build
 │   └── release.yml         # Release: GoReleaser + MCPB bundles + Docker
-├── .claude/
-│   ├── settings.json       # Project settings
-│   └── rules/paperless.md  # Rules for how Claude uses the MCP tools
-├── CLAUDE.md               # Developer guide
+├── .omp/
+│   ├── AGENTS.md           # Developer guide (omp agent context)
+│   ├── mcp.json            # Local development MCP config (gopls)
+│   ├── rules/              # Agent rules (Paperless MCP tool usage, docs sync)
+│   └── skills/test-mcp/    # Live-instance smoke test skill
 ├── README.md               # User documentation
 └── docs/PRD.md             # This document
 ```

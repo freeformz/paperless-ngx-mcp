@@ -26,7 +26,11 @@ MCP server for Paperless-ngx document management, built in Go.
 - `tools_workflows.go` — Workflow, trigger, and action tool handlers
 - `tools_system.go` — System status, config, tasks, logs, and trash tool handlers
 - `test_helpers_test.go` — Shared test infrastructure (mock server, helpers)
-- `.claude/rules/paperless.md` — Rules for how Claude uses the Paperless-ngx MCP tools
+- `.omp/AGENTS.md` — This developer guide (omp agent context)
+- `.omp/mcp.json` — Local development MCP servers (gopls)
+- `.omp/rules/paperless.md` — Rules for how the agent uses the Paperless-ngx MCP tools
+- `.omp/rules/docs-update.md` — Rule to keep `README.md` and `docs/PRD.md` in sync
+- `.omp/skills/test-mcp/SKILL.md` — `/skill:test-mcp <url> <token>` live-instance smoke test
 - `.goreleaser.yaml` — GoReleaser config (builds, archives, MCPB bundles)
 - `Makefile` — Build, test, and release tasks
 - `.github/workflows/` — CI (test on push/PR) and Release (on semver tags)
