@@ -1,5 +1,6 @@
 ---
-paths:
+description: Keep README.md and docs/PRD.md in sync when changing CLI args, commands, configuration, MCP tools, or user-facing behavior
+globs:
   - "**/*.go"
   - "go.mod"
   - "Makefile"

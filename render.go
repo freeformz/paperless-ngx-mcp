@@ -145,7 +145,7 @@ func renderPDFPage(req renderRequest) (*renderedImage, error) {
 	}
 	defer renderRes.Cleanup()
 
-	var img image.Image = renderRes.Result.Image
+	img := renderRes.Result.RenderedImage
 	if req.region != nil {
 		img, err = cropToRegion(img, *req.region)
 		if err != nil {

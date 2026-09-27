@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "gopls": {
-      "type": "stdio",
-      "command": "gopls",
-      "args": ["mcp"]
-    }
-  }
-}
