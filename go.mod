@@ -1,6 +1,6 @@
 module github.com/freeformz/paperless-ngx-mcp
 
-go 1.27.0
+go 1.27.1
 
 require (
 	github.com/klippa-app/go-pdfium v1.19.6
