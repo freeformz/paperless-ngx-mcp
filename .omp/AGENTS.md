@@ -26,6 +26,7 @@ MCP server for Paperless-ngx document management, built in Go.
 - `tools_workflows.go` — Workflow, trigger, and action tool handlers
 - `tools_system.go` — System status, config, tasks, logs, and trash tool handlers
 - `test_helpers_test.go` — Shared test infrastructure (mock server, helpers)
+- `shutdown_test.go` — Subprocess shutdown tests (Unix only); its `TestMain` runs `main()` when `PAPERLESS_MCP_TEST_RUN_MAIN=1`
 - `.omp/AGENTS.md` — This developer guide (omp agent context)
 - `.omp/mcp.json` — Local development MCP servers (gopls)
 - `.omp/rules/paperless.md` — Rules for how the agent uses the Paperless-ngx MCP tools

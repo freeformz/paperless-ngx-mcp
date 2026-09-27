@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
@@ -41,6 +43,16 @@ func mcpCmd() *cobra.Command {
 				return fmt.Errorf("PAPERLESS_TOKEN environment variable is required")
 			}
 
+			// Install signal handling before the temp download dir exists, so the
+			// deferred removal below runs on every exit path the process can catch.
+			// Go's default action for SIGINT, SIGTERM and SIGHUP exits without
+			// running defers. So does SIGPIPE, raised when a response is written to
+			// stdout after the host has gone; ignored, that write fails with EPIPE
+			// instead. SIGHUP and SIGPIPE are never raised on Windows.
+			signal.Ignore(syscall.SIGPIPE)
+			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+			defer stop()
+
 			dl, err := NewDownloader(downloadConcurrency, downloadDirFromEnv(os.Getenv("PAPERLESS_MCP_DOWNLOAD_DIR")))
 			if err != nil {
 				return fmt.Errorf("create downloader: %w", err)
@@ -49,7 +61,7 @@ func mcpCmd() *cobra.Command {
 
 			client := NewClient(baseURL, token)
 			srv := NewServer(client, dl)
-			return server.ServeStdio(srv)
+			return server.NewStdioServer(srv).Listen(ctx, os.Stdin, os.Stdout)
 		},
 	}
 
