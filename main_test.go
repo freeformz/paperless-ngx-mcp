@@ -22,6 +22,7 @@ func TestMCPPrintsUsageOnlyForFlagErrors(t *testing.T) {
 		{"missing PAPERLESS_URL", []string{"mcp"}, "", "Error: PAPERLESS_URL environment variable is required\n", false},
 		{"missing PAPERLESS_TOKEN", []string{"mcp"}, "http://127.0.0.1:9", "Error: PAPERLESS_TOKEN environment variable is required\n", false},
 		{"unknown flag", []string{"mcp", "--nope"}, "", "Error: unknown flag: --nope\n", true},
+		{"flag value below 1", []string{"mcp", "--download-concurrency=0"}, "", "Error: invalid argument \"0\" for \"--download-concurrency\" flag: must be at least 1\n", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("PAPERLESS_URL", tc.url)

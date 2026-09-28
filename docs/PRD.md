@@ -88,8 +88,8 @@ SIGKILL can't be caught. A server killed that way (`kill -9`, the OOM killer, or
 
 | Status | When |
 |--------|------|
-| 0 | Graceful shutdown: stdin EOF, or a first SIGINT, SIGTERM or SIGHUP. A requested shutdown isn't an error, so a signal doesn't produce an error message or usage. |
-| 1 | An error, printed to stderr as `Error: <message>`, such as an unset `PAPERLESS_URL` or `PAPERLESS_TOKEN`, or a temp download directory that can't be created. Only flag errors (an unknown flag or a bad flag value) also print usage; the `mcp` command sets `SilenceUsage` once its flags are parsed. |
+| 0 | Graceful shutdown: stdin EOF, or a first SIGINT, SIGTERM or SIGHUP. A requested shutdown isn't an error, so it doesn't print an error or usage. A response that can't be written because the host has gone is still logged (see [Shutdown](#shutdown)). |
+| 1 | An error, printed to stderr as `Error: <message>`, such as an unset `PAPERLESS_URL` or `PAPERLESS_TOKEN`, or a temp download directory that can't be created. Only flag errors (an unknown flag, a value that doesn't parse, or a `--download-concurrency` below 1) also print usage: the `mcp` command checks its flags, then sets `SilenceUsage`. |
 | 128 + signal number | A second SIGINT, SIGTERM or SIGHUP ended a stalled shutdown. The signal gets its default action, so it kills the process, and shells and Docker report 130, 143 or 129. The temp download directory is left behind. |
 
 ### HTTP Client

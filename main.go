@@ -38,8 +38,11 @@ func mcpCmd() *cobra.Command {
 		Use:   "mcp",
 		Short: "Start MCP server (stdio)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Flags are parsed by now. Usage helps with a flag error, not with the
-			// errors from here on, whose messages say what went wrong.
+			if downloadConcurrency < 1 {
+				return fmt.Errorf(`invalid argument "%d" for "--download-concurrency" flag: must be at least 1`, downloadConcurrency)
+			}
+			// Flags are parsed and checked by now. Usage helps with a flag error,
+			// not with the errors from here on, whose messages say what went wrong.
 			cmd.SilenceUsage = true
 
 			baseURL := os.Getenv("PAPERLESS_URL")

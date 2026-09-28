@@ -69,14 +69,14 @@ Generate an API token in Paperless-ngx under **Settings > Administration > Auth 
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--download-concurrency` | 5 | Max parallel document downloads |
+| `--download-concurrency` | 5 | Max parallel document downloads (at least 1) |
 
 ### Exit Status
 
 | Status | When |
 |--------|------|
-| 0 | Graceful shutdown: the MCP host closed stdin, or sent a first SIGINT, SIGTERM or SIGHUP. Nothing is reported as an error. |
-| 1 | An error, printed to stderr as `Error: <message>`, such as an unset `PAPERLESS_URL` or `PAPERLESS_TOKEN`. Only flag errors, such as an unknown flag, also print usage. |
+| 0 | Graceful shutdown: the MCP host closed stdin, or sent a first SIGINT, SIGTERM or SIGHUP. The shutdown doesn't print an error or usage, though a response that can't be written because the host has gone is still logged to stderr. |
+| 1 | An error, printed to stderr as `Error: <message>`, such as an unset `PAPERLESS_URL` or `PAPERLESS_TOKEN`. Only flag errors, such as an unknown flag or a `--download-concurrency` below 1, also print usage. |
 | 128 + signal number | A second signal ended a stalled shutdown: shells and Docker report 130 for SIGINT, 143 for SIGTERM and 129 for SIGHUP. The temp download directory is left behind. |
 
 ## Tools
