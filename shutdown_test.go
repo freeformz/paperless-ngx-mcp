@@ -211,7 +211,7 @@ func (p *mcpProcess) tempDownloadDirs(t *testing.T) []string {
 	return dirs
 }
 
-func TestMCPRemovesTempDirOnSignal(t *testing.T) {
+func TestMCPShutsDownGracefullyOnSignal(t *testing.T) {
 	for _, sig := range []syscall.Signal{syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM} {
 		t.Run(sig.String(), func(t *testing.T) {
 			// Nothing in this test reaches the Paperless API.
@@ -225,8 +225,11 @@ func TestMCPRemovesTempDirOnSignal(t *testing.T) {
 			}
 			state := p.wait(t)
 
-			if !state.Exited() {
-				t.Errorf("mcp was killed (%s) instead of shutting down\nstderr:\n%s", state, p.stderr.String())
+			// A requested shutdown succeeds, and there is nothing to report.
+			if !state.Success() {
+				t.Errorf("mcp ended with %s after %s, want exit status 0\nstderr:\n%s", state, sig, p.stderr.String())
+			} else if p.stderr.Len() != 0 {
+				t.Errorf("mcp wrote to stderr after %s, want nothing:\n%s", sig, p.stderr.String())
 			}
 			if dirs := p.tempDownloadDirs(t); len(dirs) != 0 {
 				t.Errorf("temp download dir left behind after %s: %v", sig, dirs)
@@ -271,8 +274,8 @@ func TestMCPRemovesTempDirWhenHostExitsMidCall(t *testing.T) {
 	p.stdin.Close()
 	state := p.wait(t)
 
-	if !state.Exited() {
-		t.Errorf("mcp was killed (%s) instead of shutting down\nstderr:\n%s", state, p.stderr.String())
+	if !state.Success() {
+		t.Errorf("mcp ended with %s, want exit status 0\nstderr:\n%s", state, p.stderr.String())
 	}
 	if dirs := p.tempDownloadDirs(t); len(dirs) != 0 {
 		t.Errorf("temp download dir left behind: %v", dirs)
@@ -361,8 +364,8 @@ func TestMCPExitsPromptlyDuringRender(t *testing.T) {
 			if elapsed := time.Since(start); elapsed > 2*time.Second {
 				t.Errorf("mcp exited %s after shutdown started, want under 2s", elapsed)
 			}
-			if !state.Exited() {
-				t.Errorf("mcp was killed (%s) instead of shutting down\nstderr:\n%s", state, p.stderr.String())
+			if !state.Success() {
+				t.Errorf("mcp ended with %s, want exit status 0\nstderr:\n%s", state, p.stderr.String())
 			}
 			if dirs := p.tempDownloadDirs(t); len(dirs) != 0 {
 				t.Errorf("temp download dir left behind: %v", dirs)

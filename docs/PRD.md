@@ -74,7 +74,7 @@ The server always uses Paperless-ngx API version 9. These are passed via the MCP
 
 ### Shutdown
 
-The server shuts down when the MCP host closes stdin or sends SIGINT, SIGTERM or SIGHUP (on Windows: Ctrl-C/Ctrl-Break, or console close, logoff or system shutdown). In-flight tool calls are cancelled, then the per-instance temp download directory is deleted with everything in it before the process exits. Signal handling is installed before that directory is created, so a signal during startup can't leak it.
+The server shuts down when the MCP host closes stdin or sends SIGINT, SIGTERM or SIGHUP (on Windows: Ctrl-C/Ctrl-Break, or console close, logoff or system shutdown). In-flight tool calls are cancelled, then the per-instance temp download directory is deleted with everything in it before the process exits with status 0 (see [Exit Status](#exit-status)). Signal handling is installed before that directory is created, so a signal during startup can't leak it.
 
 Shutdown doesn't wait for work that can't be interrupted: PDFium renders and image decoding or encoding (`document_page_image`, and image normalization in `document_download` with `content=true`). A cancelled call returns at once; the abandoned work keeps running in the background with its result discarded, or dies with the process at shutdown. PDFium could be interrupted mid-render only by enabling wazero's `WithCloseOnContextDone`, which makes every render about 5x slower. The same applies when a client cancels a single call with `notifications/cancelled`; an abandoned render then keeps the single PDFium renderer busy until it finishes, and the next render waits for it.
 
@@ -83,6 +83,14 @@ A host that exits while a tool call is in flight closes the server's stdout as w
 Only the first signal starts a graceful shutdown; later signals get the default action. If shutdown stalls, for example because a response write blocks when the host stops reading stdout without closing it, a second SIGINT, SIGTERM or SIGHUP ends the process immediately without deleting the temp directory.
 
 SIGKILL can't be caught. A server killed that way (`kill -9`, the OOM killer, or a host that escalates to SIGKILL when shutdown outlasts its grace period), or by a second signal during shutdown, leaves its temp directory behind, and the server doesn't remove it later. Delete leftover `paperless-ngx-mcp-*` directories from the system temp dir while no server is running. Files in `PAPERLESS_MCP_DOWNLOAD_DIR` are never removed.
+
+### Exit Status
+
+| Status | When |
+|--------|------|
+| 0 | Graceful shutdown: stdin EOF, or a first SIGINT, SIGTERM or SIGHUP. A requested shutdown isn't an error, so it doesn't print an error or usage. A response that can't be written because the host has gone is still logged (see [Shutdown](#shutdown)). |
+| 1 | An error, printed to stderr as `Error: <message>`, such as an unset `PAPERLESS_URL` or `PAPERLESS_TOKEN`, or a temp download directory that can't be created. Only flag errors (an unknown flag, a value that doesn't parse, or a `--download-concurrency` below 1) also print usage: the `mcp` command checks its flags, then sets `SilenceUsage`. |
+| 128 + signal number | A second SIGINT, SIGTERM or SIGHUP ended a stalled shutdown. The signal gets its default action, so it kills the process, and shells and Docker report 130, 143 or 129. The temp download directory is left behind. |
 
 ### HTTP Client
 
@@ -736,7 +744,8 @@ Mirrors tasks-mcp release:
 - **Unit tests**: Mock HTTP responses to test tool handlers independently
 - **Integration tests**: Optional, require a running Paperless-ngx instance (skipped in CI by default)
 - **Client tests**: Test HTTP client request construction, header injection, error handling
-- **Shutdown tests**: `shutdown_test.go` (Unix only) runs the test binary as the `mcp` command in a subprocess, since its `TestMain` calls `main()` when `PAPERLESS_MCP_TEST_RUN_MAIN=1`, and checks that SIGINT, SIGTERM, SIGHUP and a host disconnect mid-call all remove the temp download directory, that stdin EOF or SIGTERM during a slow render still exits promptly, and that a second signal ends a stalled shutdown
+- **Shutdown tests**: `shutdown_test.go` (Unix only) runs the test binary as the `mcp` command in a subprocess, since its `TestMain` calls `main()` when `PAPERLESS_MCP_TEST_RUN_MAIN=1`, and checks that SIGINT, SIGTERM and SIGHUP each exit 0 with nothing on stderr, that they and a host disconnect mid-call all remove the temp download directory, that stdin EOF or SIGTERM during a slow render still exits 0 promptly, and that a second signal ends a stalled shutdown
+- **CLI tests**: `main_test.go` checks that flag errors print usage and other errors, such as an unset `PAPERLESS_URL` or `PAPERLESS_TOKEN`, don't
 - **Coverage threshold**: 70% minimum (enforced in CI)
 
 Test helpers should provide:
