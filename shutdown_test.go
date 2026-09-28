@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -39,6 +40,7 @@ func TestMain(m *testing.M) {
 // redirected to tmpDir.
 type mcpProcess struct {
 	cmd    *exec.Cmd
+	exited chan struct{} // closed once the process has exited and been reaped
 	tmpDir string
 	stdin  *os.File             // our end of the process's stdin
 	stdout *os.File             // our end of the process's stdout
@@ -78,11 +80,13 @@ func startMCP(t *testing.T, paperlessURL string) *mcpProcess {
 	}
 	stdinR.Close()
 	stdoutW.Close()
+	p.exited = make(chan struct{})
+	go func() {
+		p.cmd.Wait()
+		close(p.exited)
+	}()
 	t.Cleanup(func() {
-		if p.cmd.ProcessState == nil {
-			p.cmd.Process.Kill()
-			p.cmd.Wait()
-		}
+		p.kill()
 		p.stdin.Close()
 		p.stdout.Close()
 	})
@@ -157,30 +161,43 @@ func (p *mcpProcess) awaitResponse(t *testing.T, id int) {
 // wait waits for the process to exit and returns how it ended.
 func (p *mcpProcess) wait(t *testing.T) *os.ProcessState {
 	t.Helper()
-	done := make(chan struct{})
-	go func() {
-		p.cmd.Wait()
-		close(done)
-	}()
 	select {
-	case <-done:
+	case <-p.exited:
 	case <-time.After(processTimeout):
-		p.cmd.Process.Kill()
-		<-done
+		p.kill()
 		t.Fatalf("mcp did not exit within %s\nstderr:\n%s", processTimeout, p.stderr.String())
 	}
 	return p.cmd.ProcessState
+}
+
+// kill kills the process if it is still running and waits until it has exited.
+func (p *mcpProcess) kill() {
+	select {
+	case <-p.exited:
+	default:
+		p.cmd.Process.Kill()
+		<-p.exited
+	}
 }
 
 // fatalf kills the process if it is still running and fails the test with its
 // stderr attached.
 func (p *mcpProcess) fatalf(t *testing.T, format string, args ...any) {
 	t.Helper()
-	if p.cmd.ProcessState == nil {
-		p.cmd.Process.Kill()
-		p.cmd.Wait()
-	}
+	p.kill()
 	t.Fatalf(format+"\nstderr:\n%s", append(args, p.stderr.String())...)
+}
+
+// stopReading leaves the process's stdout unread without closing it, like a
+// host that stops reading: once the pipe buffer is full, the process's writes
+// block.
+func (p *mcpProcess) stopReading(t *testing.T) {
+	t.Helper()
+	if err := p.stdout.SetReadDeadline(time.Now()); err != nil {
+		p.fatalf(t, "stop reading mcp stdout: %s", err)
+	}
+	for range p.msgs { // the reader goroutine closes msgs when it gives up
+	}
 }
 
 // tempDownloadDirs lists the per-instance temp download dirs the process has
@@ -259,5 +276,133 @@ func TestMCPRemovesTempDirWhenHostExitsMidCall(t *testing.T) {
 	}
 	if dirs := p.tempDownloadDirs(t); len(dirs) != 0 {
 		t.Errorf("temp download dir left behind: %v", dirs)
+	}
+}
+
+// heavyPDF builds a one-page PDF whose content stream is rects filled
+// rectangles, which PDFium takes about a second per 200,000 to render on an
+// M-series Mac and can't be interrupted while doing so.
+func heavyPDF(rects int) []byte {
+	var content bytes.Buffer
+	for i := range rects {
+		fmt.Fprintf(&content, "0.%03d g %d %d %d %d re f\n", i%1000, i*37%612, i*53%792, 1+i%40, 1+i*7%40)
+	}
+	objs := []string{
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << >> >>",
+		fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", content.Len(), content.Bytes()),
+	}
+	var pdf bytes.Buffer
+	pdf.WriteString("%PDF-1.4\n")
+	offsets := make([]int, len(objs))
+	for i, obj := range objs {
+		offsets[i] = pdf.Len()
+		fmt.Fprintf(&pdf, "%d 0 obj\n%s\nendobj\n", i+1, obj)
+	}
+	xref := pdf.Len()
+	fmt.Fprintf(&pdf, "xref\n0 %d\n0000000000 65535 f \n", len(objs)+1)
+	for _, off := range offsets {
+		fmt.Fprintf(&pdf, "%010d 00000 n \n", off)
+	}
+	fmt.Fprintf(&pdf, "trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(objs)+1, xref)
+	return pdf.Bytes()
+}
+
+// servedOnce serves body as a PDF download and closes the returned channel once
+// the first response has been written.
+func servedOnce(t *testing.T, body []byte) (*httptest.Server, <-chan struct{}) {
+	t.Helper()
+	served := make(chan struct{})
+	notifyServed := sync.OnceFunc(func() { close(served) })
+	paperless := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Write(body)
+		notifyServed()
+	}))
+	t.Cleanup(paperless.Close)
+	return paperless, served
+}
+
+func TestMCPExitsPromptlyDuringRender(t *testing.T) {
+	pdf := heavyPDF(400_000)
+	for _, tc := range []struct {
+		name     string
+		shutdown func(p *mcpProcess) error
+	}{
+		{"stdin EOF", func(p *mcpProcess) error { return p.stdin.Close() }},
+		{"SIGTERM", func(p *mcpProcess) error { return p.cmd.Process.Signal(syscall.SIGTERM) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			paperless, served := servedOnce(t, pdf)
+			p := startMCP(t, paperless.URL)
+			p.request(t, "tools/call", map[string]any{
+				"name":      "document_page_image",
+				"arguments": map[string]any{"id": 3, "max_width": 2000},
+			})
+			select {
+			case <-served:
+			case <-time.After(processTimeout):
+				p.fatalf(t, "document_page_image never fetched the document")
+			}
+			// Let the handler finish reading the document, so shutdown starts
+			// while PDFium initializes or renders, neither of which can be
+			// interrupted, rather than during the fetch, which always could be.
+			time.Sleep(200 * time.Millisecond)
+
+			start := time.Now()
+			if err := tc.shutdown(p); err != nil {
+				p.fatalf(t, "start shutdown: %s", err)
+			}
+			state := p.wait(t)
+
+			// MCP hosts SIGKILL a server that is still running 2s after they
+			// close its stdin. Waiting for the render would take seconds.
+			if elapsed := time.Since(start); elapsed > 2*time.Second {
+				t.Errorf("mcp exited %s after shutdown started, want under 2s", elapsed)
+			}
+			if !state.Exited() {
+				t.Errorf("mcp was killed (%s) instead of shutting down\nstderr:\n%s", state, p.stderr.String())
+			}
+			if dirs := p.tempDownloadDirs(t); len(dirs) != 0 {
+				t.Errorf("temp download dir left behind: %v", dirs)
+			}
+		})
+	}
+}
+
+func TestMCPSecondSignalEndsStalledShutdown(t *testing.T) {
+	paperless, served := servedOnce(t, bytes.Repeat([]byte("x"), 1<<20))
+	p := startMCP(t, paperless.URL)
+	// The host stops reading, so writing the ~1.4 MB response below blocks once
+	// the pipe is full, and shutdown can't finish.
+	p.stopReading(t)
+	p.request(t, "tools/call", map[string]any{
+		"name":      "document_download",
+		"arguments": map[string]any{"ids": "[1]", "content": true},
+	})
+	select {
+	case <-served:
+	case <-time.After(processTimeout):
+		p.fatalf(t, "document_download never fetched the document")
+	}
+	// Let the handler finish reading the document and start writing the response.
+	time.Sleep(200 * time.Millisecond)
+
+	if err := p.cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		p.fatalf(t, "send SIGTERM: %s", err)
+	}
+	select {
+	case <-p.exited:
+		t.Fatalf("mcp exited (%s) on the first signal; this test needs a stalled shutdown\nstderr:\n%s", p.cmd.ProcessState, p.stderr.String())
+	case <-time.After(500 * time.Millisecond):
+	}
+
+	if err := p.cmd.Process.Signal(syscall.SIGINT); err != nil {
+		p.fatalf(t, "send SIGINT: %s", err)
+	}
+	state := p.wait(t)
+	if status, ok := state.Sys().(syscall.WaitStatus); !ok || !status.Signaled() || status.Signal() != syscall.SIGINT {
+		t.Errorf("mcp ended with %s after a second signal, want killed by SIGINT", state)
 	}
 }

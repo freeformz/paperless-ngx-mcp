@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -52,6 +53,11 @@ func mcpCmd() *cobra.Command {
 			signal.Ignore(syscall.SIGPIPE)
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 			defer stop()
+			// Until stop runs, NotifyContext swallows every signal after the
+			// first. Restoring the default action once shutdown starts lets a
+			// second signal end a stalled shutdown immediately, at the cost of
+			// skipping the cleanup below.
+			context.AfterFunc(ctx, stop)
 
 			dl, err := NewDownloader(downloadConcurrency, downloadDirFromEnv(os.Getenv("PAPERLESS_MCP_DOWNLOAD_DIR")))
 			if err != nil {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -40,7 +41,8 @@ const (
 	// crops, so a tiny region cannot request an unbounded rasterization.
 	maxRenderWidth = 6000
 
-	// pdfiumInstanceTimeout is how long to wait for a pdfium worker.
+	// pdfiumInstanceTimeout is how long to wait for a pdfium worker. A
+	// cancelled request stops waiting sooner.
 	pdfiumInstanceTimeout = 30 * time.Second
 )
 
@@ -79,26 +81,81 @@ func (r *renderedImage) base64Data() string {
 	return base64.StdEncoding.EncodeToString(r.data)
 }
 
+// abandonOnDone runs fn on its own goroutine and returns its result, or ctx's
+// error as soon as ctx is done. Image decoding and encoding can't be
+// interrupted, and neither can PDFium calls without wazero's
+// WithCloseOnContextDone, which makes every render about 5x slower. So a
+// cancelled request (shutdown, or the client's notifications/cancelled) stops
+// waiting instead: fn keeps running in the background and its result is
+// discarded. fn should check ctx between its steps so abandoned work stops at
+// the next one. A panic in fn is re-raised in the caller, where mcp-go
+// recovers it as it would a handler panic.
+func abandonOnDone[T any](ctx context.Context, fn func() (T, error)) (T, error) {
+	var zero T
+	if err := ctx.Err(); err != nil {
+		return zero, err
+	}
+	type result struct {
+		v        T
+		err      error
+		panicked bool
+		panicVal any
+	}
+	done := make(chan result, 1)
+	go func() {
+		defer func() {
+			if p := recover(); p != nil {
+				done <- result{panicked: true, panicVal: p}
+			}
+		}()
+		v, err := fn()
+		done <- result{v: v, err: err}
+	}()
+	select {
+	case r := <-done:
+		if r.panicked {
+			panic(r.panicVal)
+		}
+		return r.v, r.err
+	case <-ctx.Done():
+		return zero, ctx.Err()
+	}
+}
+
 // renderPDFPage rasterizes one page of a PDF, optionally cropping to a
 // normalized region. For region crops the page is re-rendered at a higher
 // resolution computed from the region size, so the crop comes back at high
-// effective DPI instead of being an upscaled blur.
-func renderPDFPage(req renderRequest) (*renderedImage, error) {
+// effective DPI instead of being an upscaled blur. Waiting for the renderer
+// ends when ctx is done, and ctx is checked between steps; a step already
+// running in PDFium runs to completion.
+func renderPDFPage(ctx context.Context, req renderRequest) (*renderedImage, error) {
 	pool, err := pdfiumPoolOnce()
 	if err != nil {
 		return nil, fmt.Errorf("initialize PDF renderer: %w", err)
 	}
-	instance, err := pool.GetInstance(pdfiumInstanceTimeout)
+	acquireCtx, cancel := context.WithTimeout(ctx, pdfiumInstanceTimeout)
+	defer cancel()
+	instance, err := pool.GetInstanceWithContext(acquireCtx)
 	if err != nil {
+		// The pool reports a cancelled wait as a timeout; report the cancellation.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return nil, fmt.Errorf("acquire PDF renderer: %w", err)
 	}
 	defer instance.Close()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	doc, err := instance.OpenDocument(&requests.OpenDocument{File: &req.pdf})
 	if err != nil {
 		return nil, fmt.Errorf("open PDF: %w", err)
 	}
 	defer instance.FPDF_CloseDocument(&requests.FPDF_CloseDocument{Document: doc.Document})
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	countRes, err := instance.FPDF_GetPageCount(&requests.FPDF_GetPageCount{Document: doc.Document})
 	if err != nil {
@@ -119,6 +176,9 @@ func renderPDFPage(req renderRequest) (*renderedImage, error) {
 		return nil, fmt.Errorf("invalid page dimensions %gx%g", sizeRes.Width, sizeRes.Height)
 	}
 	aspect := sizeRes.Height / sizeRes.Width
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	// For a region crop, render the page large enough that the cropped area
 	// alone spans ~maxWidth native pixels.
@@ -146,6 +206,9 @@ func renderPDFPage(req renderRequest) (*renderedImage, error) {
 	defer renderRes.Cleanup()
 
 	img := renderRes.Result.RenderedImage
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if req.region != nil {
 		img, err = cropToRegion(img, *req.region)
 		if err != nil {
@@ -315,8 +378,9 @@ func decodeImage(data []byte, mimeType string) (image.Image, error) {
 
 // normalizeInlineImage prepares raw image bytes for inline MCP image content.
 // Small images pass through untouched; oversized ones are decoded, downscaled
-// to the size discipline, and re-encoded as JPEG.
-func normalizeInlineImage(data []byte, mimeType string) (*renderedImage, error) {
+// to the size discipline, and re-encoded as JPEG. ctx is checked between
+// decoding and encoding.
+func normalizeInlineImage(ctx context.Context, data []byte, mimeType string) (*renderedImage, error) {
 	cfg, _, cfgErr := image.DecodeConfig(bytes.NewReader(data))
 	if mimeType == "image/webp" {
 		if c, err := webp.DecodeConfig(bytes.NewReader(data)); err == nil {
@@ -332,6 +396,9 @@ func normalizeInlineImage(data []byte, mimeType string) (*renderedImage, error) 
 	img, err := decodeImage(data, mimeType)
 	if err != nil {
 		return nil, fmt.Errorf("decode %s: %w", mimeType, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	return encodeImage(img, "jpeg", false)
 }
