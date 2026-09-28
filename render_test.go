@@ -3,9 +3,32 @@ package main
 import (
 	"context"
 	"errors"
+	"log"
+	"strings"
 	"testing"
 	"time"
 )
+
+// captureLog redirects the standard logger, where abandonOnDone reports
+// panics, for the rest of the test and returns what gets logged.
+func captureLog(t *testing.T) <-chan string {
+	t.Helper()
+	logged := make(chan string, 16)
+	prev := log.Writer()
+	log.SetOutput(writerFunc(func(p []byte) (int, error) {
+		select {
+		case logged <- string(p):
+		default:
+		}
+		return len(p), nil
+	}))
+	t.Cleanup(func() { log.SetOutput(prev) })
+	return logged
+}
+
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
 
 func TestRenderPDFPageStopsWaitingForRendererWhenCancelled(t *testing.T) {
 	pdf := makeTestPDF(t, 1)
@@ -58,6 +81,7 @@ func TestAbandonOnDoneReturnsWhenCancelled(t *testing.T) {
 }
 
 func TestAbandonOnDoneRepanicsInCaller(t *testing.T) {
+	captureLog(t)
 	defer func() {
 		if p := recover(); p != "boom" {
 			t.Errorf("recovered %v, want fn's panic", p)
@@ -65,4 +89,31 @@ func TestAbandonOnDoneRepanicsInCaller(t *testing.T) {
 	}()
 	abandonOnDone(t.Context(), func() (int, error) { panic("boom") })
 	t.Error("abandonOnDone returned instead of re-raising fn's panic")
+}
+
+func TestAbandonOnDoneLogsPanicAfterAbandonment(t *testing.T) {
+	logged := captureLog(t)
+	release := make(chan struct{})
+	ctx, cancel := context.WithCancel(t.Context())
+	time.AfterFunc(50*time.Millisecond, cancel)
+	_, err := abandonOnDone(ctx, func() (int, error) {
+		<-release
+		panic("boom")
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("abandonOnDone error = %v, want %v", err, context.Canceled)
+	}
+
+	// The work panics after its caller has stopped waiting. That must not
+	// crash the process, and the panic must still be reported, with the stack
+	// of the code that panicked.
+	close(release)
+	select {
+	case msg := <-logged:
+		if !strings.Contains(msg, "boom") || !strings.Contains(msg, "TestAbandonOnDoneLogsPanicAfterAbandonment") {
+			t.Errorf("logged %q, want the panic value and the stack where it happened", msg)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("panic in abandoned work was not logged within 5s")
+	}
 }

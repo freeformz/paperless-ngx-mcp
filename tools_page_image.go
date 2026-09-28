@@ -100,15 +100,18 @@ func handleDocumentPageImage(client *Client) server.ToolHandlerFunc {
 					return errResult(fmt.Sprintf("decode document %d image: %s", id, decErr)), nil
 				}
 				if region != nil {
+					if err := ctx.Err(); err != nil {
+						return nil, err
+					}
 					img, decErr = cropToRegion(img, *region)
 					if decErr != nil {
 						return errResult(decErr.Error()), nil
 					}
 				}
-				if err := ctx.Err(); err != nil {
-					return nil, err
-				}
 				if img.Bounds().Dx() > maxWidth {
+					if err := ctx.Err(); err != nil {
+						return nil, err
+					}
 					img = scaleToWidth(img, maxWidth)
 				}
 				if err := ctx.Err(); err != nil {

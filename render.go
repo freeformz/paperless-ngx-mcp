@@ -10,6 +10,8 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
+	"log"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -87,8 +89,13 @@ func (r *renderedImage) base64Data() string {
 // WithCloseOnContextDone, which makes every render about 5x slower. So a
 // cancelled request (shutdown, or the client's notifications/cancelled) stops
 // waiting instead: fn keeps running in the background and its result is
-// discarded. fn should check ctx between its steps so abandoned work stops at
-// the next one. A panic in fn is re-raised in the caller, where mcp-go
+// discarded. fn should check ctx before each expensive step so abandoned work
+// stops at the next one.
+//
+// Once ctx is done the caller always gets ctx's error, even if fn finished at
+// the same moment. A panic in fn is logged to stderr with its stack, because
+// the caller may have stopped waiting and re-raising loses the stack. If the
+// caller is still waiting, the panic is also re-raised there, where mcp-go
 // recovers it as it would a handler panic.
 func abandonOnDone[T any](ctx context.Context, fn func() (T, error)) (T, error) {
 	var zero T
@@ -105,6 +112,7 @@ func abandonOnDone[T any](ctx context.Context, fn func() (T, error)) (T, error) 
 	go func() {
 		defer func() {
 			if p := recover(); p != nil {
+				log.Printf("panic recovered in abandonOnDone work: %v\n%s", p, debug.Stack())
 				done <- result{panicked: true, panicVal: p}
 			}
 		}()
@@ -113,6 +121,11 @@ func abandonOnDone[T any](ctx context.Context, fn func() (T, error)) (T, error) 
 	}()
 	select {
 	case r := <-done:
+		// select picks at random when both are ready; check ctx so
+		// cancellation always wins.
+		if err := ctx.Err(); err != nil {
+			return zero, err
+		}
 		if r.panicked {
 			panic(r.panicVal)
 		}
@@ -206,14 +219,17 @@ func renderPDFPage(ctx context.Context, req renderRequest) (*renderedImage, erro
 	defer renderRes.Cleanup()
 
 	img := renderRes.Result.RenderedImage
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
 	if req.region != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		img, err = cropToRegion(img, *req.region)
 		if err != nil {
 			return nil, err
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	out, err := encodeImage(img, req.format, req.grayscale)
