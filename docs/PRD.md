@@ -745,7 +745,7 @@ Mirrors tasks-mcp release:
 - **Integration tests**: Optional, require a running Paperless-ngx instance (skipped in CI by default)
 - **Client tests**: Test HTTP client request construction, header injection, error handling
 - **Shutdown tests**: `shutdown_test.go` (Unix only) runs the test binary as the `mcp` command in a subprocess, since its `TestMain` calls `main()` when `PAPERLESS_MCP_TEST_RUN_MAIN=1`, and checks that SIGINT, SIGTERM and SIGHUP each exit 0 with nothing on stderr, that they and a host disconnect mid-call all remove the temp download directory, that stdin EOF or SIGTERM during a slow render still exits 0 promptly, and that a second signal ends a stalled shutdown
-- **CLI tests**: `main_test.go` checks that flag errors print usage and other errors, such as an unset `PAPERLESS_URL`, don't
+- **CLI tests**: `main_test.go` checks that flag errors print usage and other errors, such as an unset `PAPERLESS_URL` or `PAPERLESS_TOKEN`, don't
 - **Coverage threshold**: 70% minimum (enforced in CI)
 
 Test helpers should provide:
