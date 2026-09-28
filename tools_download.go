@@ -183,7 +183,7 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 		wg.Wait()
 
 		if returnContent {
-			return contentModeResult(results)
+			return contentModeResult(ctx, results)
 		}
 		resp := map[string]any{
 			"results":      results,
@@ -196,7 +196,7 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 // contentModeResult builds the tool result for content=true downloads. Image
 // files become MCP image content blocks the model can see; everything else is
 // base64 inside the JSON text summary.
-func contentModeResult(results []downloadResult) (*mcp.CallToolResult, error) {
+func contentModeResult(ctx context.Context, results []downloadResult) (*mcp.CallToolResult, error) {
 	var images []mcp.Content
 	for i := range results {
 		r := &results[i]
@@ -204,7 +204,12 @@ func contentModeResult(results []downloadResult) (*mcp.CallToolResult, error) {
 			continue
 		}
 		if imageMimeTypes[r.ContentType] {
-			img, err := normalizeInlineImage(r.raw, r.ContentType)
+			// Decoding and re-encoding can't be interrupted: once the request
+			// is cancelled, stop waiting for them (see abandonOnDone).
+			raw, contentType := r.raw, r.ContentType
+			img, err := abandonOnDone(ctx, func() (*renderedImage, error) {
+				return normalizeInlineImage(ctx, raw, contentType)
+			})
 			if err != nil {
 				r.Error = fmt.Sprintf("prepare image: %s", err)
 				continue

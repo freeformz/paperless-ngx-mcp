@@ -72,51 +72,69 @@ func handleDocumentPageImage(client *Client) server.ToolHandlerFunc {
 			return errResult(fmt.Sprintf("document exceeds maximum size (%d MiB)", maxInlineSize/(1024*1024))), nil
 		}
 
-		var rendered *renderedImage
-		switch {
-		case meta.contentType == "application/pdf":
-			rendered, err = renderPDFPage(renderRequest{
-				pdf:       data,
-				page:      page,
-				maxWidth:  maxWidth,
-				region:    region,
-				grayscale: grayscale,
-				format:    format,
-			})
-			if err != nil {
-				return errResult(fmt.Sprintf("render document %d: %s", id, err)), nil
-			}
-		case imageMimeTypes[meta.contentType]:
-			// The document file is itself an image: treat it as a single page.
-			if page != 1 {
-				return errResult(fmt.Sprintf("page %d out of range: document %d is a single image", page, id)), nil
-			}
-			img, decErr := decodeImage(data, meta.contentType)
-			if decErr != nil {
-				return errResult(fmt.Sprintf("decode document %d image: %s", id, decErr)), nil
-			}
-			if region != nil {
-				img, decErr = cropToRegion(img, *region)
-				if decErr != nil {
-					return errResult(decErr.Error()), nil
+		// Rendering and image processing can't be interrupted: once the
+		// request is cancelled, stop waiting for them (see abandonOnDone).
+		result, err := abandonOnDone(ctx, func() (*mcp.CallToolResult, error) {
+			var rendered *renderedImage
+			var err error
+			switch {
+			case meta.contentType == "application/pdf":
+				rendered, err = renderPDFPage(ctx, renderRequest{
+					pdf:       data,
+					page:      page,
+					maxWidth:  maxWidth,
+					region:    region,
+					grayscale: grayscale,
+					format:    format,
+				})
+				if err != nil {
+					return errResult(fmt.Sprintf("render document %d: %s", id, err)), nil
 				}
+			case imageMimeTypes[meta.contentType]:
+				// The document file is itself an image: treat it as a single page.
+				if page != 1 {
+					return errResult(fmt.Sprintf("page %d out of range: document %d is a single image", page, id)), nil
+				}
+				img, decErr := decodeImage(data, meta.contentType)
+				if decErr != nil {
+					return errResult(fmt.Sprintf("decode document %d image: %s", id, decErr)), nil
+				}
+				if region != nil {
+					if err := ctx.Err(); err != nil {
+						return nil, err
+					}
+					img, decErr = cropToRegion(img, *region)
+					if decErr != nil {
+						return errResult(decErr.Error()), nil
+					}
+				}
+				if img.Bounds().Dx() > maxWidth {
+					if err := ctx.Err(); err != nil {
+						return nil, err
+					}
+					img = scaleToWidth(img, maxWidth)
+				}
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
+				rendered, err = encodeImage(img, format, grayscale)
+				if err != nil {
+					return errResult(fmt.Sprintf("encode document %d image: %s", id, err)), nil
+				}
+				rendered.pageCount = 1
+			default:
+				return errResult(fmt.Sprintf("document %d is %s: only PDF and image documents can be rendered", id, meta.contentType)), nil
 			}
-			if img.Bounds().Dx() > maxWidth {
-				img = scaleToWidth(img, maxWidth)
-			}
-			rendered, err = encodeImage(img, format, grayscale)
-			if err != nil {
-				return errResult(fmt.Sprintf("encode document %d image: %s", id, err)), nil
-			}
-			rendered.pageCount = 1
-		default:
-			return errResult(fmt.Sprintf("document %d is %s: only PDF and image documents can be rendered", id, meta.contentType)), nil
-		}
 
-		summary := fmt.Sprintf("Document %d, page %d of %d, %dx%d px", id, page, rendered.pageCount, rendered.width, rendered.height)
-		if region != nil {
-			summary += fmt.Sprintf(", region [%g,%g,%g,%g]", region[0], region[1], region[2], region[3])
+			summary := fmt.Sprintf("Document %d, page %d of %d, %dx%d px", id, page, rendered.pageCount, rendered.width, rendered.height)
+			if region != nil {
+				summary += fmt.Sprintf(", region [%g,%g,%g,%g]", region[0], region[1], region[2], region[3])
+			}
+			return mcp.NewToolResultImage(summary, rendered.base64Data(), rendered.mimeType), nil
+		})
+		if err != nil {
+			return errResult(fmt.Sprintf("render document %d: %s", id, err)), nil
 		}
-		return mcp.NewToolResultImage(summary, rendered.base64Data(), rendered.mimeType), nil
+		return result, nil
 	}
 }
