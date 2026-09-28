@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -14,17 +15,20 @@ import (
 var version = "dev"
 
 func main() {
-	rootCmd := &cobra.Command{
+	if err := rootCmd().Execute(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func rootCmd() *cobra.Command {
+	cmd := &cobra.Command{
 		Use:   "paperless-ngx-mcp",
 		Short: "MCP server for Paperless-ngx document management",
 		Long:  "paperless-ngx-mcp is an MCP server that exposes the Paperless-ngx REST API as MCP tools for AI agents.",
 	}
-	rootCmd.Version = version
-	rootCmd.AddCommand(mcpCmd())
-
-	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
-	}
+	cmd.Version = version
+	cmd.AddCommand(mcpCmd())
+	return cmd
 }
 
 func mcpCmd() *cobra.Command {
@@ -34,6 +38,10 @@ func mcpCmd() *cobra.Command {
 		Use:   "mcp",
 		Short: "Start MCP server (stdio)",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Flags are parsed by now. Usage helps with a flag error, not with the
+			// errors from here on, whose messages say what went wrong.
+			cmd.SilenceUsage = true
+
 			baseURL := os.Getenv("PAPERLESS_URL")
 			if baseURL == "" {
 				return fmt.Errorf("PAPERLESS_URL environment variable is required")
@@ -67,7 +75,13 @@ func mcpCmd() *cobra.Command {
 
 			client := NewClient(baseURL, token)
 			srv := NewServer(client, dl)
-			return server.NewStdioServer(srv).Listen(ctx, os.Stdin, os.Stdout)
+			err = server.NewStdioServer(srv).Listen(ctx, os.Stdin, os.Stdout)
+			if errors.Is(err, context.Canceled) && ctx.Err() != nil {
+				// Listen returns ctx's error once a signal cancels it. Shutting
+				// down on request is a success, and there is nothing to report.
+				return nil
+			}
+			return err
 		},
 	}
 

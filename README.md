@@ -71,6 +71,14 @@ Generate an API token in Paperless-ngx under **Settings > Administration > Auth 
 |------|---------|-------------|
 | `--download-concurrency` | 5 | Max parallel document downloads |
 
+### Exit Status
+
+| Status | When |
+|--------|------|
+| 0 | Graceful shutdown: the MCP host closed stdin, or sent a first SIGINT, SIGTERM or SIGHUP. Nothing is reported as an error. |
+| 1 | An error, printed to stderr as `Error: <message>`, such as an unset `PAPERLESS_URL` or `PAPERLESS_TOKEN`. Only flag errors, such as an unknown flag, also print usage. |
+| 128 + signal number | A second signal ended a stalled shutdown: shells and Docker report 130 for SIGINT, 143 for SIGTERM and 129 for SIGHUP. The temp download directory is left behind. |
+
 ## Tools
 
 Responses are shaped to stay compact for MCP clients: document `content` in list/search results is truncated to a snippet — default 500 bytes, adjustable per call with `content_snippet_bytes` (0 disables); `full_content: true` opts out and `document_get` returns full text — document `notes` in list/search results are replaced with a `notes_count` field (`include_notes: true` keeps them; `document_note_list` returns full notes), the unbounded `all` ID array is stripped from paginated lists (`include_all_ids: true` on `document_list` re-includes it), `task_list` is paginated client-side, `log_get` returns only the last `tail` lines (default 100), `document_selection_data` omits zero-count objects, `user_list` omits `inherited_permissions` unless `include_permissions: true`, and `profile_get` redacts the API auth token.
