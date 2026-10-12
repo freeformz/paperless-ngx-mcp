@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -16,6 +18,8 @@ var (
 	// logNamePattern validates log file names to prevent path traversal.
 	// Disallows ".." sequences to prevent directory traversal.
 	logNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)*$`)
+	// runnableTaskTypes are the task types /api/tasks/run/ will dispatch manually.
+	runnableTaskTypes = []string{"train_classifier", "sanity_check", "llm_index"}
 )
 
 func registerSystemTools(srv *server.MCPServer, client *Client) {
@@ -37,8 +41,8 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 	), handleTaskAcknowledge(client))
 
 	srv.AddTool(mcp.NewTool("task_run",
-		mcp.WithDescription("Run a system task (admin only). One of: index_optimize, train_classifier, check_sanity."),
-		mcp.WithString("task_name", mcp.Description("Task name to run"), mcp.Required()),
+		mcp.WithDescription("Run a system task in the background (superuser only). Returns a task_id; follow it with task_get. Types: train_classifier (retrain the auto-matching classifier), sanity_check (verify stored files against the database), llm_index (update the AI document index; requires AI to be enabled on the server)."),
+		mcp.WithString("task_type", mcp.Description("Task type to run"), mcp.Required(), mcp.Enum(runnableTaskTypes...)),
 	), handleTaskRun(client))
 
 	// Logs
@@ -144,12 +148,15 @@ func handleTaskAcknowledge(client *Client) server.ToolHandlerFunc {
 
 func handleTaskRun(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		taskName, errRes := getRequiredString(request, "task_name")
+		taskType, errRes := getRequiredString(request, "task_type")
 		if errRes != nil {
 			return errRes, nil
 		}
+		if !slices.Contains(runnableTaskTypes, taskType) {
+			return errResult(fmt.Sprintf("task_type must be one of: %s", strings.Join(runnableTaskTypes, ", "))), nil
+		}
 
-		body := map[string]any{"task_name": taskName}
+		body := map[string]any{"task_type": taskType}
 		path := "/api/tasks/run/"
 		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
