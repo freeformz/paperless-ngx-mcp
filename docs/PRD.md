@@ -503,7 +503,7 @@ Removes downloaded document files. With no arguments, removes all files in the i
 | `task_list` | GET | `/api/tasks/` | List background tasks (the endpoint returns all tasks unpaginated; pagination is applied client-side with a `count`/`page`/`next_page` envelope) |
 | `task_get` | GET | `/api/tasks/?task_id={uuid}` | Get task details by task UUID |
 | `task_acknowledge` | POST | `/api/tasks/acknowledge/` | Acknowledge tasks (integer task IDs) |
-| `task_run` | POST | `/api/tasks/run/` | Run system task (admin only) |
+| `task_run` | POST | `/api/tasks/run/` | Run a system task (superuser only). `task_type` is one of `train_classifier`, `sanity_check`, `llm_index` |
 
 #### Logs
 

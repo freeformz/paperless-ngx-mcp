@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"testing"
 )
@@ -208,15 +209,33 @@ func TestTaskAcknowledgeRequiresTasks(t *testing.T) {
 
 func TestTaskRun(t *testing.T) {
 	rh := newRouteHandler(t)
-	rh.Handle("POST", "/api/tasks/run/", jsonHandler(t, 200, map[string]any{"task_id": "new-123"}))
+	rh.Handle("POST", "/api/tasks/run/", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var got map[string]any
+		if err := json.Unmarshal(body, &got); err != nil {
+			t.Errorf("request body is not JSON: %v", err)
+		}
+		if len(got) != 1 || got["task_type"] != "train_classifier" {
+			t.Errorf("request body = %s, want {\"task_type\":\"train_classifier\"}", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.Write([]byte(`{"task_id":"new-123"}`))
+	})
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleTaskRun(client), map[string]any{"task_name": "index_optimize"})
+	result := callTool(t, handleTaskRun(client), map[string]any{"task_type": "train_classifier"})
 	assertNotError(t, result)
 }
 
-func TestTaskRunRequiresName(t *testing.T) {
+func TestTaskRunRequiresType(t *testing.T) {
 	client := NewClient("http://unused", "unused")
 	result := callTool(t, handleTaskRun(client), map[string]any{})
+	assertIsError(t, result)
+}
+
+func TestTaskRunRejectsUnknownType(t *testing.T) {
+	client := NewClient("http://unused", "unused")
+	result := callTool(t, handleTaskRun(client), map[string]any{"task_type": "index_optimize"})
 	assertIsError(t, result)
 }
 
