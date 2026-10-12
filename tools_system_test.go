@@ -234,7 +234,8 @@ func TestTaskRunRequiresType(t *testing.T) {
 }
 
 func TestTaskRunRejectsUnknownType(t *testing.T) {
-	client := NewClient("http://unused", "unused")
+	// No routes registered: any request the handler makes fails the test.
+	client := testClientAndServer(t, newRouteHandler(t))
 	result := callTool(t, handleTaskRun(client), map[string]any{"task_type": "index_optimize"})
 	assertIsError(t, result)
 }
