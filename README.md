@@ -9,6 +9,7 @@ MCP server for [Paperless-ngx](https://docs.paperless-ngx.com/) document managem
 - **Metadata CRUD** — tags, correspondents, document types, storage paths, custom fields
 - **Full-text search** with tag filtering, date ranges, and custom field queries
 - **Bulk operations** — batch edit, reprocess, merge, split, rotate, delete
+- **Document versions** (requires Paperless-ngx 3.0.0+) — upload a new file version, list versions, set version labels; refused with a clear error on older servers
 - **Notes** — add, list, and delete notes on documents
 - **Saved views, share links, mail, workflows** — full admin toolset
 - **User & group management** — CRUD, profile, TOTP deactivation
@@ -85,6 +86,13 @@ Responses are shaped to stay compact for MCP clients: document `content` in list
 
 ### Documents
 `document_list`, `document_get`, `document_update`, `document_delete`, `document_upload`, `document_download`, `document_metadata`, `document_suggestions`, `document_next_asn`, `document_share_links`, `document_history`, `document_email`
+
+### Document Versions (Paperless-ngx 3.0.0+)
+`document_update_version` (upload a new file version of an existing document from a local path; returns a task UUID), `document_version_list`, `document_version_label_update`
+
+A new version keeps the document's ID, title, correspondent, tags, custom fields, owner, and permissions; the document's content and page count come from the newest version. Paperless-ngx makes the root document's owner the owner of every version — the uploading user only appears as the actor in the audit log.
+
+Document versions first shipped in Paperless-ngx 3.0.0. The server reads the Paperless-ngx version from the `X-Version` header of its API responses (probing once if needed), and on older servers these tools return an error naming the required and the running version instead of calling the API.
 
 ### Document Notes
 `document_note_list`, `document_note_add`, `document_note_delete`

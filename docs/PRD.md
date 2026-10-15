@@ -260,6 +260,58 @@ Removes downloaded document files. With no arguments, removes all files in the i
 
 **Returns:** JSON object with `removed` (array of removed paths) and `removed_count`. When removing specific files, may include `failed` and `failed_count` for files that could not be removed.
 
+#### Document Versions
+
+**Requires Paperless-ngx 3.0.0 or later.** The endpoints first appeared in v3.0.0-beta.rc1; v2.20.15, the last 2.x release, has none of them. On a 2.x server `update_version` and the label endpoint answer 404, and `?fields=id,versions` silently omits `versions`, which would read as "no versions". The client therefore records the Paperless-ngx version from the `X-Version` header, which Paperless-ngx sets on every authenticated API response, and probes `GET /api/ui_settings/` once if no response has been seen yet. Each version tool checks it first and, on a server older than 3.0.0, returns an error such as `document_version_list requires Paperless-ngx 3.0.0 or later; the server runs 2.20.15` without calling the endpoint. If the version cannot be determined (no header, unparsable development build), the tool proceeds and the API reports any failure. Because every response refreshes the recorded version, a Paperless-ngx upgrade takes effect without restarting the MCP server.
+
+Paperless-ngx 3 stores additional file versions of a document as separate rows linked to the root document (`root_document`). They are hidden from `/api/documents/` and listed in the root document's `versions` field. The root keeps its ID and all metadata (title, correspondent, document type, tags, custom fields, owner, permissions); `content` and `page_count` of the document reflect the newest version.
+
+| Tool | Method | Endpoint | Description |
+|------|--------|----------|-------------|
+| `document_update_version` | POST | `/api/documents/{id}/update_version/` | Upload a new file version (multipart, field `document`) |
+| `document_version_list` | GET | `/api/documents/{id}/?fields=id,versions` | List versions, newest first |
+| `document_version_label_update` | PATCH | `/api/documents/{id}/versions/{version_id}/` | Set or clear a version label |
+
+**Permissions:** `update_version` requires the global `change_document` permission and object-level change rights on the root document; label updates require object-level change rights. Otherwise Paperless-ngx answers 403 "Insufficient permissions". Every version is owned by the root document's owner, regardless of who uploads it; the uploader is recorded as the actor of the "Version Added" audit log entry.
+
+##### document_update_version
+
+Like `document_upload`, the file is read from a local path (resolved to an absolute path; must be a regular file, symlinks are rejected). Consumption is asynchronous; track it with `task_get`. Passing the ID of a version instead of the root adds the new version to that version's root document.
+
+**IDs:** `id` and `version_id` on all version tools must be positive integers (numbers or integer strings). Fractions, `0`, negative numbers and other types are rejected rather than truncated, so a new version can never be attached to a different document than the one named.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| id | integer | yes | Document ID (root document or any of its versions) |
+| file_path | string | yes | Local path to the file to upload |
+| version_label | string or null | no | Label for the new version (trimmed, max 64 characters). `null`, `"null"` (any case) and blank mean no label; any other type is an error. |
+
+**Returns:** Task UUID for tracking consumption status.
+
+##### document_version_list
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| id | integer | yes | Root document ID |
+
+**Returns:** Object with `id` and `versions` — each entry has `id`, `added`, `version_label`, `checksum`, and `is_root`. If the response lacks the `versions` field (a pre-3.0 server whose version could not be detected), the tool returns an error instead of an empty list.
+
+##### document_version_label_update
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| id | integer | yes | Root document ID |
+| version_id | integer | yes | Version ID (the root document's own ID labels the original) |
+| version_label | string or null | yes | New label (trimmed, max 64 characters); `null`, `"null"` (any case) or blank clears it; any other type is an error. |
+
+**Returns:** The updated version (`id`, `added`, `version_label`, `checksum`, `is_root`).
+
 #### Document Notes
 
 | Tool | Method | Endpoint | Description |

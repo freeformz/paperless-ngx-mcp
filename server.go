@@ -14,6 +14,7 @@ func NewServer(client *Client, dl *Downloader) *server.MCPServer {
 	)
 
 	registerDocumentTools(srv, client)
+	registerDocumentVersionTools(srv, client)
 	registerDownloadTools(srv, client, dl)
 	registerPageImageTools(srv, client)
 	registerTagTools(srv, client)
@@ -37,6 +38,7 @@ const serverInstructions = `Paperless-ngx MCP server — manage documents and me
 
 ## Tool Categories
 - **Documents**: document_list (search/filter), document_get, document_update, document_delete, document_upload, document_download, document_metadata, document_suggestions, document_next_asn, document_share_links, document_history, document_email
+- **Document Versions** (require Paperless-ngx 3.0.0+; on older servers they return an error): document_update_version (upload a new file version, returns task UUID), document_version_list, document_version_label_update. A new version keeps the document's ID and metadata and is owned by the root document's owner, not by the uploader
 - **Document Notes**: document_note_list, document_note_add, document_note_delete
 - **Downloads**: document_download (fetch files, inline or disk), cleanup_downloads (remove downloaded files), document_page_image (render a page as a viewable image)
 - **Bulk Operations**: document_bulk_edit, document_selection_data, bulk_edit_objects
