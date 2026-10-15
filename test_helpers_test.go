@@ -139,3 +139,15 @@ func (rh *routeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rh.t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 	w.WriteHeader(http.StatusNotFound)
 }
+
+// captureJSONBody returns a handler that decodes the request body into *dst.
+func captureJSONBody(t *testing.T, dst *map[string]any) http.HandlerFunc {
+	t.Helper()
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+			t.Errorf("decode body: %s", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"result":"OK"}`))
+	}
+}

@@ -15,6 +15,7 @@ func registerStoragePathTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("List storage paths with optional filtering."),
 			mcp.WithString("name", mcp.Description("Filter by name (icontains)")),
 			mcp.WithString("ordering", mcp.Description("Sort field")),
+			withFullPerms(),
 			withNumber("page", mcp.Description("Page number (default: 1)")),
 			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 		),
@@ -25,8 +26,9 @@ func registerStoragePathTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("storage_path_get",
 			mcp.WithDescription("Get storage path details."),
 			withNumber("id", mcp.Description("Storage path ID"), mcp.Required()),
+			withFullPerms(),
 		),
-		handleGetByID(client, "/api/storage_paths/%d/"),
+		handleGetByID(client, "/api/storage_paths/%d/", addFullPerms),
 	)
 
 	srv.AddTool(
@@ -37,6 +39,7 @@ func registerStoragePathTools(srv *server.MCPServer, client *Client) {
 			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
+			withOwnership(),
 		),
 		handleStoragePathCreate(client),
 	)
@@ -50,6 +53,7 @@ func registerStoragePathTools(srv *server.MCPServer, client *Client) {
 			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
+			withOwnership(),
 		),
 		handleStoragePathUpdate(client),
 	)
@@ -76,6 +80,7 @@ func handleStoragePathList(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		params := url.Values{}
 		addPaginationParams(params, request)
+		addFullPerms(params, request)
 		addStringParam(params, request, "name", "name__icontains")
 		addStringParam(params, request, "ordering", "ordering")
 
@@ -109,6 +114,10 @@ func handleStoragePathCreate(client *Client) server.ToolHandlerFunc {
 			body["is_insensitive"] = request.GetBool("is_insensitive", false)
 		}
 
+		if err := setOwnership(body, request); err != nil {
+			return errResult(err.Error()), nil
+		}
+
 		p := "/api/storage_paths/"
 		resp, err := client.Post(ctx, p, body)
 		return doRequest(resp, err, "POST", p)
@@ -139,6 +148,10 @@ func handleStoragePathUpdate(client *Client) server.ToolHandlerFunc {
 		}
 		if _, ok := args["is_insensitive"]; ok {
 			body["is_insensitive"] = request.GetBool("is_insensitive", false)
+		}
+
+		if err := setOwnership(body, request); err != nil {
+			return errResult(err.Error()), nil
 		}
 
 		if len(body) == 0 {

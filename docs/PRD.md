@@ -22,7 +22,6 @@ Paperless-ngx is a powerful document management system, but interacting with it 
 
 - Local document storage or persistent caching (in-memory metadata caching is in scope)
 - Document file modification (PDF editing, image manipulation, re-OCR, etc.) — the `content` text field (extracted OCR text) is editable via `document_update`
-- Permission management (`set_permissions`) — intentionally excluded for now
 - Paperless-ngx server administration (installation, upgrades, backups)
 - Real-time event streaming (WebSocket status endpoint)
 - OAuth flow handling (tokens are provided via configuration)
@@ -324,8 +323,23 @@ Removes downloaded document files. With no arguments, removes all files in the i
 | match | string | no | Match pattern |
 | is_insensitive | boolean | no | Case-insensitive matching |
 | parent | integer | no | Parent tag ID for hierarchy |
+| owner | integer | no | Owner user ID; `null` = no owner. Omitted → Paperless makes the API token's user the owner |
+| set_permissions | string | no | JSON object `{"view":{"users":[],"groups":[]},"change":{"users":[],"groups":[]}}` |
 
 **Returns:** Created tag object.
+
+#### Ownership and Permissions
+
+Paperless-ngx makes the API token's user the owner of every object created without an explicit `owner`, which hides it from other users. The create and update tools for tags, correspondents, document types, storage paths, and saved views therefore accept:
+
+- `owner` — user ID, or `null` for no owner (visible to every user with the model permission)
+- `set_permissions` — JSON object granting `view`/`change` to `users` and `groups`. Each `users`/`groups` list that is given replaces the current one for that action (`[]` clears it); omitted actions and lists stay unchanged. `change` implies `view`.
+
+Paperless-ngx only lets the owner (anyone, for unowned objects) or a superuser change `owner` or permissions; change rights granted through a group allow editing other fields but return 403 for these. `bulk_edit_objects` is rejected as a whole unless every selected object is owned by the token user or unowned. Paperless-ngx's `bulk_edit_objects` does not accept saved views (`"saved_views" is not a valid choice`), so their owner and permissions are changed one at a time with `saved_view_update`.
+
+**Saved views require Paperless-ngx 3.0.0 or later for `owner` and `set_permissions`.** Up to v2.20.15, `SavedViewViewSet` filters saved views by `owner=request.user` and forces the requesting user as owner in `perform_create`. On such a server `owner: null` is ignored on create, and changing the owner on update makes the view unreachable for the token user (`saved_view_get`/`_update`/`_delete` return 404). From v3.0.0 (first in v3.0.0-beta.rc1) the viewset filters with `ObjectOwnedOrGrantedPermissionsFilter` and keeps the requested owner. The client records the server version from the `X-Version` header that Paperless-ngx sets on every authenticated response, probing `GET /api/ui_settings/` once if none has been seen yet; `saved_view_create` and `saved_view_update` refuse `owner` and `set_permissions` on older servers with `<tool> with owner or set_permissions requires Paperless-ngx 3.0.0 or later; the server runs <version>`, while other fields keep working. In addition, both tools compare the `owner` in the response with the requested one and report a mismatch as an error, which also covers servers whose version cannot be determined.
+
+The matching list and get tools accept `full_perms: true`, which passes `full_perms=true` to Paperless so responses include the `permissions` field (replacing `user_can_change`). Custom fields have no owner or object permissions in Paperless-ngx, so `custom_field_*` tools do not take these parameters.
 
 #### Correspondents
 
@@ -532,6 +546,22 @@ Removes downloaded document files. With no arguments, removes all files in the i
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
 | `bulk_edit_objects` | POST | `/api/bulk_edit_objects/` | Bulk permissions/delete for tags, correspondents, document types, storage paths |
+
+##### bulk_edit_objects
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| object_type | string | yes | `tags`, `correspondents`, `document_types`, `storage_paths` |
+| objects | string | yes | JSON array of object IDs |
+| operation | string | yes | `set_permissions` or `delete` |
+| owner | integer | no | `set_permissions`: new owner, `null` removes the owner |
+| permissions | string | no | `set_permissions`: JSON object, same shape as `set_permissions` on create |
+| merge | boolean | no | `set_permissions`: merge with existing permissions and only set `owner` on unowned objects; cannot be combined with `owner: null` |
+| parameters | string | no | Deprecated JSON object with `owner`/`permissions`/`merge`; its keys are sent at the top level |
+
+Paperless reads `owner`, `permissions`, and `merge` from the top level of the request body and ignores nested fields while still answering `OK`. The tool sends them at the top level, rejects unknown keys in `parameters`, and rejects `set_permissions` without `owner` or `permissions`, as well as `owner: null` together with `merge: true` (Paperless skips a null owner when merging), since those would be silent no-ops. For `delete`, `owner`, `permissions`, `merge`, and `parameters` are rejected rather than ignored, since Paperless would run the delete and report success without them.
 
 #### System
 

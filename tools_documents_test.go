@@ -650,3 +650,14 @@ func TestAPIErrorHandling(t *testing.T) {
 		t.Errorf("status_code = %v, want 404", m["status_code"])
 	}
 }
+
+// "" is most likely an unset form field; treating it as null would clear
+// the ASN (or correspondent, …) without the caller asking for it.
+func TestDocumentUpdateRejectsEmptyStringID(t *testing.T) {
+	for _, name := range []string{"archive_serial_number", "correspondent", "document_type", "storage_path", "owner"} {
+		t.Run(name, func(t *testing.T) {
+			client := testClientAndServer(t, newRouteHandler(t))
+			assertIsError(t, callTool(t, handleDocumentUpdate(client), map[string]any{"id": float64(1), name: ""}))
+		})
+	}
+}

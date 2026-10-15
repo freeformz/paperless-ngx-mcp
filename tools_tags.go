@@ -16,6 +16,7 @@ func registerTagTools(srv *server.MCPServer, client *Client) {
 			mcp.WithString("name", mcp.Description("Filter by name (icontains)")),
 			mcp.WithBoolean("is_root", mcp.Description("Filter root tags only")),
 			mcp.WithString("ordering", mcp.Description("Sort field")),
+			withFullPerms(),
 			withNumber("page", mcp.Description("Page number (default: 1)")),
 			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 		),
@@ -26,8 +27,9 @@ func registerTagTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("tag_get",
 			mcp.WithDescription("Get tag details."),
 			withNumber("id", mcp.Description("Tag ID"), mcp.Required()),
+			withFullPerms(),
 		),
-		handleGetByID(client, "/api/tags/%d/"),
+		handleGetByID(client, "/api/tags/%d/", addFullPerms),
 	)
 
 	srv.AddTool(
@@ -39,7 +41,8 @@ func registerTagTools(srv *server.MCPServer, client *Client) {
 			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
-			withNumber("parent", mcp.Description("Parent tag ID for hierarchy")),
+			withNullableNumber("parent", mcp.Description("Parent tag ID for hierarchy (null = top-level tag)")),
+			withOwnership(),
 		),
 		handleTagCreate(client),
 	)
@@ -55,6 +58,7 @@ func registerTagTools(srv *server.MCPServer, client *Client) {
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
 			withNullableNumber("parent", mcp.Description("Parent tag ID")),
+			withOwnership(),
 		),
 		handleTagUpdate(client),
 	)
@@ -72,6 +76,7 @@ func handleTagList(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		params := url.Values{}
 		addPaginationParams(params, request)
+		addFullPerms(params, request)
 		addStringParam(params, request, "name", "name__icontains")
 		addBoolParam(params, request, "is_root", "is_root")
 		addStringParam(params, request, "ordering", "ordering")
@@ -107,8 +112,12 @@ func handleTagCreate(client *Client) server.ToolHandlerFunc {
 		if _, ok := args["is_insensitive"]; ok {
 			body["is_insensitive"] = request.GetBool("is_insensitive", false)
 		}
-		if _, ok := args["parent"]; ok {
-			body["parent"] = int(request.GetFloat("parent", 0))
+		if err := setNullableInt(body, args, "parent"); err != nil {
+			return errResult(err.Error()), nil
+		}
+
+		if err := setOwnership(body, request); err != nil {
+			return errResult(err.Error()), nil
 		}
 
 		path := "/api/tags/"
@@ -145,7 +154,13 @@ func handleTagUpdate(client *Client) server.ToolHandlerFunc {
 		if _, ok := args["is_insensitive"]; ok {
 			body["is_insensitive"] = request.GetBool("is_insensitive", false)
 		}
-		setNullableInt(body, args, request, "parent")
+		if err := setNullableInt(body, args, "parent"); err != nil {
+			return errResult(err.Error()), nil
+		}
+
+		if err := setOwnership(body, request); err != nil {
+			return errResult(err.Error()), nil
+		}
 
 		if len(body) == 0 {
 			return errResult("no fields to update"), nil

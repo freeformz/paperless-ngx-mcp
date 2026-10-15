@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -289,18 +290,54 @@ func getRequiredString(request mcp.CallToolRequest, name string) (string, *mcp.C
 }
 
 // setNullableInt sets a nullable integer field in a body map for PATCH requests.
-// If the argument is present and nil, sets the field to nil (clears it).
-// If the argument is present and a number, sets the field to the int value.
-// If the argument is not present, does nothing.
-func setNullableInt(body map[string]any, args map[string]any, request mcp.CallToolRequest, name string) {
+// If the argument is not present, does nothing; otherwise the value is
+// checked by parseNullableInt and an invalid one is returned as an error.
+func setNullableInt(body map[string]any, args map[string]any, name string) error {
 	val, ok := args[name]
 	if !ok {
-		return
+		return nil
 	}
-	if val == nil {
-		body[name] = nil
-	} else {
-		body[name] = int(request.GetFloat(name, 0))
+	v, err := parseNullableInt(name, val)
+	if err != nil {
+		return err
+	}
+	body[name] = v
+	return nil
+}
+
+// parseNullableInt converts a raw nullable integer argument into an int or
+// nil. JSON null clears the field. Some MCP clients send null as the string
+// "null", which is treated the same way. Whole numbers and integer strings
+// become the int value. Everything else (fractions, booleans, objects,
+// arrays, other strings) is an error rather than being coerced to 0 or
+// truncated, so an ID never reaches Paperless that the caller didn't name.
+// The empty string is an error as well, not null: it is more likely an
+// unset form field than a request to clear the field, and clearing is
+// destructive (document_update's archive_serial_number shares this path).
+// The accepted strings match the withNullableNumber schema pattern exactly.
+func parseNullableInt(name string, val any) (any, error) {
+	switch v := val.(type) {
+	case nil:
+		return nil, nil
+	case float64:
+		if v != math.Trunc(v) {
+			return nil, fmt.Errorf("%s must be an integer or null, got %v", name, v)
+		}
+		return int(v), nil
+	case int:
+		return v, nil
+	case string:
+		if v == "null" {
+			return nil, nil
+		}
+		// Atoi also takes a leading "+", which the schema pattern doesn't.
+		n, err := strconv.Atoi(v)
+		if err != nil || v[0] == '+' {
+			return nil, fmt.Errorf("%s must be an integer or null, got %q", name, v)
+		}
+		return n, nil
+	default:
+		return nil, fmt.Errorf("%s must be an integer or null, got %v", name, v)
 	}
 }
 
@@ -319,6 +356,82 @@ func setJSONField(body map[string]any, request mcp.CallToolRequest, name string)
 	return nil
 }
 
+// withOwnership adds the owner and set_permissions parameters accepted by
+// create/update tools of owned objects (tags, correspondents, document types,
+// storage paths, saved views). Paperless makes the token user the owner on create unless
+// owner is sent explicitly, so null is meaningful here.
+func withOwnership() mcp.ToolOption {
+	return func(t *mcp.Tool) {
+		withNullableNumber("owner", mcp.Description("Owner user ID. null = no owner (visible to every user with the model permission). Omit on create to default to the API token's user."))(t)
+		withJSONObject("set_permissions", mcp.Description(`JSON object granting object permissions, e.g. {"view":{"users":[],"groups":[2]},"change":{"users":[],"groups":[2]}}. Each users/groups list that is given replaces the current one for that action ([] clears it); omitted actions and lists stay unchanged. change implies view. Changing owner or permissions requires the token user to own the object, the object to be unowned, or a superuser token.`))(t)
+	}
+}
+
+// setOwnership copies owner (nullable) and set_permissions (JSON object)
+// from the request into body when present.
+func setOwnership(body map[string]any, request mcp.CallToolRequest) error {
+	if err := setNullableInt(body, request.GetArguments(), "owner"); err != nil {
+		return err
+	}
+	return setJSONObjectField(body, request, "set_permissions")
+}
+
+// setJSONObjectField sets a JSON object parameter in a body map. MCP clients
+// send it either as an object or as a JSON-encoded string, so both are
+// accepted; null counts as absent. See parseJSONObject for what is refused.
+func setJSONObjectField(body map[string]any, request mcp.CallToolRequest, name string) error {
+	obj, err := parseJSONObject(name, request.GetArguments()[name])
+	if err != nil || obj == nil {
+		return err
+	}
+	body[name] = obj
+	return nil
+}
+
+// parseJSONObject converts a raw argument into a JSON object: an object is
+// taken as is and a string is parsed as JSON. nil returns (nil, nil) so the
+// caller decides whether null is allowed. Anything else, including "" and an
+// empty object, is an error instead of being dropped: Paperless treats an
+// empty permissions object as "change nothing" and would still report
+// success.
+func parseJSONObject(name string, val any) (map[string]any, error) {
+	var obj map[string]any
+	switch v := val.(type) {
+	case nil:
+		return nil, nil
+	case map[string]any:
+		obj = v
+	case string:
+		if err := json.Unmarshal([]byte(v), &obj); err != nil {
+			return nil, fmt.Errorf("%s must be a JSON object: %w", name, err)
+		}
+		if obj == nil {
+			return nil, fmt.Errorf("%s must be a JSON object, got %q", name, v)
+		}
+	default:
+		return nil, fmt.Errorf("%s must be a JSON object, got %v", name, v)
+	}
+	if len(obj) == 0 {
+		return nil, fmt.Errorf("%s must not be an empty object", name)
+	}
+	return obj, nil
+}
+
+// withFullPerms adds the full_perms parameter to read tools of owned objects.
+func withFullPerms() mcp.ToolOption {
+	return mcp.WithBoolean("full_perms", mcp.Description("Include the permissions field (view/change users and groups). Replaces user_can_change in the response."))
+}
+
+// addFullPerms sets full_perms=true when the caller asked for it and leaves
+// the parameter out otherwise. Paperless-ngx 2.16 passes the raw query value
+// on, so the non-empty string "false" counts as true there; and any query
+// parameter bypasses the metadata cache in Client.Get.
+func addFullPerms(params url.Values, request mcp.CallToolRequest) {
+	if request.GetBool("full_perms", false) {
+		params.Set("full_perms", "true")
+	}
+}
+
 // withNumber defines a tool parameter that accepts both integer and string values.
 // MCP clients may send numbers as strings; the handler uses GetFloat/GetInt
 // which handle coercion automatically. Strings are constrained to integer format
@@ -333,10 +446,21 @@ func withNumber(name string, opts ...mcp.PropertyOption) mcp.ToolOption {
 
 // withNullableNumber defines a tool parameter that accepts integer, string, or null.
 // Used for fields that can be cleared by sending null (e.g., correspondent, document_type).
+// Strings are integers or "null", the form some MCP clients send for JSON null;
+// the handler side is parseNullableInt.
 func withNullableNumber(name string, opts ...mcp.PropertyOption) mcp.ToolOption {
 	allOpts := append([]mcp.PropertyOption{func(schema map[string]any) {
 		schema["type"] = []string{"integer", "string", "null"}
-		schema["pattern"] = `^-?\d+$`
+		schema["pattern"] = `^(-?\d+|null)$`
+	}}, opts...)
+	return mcp.WithAny(name, allOpts...)
+}
+
+// withJSONObject defines a tool parameter that takes a JSON object, either as
+// an object or as a JSON-encoded string. See setJSONObjectField.
+func withJSONObject(name string, opts ...mcp.PropertyOption) mcp.ToolOption {
+	allOpts := append([]mcp.PropertyOption{func(schema map[string]any) {
+		schema["type"] = []string{"object", "string"}
 	}}, opts...)
 	return mcp.WithAny(name, allOpts...)
 }
@@ -361,26 +485,39 @@ func stripAllIDs(v any) any {
 	return v
 }
 
+// paramHook adds tool-specific query parameters to a generic read handler,
+// e.g. addFullPerms for owned objects.
+type paramHook func(url.Values, mcp.CallToolRequest)
+
 // handlePaginatedList returns a handler that GETs a paginated list endpoint.
-func handlePaginatedList(client *Client, path string) server.ToolHandlerFunc {
+// hooks add tool-specific query parameters after the pagination ones.
+func handlePaginatedList(client *Client, path string, hooks ...paramHook) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		params := url.Values{}
 		addPaginationParams(params, request)
+		for _, hook := range hooks {
+			hook(params, request)
+		}
 		resp, err := client.Get(ctx, path, params)
 		return doRequestJSON(resp, err, "GET", path, stripAllIDs)
 	}
 }
 
 // handleGetByID returns a handler that GETs a resource by integer ID.
-// pathFmt must contain exactly one %d verb for the ID.
-func handleGetByID(client *Client, pathFmt string) server.ToolHandlerFunc {
+// pathFmt must contain exactly one %d verb for the ID. hooks add
+// tool-specific query parameters.
+func handleGetByID(client *Client, pathFmt string, hooks ...paramHook) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		id, errRes := getRequiredInt(request, "id")
 		if errRes != nil {
 			return errRes, nil
 		}
+		params := url.Values{}
+		for _, hook := range hooks {
+			hook(params, request)
+		}
 		path := fmt.Sprintf(pathFmt, id)
-		resp, err := client.Get(ctx, path, nil)
+		resp, err := client.Get(ctx, path, params)
 		return doRequest(resp, err, "GET", path)
 	}
 }

@@ -243,11 +243,11 @@ func handleDocumentUpdate(client *Client) server.ToolHandlerFunc {
 			body["created"] = v
 		}
 
-		setNullableInt(body, args, request, "correspondent")
-		setNullableInt(body, args, request, "document_type")
-		setNullableInt(body, args, request, "storage_path")
-		setNullableInt(body, args, request, "archive_serial_number")
-		setNullableInt(body, args, request, "owner")
+		for _, name := range []string{"correspondent", "document_type", "storage_path", "archive_serial_number", "owner"} {
+			if err := setNullableInt(body, args, name); err != nil {
+				return errResult(err.Error()), nil
+			}
+		}
 
 		if err := setJSONField(body, request, "tags"); err != nil {
 			return errResult(err.Error()), nil
