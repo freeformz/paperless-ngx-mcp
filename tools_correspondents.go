@@ -15,6 +15,7 @@ func registerCorrespondentTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("List correspondents with optional filtering."),
 			mcp.WithString("name", mcp.Description("Filter by name (icontains)")),
 			mcp.WithString("ordering", mcp.Description("Sort field")),
+			withFullPerms(),
 			withNumber("page", mcp.Description("Page number (default: 1)")),
 			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 		),
@@ -25,8 +26,9 @@ func registerCorrespondentTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("correspondent_get",
 			mcp.WithDescription("Get correspondent details."),
 			withNumber("id", mcp.Description("Correspondent ID"), mcp.Required()),
+			withFullPerms(),
 		),
-		handleGetByID(client, "/api/correspondents/%d/"),
+		handleGetByID(client, "/api/correspondents/%d/", addFullPerms),
 	)
 
 	srv.AddTool(
@@ -36,6 +38,7 @@ func registerCorrespondentTools(srv *server.MCPServer, client *Client) {
 			withNumber("matching_algorithm", mcp.Description("Matching algorithm: 1=Any, 2=All, 3=Exact, 4=Regex, 5=Fuzzy, 6=Auto (default: 6)")),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
+			withOwnership(),
 		),
 		handleCorrespondentCreate(client),
 	)
@@ -48,6 +51,7 @@ func registerCorrespondentTools(srv *server.MCPServer, client *Client) {
 			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
+			withOwnership(),
 		),
 		handleCorrespondentUpdate(client),
 	)
@@ -65,6 +69,7 @@ func handleCorrespondentList(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		params := url.Values{}
 		addPaginationParams(params, request)
+		addFullPerms(params, request)
 		addStringParam(params, request, "name", "name__icontains")
 		addStringParam(params, request, "ordering", "ordering")
 
@@ -94,6 +99,10 @@ func handleCorrespondentCreate(client *Client) server.ToolHandlerFunc {
 			body["is_insensitive"] = request.GetBool("is_insensitive", false)
 		}
 
+		if err := setOwnership(body, request); err != nil {
+			return errResult(err.Error()), nil
+		}
+
 		path := "/api/correspondents/"
 		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
@@ -121,6 +130,10 @@ func handleCorrespondentUpdate(client *Client) server.ToolHandlerFunc {
 		}
 		if _, ok := args["is_insensitive"]; ok {
 			body["is_insensitive"] = request.GetBool("is_insensitive", false)
+		}
+
+		if err := setOwnership(body, request); err != nil {
+			return errResult(err.Error()), nil
 		}
 
 		if len(body) == 0 {

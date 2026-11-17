@@ -81,6 +81,12 @@ Use custom_field_query parameter with a JSON filter expression on document_list.
 ## Bulk Operations
 Use document_bulk_edit for batch operations across multiple documents. Methods: set_correspondent, set_document_type, set_storage_path, add_tag, remove_tag, modify_tags, delete, reprocess, set_permissions, modify_custom_fields, rotate, delete_pages, split, merge, edit_pdf.
 
+## Ownership and Permissions
+Tags, correspondents, document types, storage paths, and saved views created without an owner argument are owned by the API token's user and hidden from other users. Pass owner: null (no owner) or set_permissions on the *_create/*_update tools to share them. Use bulk_edit_objects with operation set_permissions plus owner/permissions to fix existing tags, correspondents, document types, and storage paths, and full_perms: true on the *_list/*_get tools to verify the result. Saved views are not supported by bulk_edit_objects; fix an existing view with saved_view_update.
+Only the owner (or anyone, for unowned objects) or a superuser may change owner or permissions; change rights granted via a group allow editing other fields but not this. A 403 "Insufficient permissions" on these fields means exactly that — do not retry. bulk_edit_objects fails as a whole if any selected object is owned by another user.
+Setting owner to another user removes the token user's own access unless set_permissions grants it change rights; prefer owner: null for shared metadata.
+Saved views honour owner and set_permissions only on Paperless-ngx 3.0.0 or later; older servers keep the creator as owner and only show a user their own views, so saved_view_create/saved_view_update refuse these two arguments there (other fields still work).
+
 ## Document Downloads
 Use document_download to fetch document files. By default, files are saved to local temp storage and file paths are returned — use cleanup_downloads to remove when done. Set content=true to return file content inline instead (no cleanup needed): image files come back as viewable MCP image content, other types as base64 JSON. Specify variant: archived (default, OCR'd PDF/A), original (as uploaded), or thumbnail. If the server is configured with PAPERLESS_MCP_DOWNLOAD_DIR, disk downloads go there (optionally into a dest_dir subdirectory) with their real filenames, and cleanup_downloads leaves them alone.
 
