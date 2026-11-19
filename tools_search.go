@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/url"
+	"unicode/utf8"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -20,13 +22,8 @@ func registerSearchTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("search_global",
-			mcp.WithDescription("Global search across all object types (documents, tags, correspondents, etc.). Document content is truncated to a snippet; use document_get or full_content for the complete text."),
-			mcp.WithString("query", mcp.Description("Search query"), mcp.Required()),
-			withNumber("page", mcp.Description("Page number (default: 1)")),
-			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
-			mcp.WithBoolean("full_content", mcp.Description("Include full document content in results instead of a truncated snippet (default: false)")),
-			withNumber("content_snippet_bytes", mcp.Description("Max bytes of document content per result (default: 500; 0 disables truncation)")),
-			mcp.WithBoolean("include_notes", mcp.Description("Include full note objects in document results (default: false — notes are replaced with notes_count; use document_note_list for full notes)")),
+			mcp.WithDescription("Quick lookup across object types (documents, saved views, tags, correspondents, document types, storage paths, users, groups, mail rules, mail accounts, workflows, custom fields). Returns at most 3 results per type and is not paginated. On paperless-ngx 3.3.3+ documents carry only id, title and created (older servers return full documents, untruncated); use document_get for a document's details, and document_list with query for real document search."),
+			mcp.WithString("query", mcp.Description("Search query, 3 to 4096 characters"), mcp.Required()),
 		),
 		handleSearchGlobal(client),
 	)
@@ -55,6 +52,13 @@ func handleSearchAutocomplete(client *Client) server.ToolHandlerFunc {
 	}
 }
 
+// Query length limits of paperless-ngx's GlobalSearchView (the upper bound
+// since 3.2.0; earlier servers accept longer queries).
+const (
+	minGlobalSearchQueryLen = 3
+	maxGlobalSearchQueryLen = 4096
+)
+
 func handleSearchGlobal(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		query, errRes := getRequiredString(request, "query")
@@ -62,28 +66,15 @@ func handleSearchGlobal(client *Client) server.ToolHandlerFunc {
 			return errRes, nil
 		}
 
-		params := url.Values{"query": {query}}
-		addPaginationParams(params, request)
-
-		snippetLen, errRes := getContentSnippetLen(request)
-		if errRes != nil {
-			return errRes, nil
+		// paperless-ngx counts characters (code points), not bytes, and
+		// returns a 400 for queries outside this range.
+		if n := utf8.RuneCountInString(query); n < minGlobalSearchQueryLen || n > maxGlobalSearchQueryLen {
+			return errResult(fmt.Sprintf("query must be %d to %d characters, got %d", minGlobalSearchQueryLen, maxGlobalSearchQueryLen, n)), nil
 		}
 
+		params := url.Values{"query": {query}}
 		path := "/api/search/"
 		resp, err := client.Get(ctx, path, params)
-		return doRequestJSON(resp, err, "GET", path, func(v any) any {
-			m, ok := v.(map[string]any)
-			if !ok {
-				return v
-			}
-			if !request.GetBool("full_content", false) {
-				truncateContentFields(m["documents"], snippetLen)
-			}
-			if !request.GetBool("include_notes", false) {
-				stripNotesFields(m["documents"])
-			}
-			return v
-		})
+		return doRequest(resp, err, "GET", path)
 	}
 }
