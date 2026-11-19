@@ -70,7 +70,7 @@ The server is configured entirely via environment variables:
 | `PAPERLESS_TOKEN` | yes | API authentication token |
 | `PAPERLESS_MCP_DOWNLOAD_DIR` | no | Directory for `document_download` disk saves. When set, downloads land here (or in a `dest_dir` subdirectory of it) with their real filenames, are never touched by `cleanup_downloads`, and remain after the server exits. When unset, downloads use a per-instance temp directory (`paperless-ngx-mcp-*` in the system temp dir) that is deleted with its contents on shutdown; see [Shutdown](#shutdown). |
 
-The server always uses Paperless-ngx API version 9. These are passed via the MCP server configuration (`.mcp.json` or MCPB manifest) as environment variables, which is compatible with CoWork and MCPB bundle format.
+The server always uses Paperless-ngx API version 10 and requires Paperless-ngx 3.5.0 or newer. These are passed via the MCP server configuration (`.mcp.json` or MCPB manifest) as environment variables, which is compatible with CoWork and MCPB bundle format.
 
 ### Shutdown
 

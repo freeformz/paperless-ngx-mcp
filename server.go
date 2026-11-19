@@ -88,4 +88,4 @@ Use document_download to fetch document files. By default, files are saved to lo
 Use document_page_image to actually see a document page — essential when OCR content is missing or garbled (handwriting, bad scans, stamps, diagrams). Render the full page first; if fine detail is illegible, call it again with region=[x0,y0,x1,y1] (fractions of page width/height, 0-1 — NOT pixels; e.g. [0,0,0.5,0.5] is the top-left quarter) to re-render that area at high resolution.
 
 ## API Version
-All requests use Paperless-ngx REST API version 9.`
+All requests use Paperless-ngx REST API version 10 (Paperless-ngx 3.5.0 or newer).`
