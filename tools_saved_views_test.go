@@ -79,6 +79,38 @@ func TestSavedViewCreateEmptyRules(t *testing.T) {
 	}
 }
 
+func TestSavedViewFilterRuleValuesSentAsText(t *testing.T) {
+	client, got := savedViewBodyServer(t, "POST", "/api/saved_views/")
+	assertNotError(t, callTool(t, handleSavedViewCreate(client), map[string]any{
+		"name": "x",
+		"filter_rules": []any{
+			map[string]any{"rule_type": float64(6), "value": float64(5)},
+			map[string]any{"rule_type": float64(50), "value": true},
+			map[string]any{"rule_type": float64(23), "value": 1.5},
+		},
+		"display_fields": []any{},
+	}))
+	want := []any{
+		map[string]any{"rule_type": float64(6), "value": "5"},
+		map[string]any{"rule_type": float64(50), "value": "true"},
+		map[string]any{"rule_type": float64(23), "value": "1.5"},
+	}
+	if !reflect.DeepEqual((*got)["filter_rules"], want) {
+		t.Errorf("filter_rules = %v, want %v", (*got)["filter_rules"], want)
+	}
+	if v, ok := (*got)["display_fields"]; !ok || v != nil {
+		t.Errorf("display_fields = %v (present %v), want null for []", v, ok)
+	}
+}
+
+func TestSavedViewDisplayFieldsNullString(t *testing.T) {
+	client, got := savedViewBodyServer(t, "PATCH", "/api/saved_views/1/")
+	assertNotError(t, callTool(t, handleSavedViewUpdate(client), map[string]any{"id": float64(1), "display_fields": "null"}))
+	if v, ok := (*got)["display_fields"]; !ok || v != nil {
+		t.Errorf("display_fields = %v (present %v), want null", v, ok)
+	}
+}
+
 func TestSavedViewCreateRejectsInvalidInput(t *testing.T) {
 	for name, args := range map[string]map[string]any{
 		"no name":             {"filter_rules": []any{}},
@@ -89,7 +121,8 @@ func TestSavedViewCreateRejectsInvalidInput(t *testing.T) {
 		"rule_type missing":   {"name": "x", "filter_rules": []any{map[string]any{"value": "5"}}},
 		"rule_type string":    {"name": "x", "filter_rules": []any{map[string]any{"rule_type": "6", "value": "5"}}},
 		"rule_type fraction":  {"name": "x", "filter_rules": []any{map[string]any{"rule_type": 6.5, "value": "5"}}},
-		"value number":        {"name": "x", "filter_rules": []any{map[string]any{"rule_type": float64(6), "value": float64(5)}}},
+		"value object":        {"name": "x", "filter_rules": []any{map[string]any{"rule_type": float64(6), "value": map[string]any{}}}},
+		"value array":         {"name": "x", "filter_rules": []any{map[string]any{"rule_type": float64(6), "value": []any{"5"}}}},
 		"invalid json":        {"name": "x", "filter_rules": "[{"},
 		"display_fields int":  {"name": "x", "filter_rules": []any{}, "display_fields": []any{float64(1)}},
 		"display_fields obj":  {"name": "x", "filter_rules": []any{}, "display_fields": map[string]any{"a": "b"}},
@@ -177,6 +210,13 @@ func TestSavedViewRuleTypes(t *testing.T) {
 				t.Errorf("selection = %+v, want 17 then 6, in that order", sel)
 			}
 		})
+	}
+
+	nullIDs := callTool(t, handleSavedViewRuleTypes(), map[string]any{"ids": "null"})
+	var viaNull []savedViewRuleType
+	json.Unmarshal([]byte(resultText(t, nullIDs)), &viaNull)
+	if len(viaNull) != 51 {
+		t.Errorf("ids \"null\" returned %d entries, want all 51", len(viaNull))
 	}
 
 	for name, ids := range map[string]any{"unknown": []any{float64(51)}, "negative": []any{float64(-1)}, "string items": []any{"6"}, "fraction": []any{1.5}, "bad json": "[6,"} {

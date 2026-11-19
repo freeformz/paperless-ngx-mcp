@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -13,6 +14,15 @@ import (
 const savedViewRulesHint = "Rules are combined with AND; a multi-value rule type takes one rule per value. Call saved_view_rule_types for every rule_type code, its value format and the matching document_list filter."
 
 const savedViewVisibilityHint = "Whether a view shows on the dashboard or in the sidebar is a per-user setting changed in the web UI; ui_settings_get shows it under settings.saved_views (dashboard_views_visible_ids, sidebar_views_visible_ids)."
+
+// filterRuleItems describes one filter rule for clients that validate arrays.
+func filterRuleItems(schema map[string]any) {
+	schema["items"] = map[string]any{
+		"type":       "object",
+		"properties": map[string]any{"rule_type": map[string]any{"type": "integer"}, "value": map[string]any{"type": []string{"string", "number", "boolean", "null"}}},
+		"required":   []string{"rule_type"},
+	}
+}
 
 // savedViewFieldOptions are the writable saved view fields shared by create
 // and update. filter_rules is added separately because it is required on create.
@@ -25,7 +35,7 @@ func savedViewFieldOptions() []mcp.ToolOption {
 		mcp.WithAny("display_mode", mcp.Description("How documents are shown: "+strings.Join(savedViewDisplayModes, ", ")+"; null clears it"), func(schema map[string]any) {
 			schema["type"] = []string{"string", "null"}
 		}),
-		withJSONArray("display_fields", mcp.Description("Array of fields to show, from: "+strings.Join(savedViewDisplayFields, ", ")+", or custom_field_<id> for an existing custom field; null or [] clears it (use the defaults)"), func(schema map[string]any) {
+		withJSONArray("display_fields", mcp.Items(map[string]any{"type": "string"}), mcp.Description("Array of fields to show, from: "+strings.Join(savedViewDisplayFields, ", ")+", or custom_field_<id> for an existing custom field; null or [] clears it (use the defaults)"), func(schema map[string]any) {
 			schema["type"] = []string{"array", "string", "null"}
 		}),
 	}
@@ -54,7 +64,7 @@ func registerSavedViewTools(srv *server.MCPServer, client *Client) {
 			append([]mcp.ToolOption{
 				mcp.WithDescription("Create a saved view: a named document filter with sort and display settings. " + savedViewRulesHint + " " + savedViewVisibilityHint),
 				mcp.WithString("name", mcp.Description("View name"), mcp.Required()),
-				withJSONArray("filter_rules", mcp.Description("Array of {\"rule_type\": <code>, \"value\": <string or null>}; [] matches every document"), mcp.Required()),
+				withJSONArray("filter_rules", mcp.Description("Array of {\"rule_type\": <code>, \"value\": <string or null; numbers and booleans are sent as text>}, at most 255 characters per value; [] matches every document"), mcp.Required(), filterRuleItems),
 			}, savedViewFieldOptions()...)...,
 		),
 		handleSavedViewCreate(client),
@@ -66,7 +76,7 @@ func registerSavedViewTools(srv *server.MCPServer, client *Client) {
 				mcp.WithDescription("Update a saved view; only the fields given change. " + savedViewRulesHint + " " + savedViewVisibilityHint),
 				withNumber("id", mcp.Description("Saved view ID"), mcp.Required()),
 				mcp.WithString("name", mcp.Description("View name")),
-				withJSONArray("filter_rules", mcp.Description("Array of {\"rule_type\": <code>, \"value\": <string or null>}; replaces all of the view's rules")),
+				withJSONArray("filter_rules", mcp.Description("Array of {\"rule_type\": <code>, \"value\": <string or null; numbers and booleans are sent as text>}, at most 255 characters per value; replaces all of the view's rules"), filterRuleItems),
 			}, savedViewFieldOptions()...)...,
 		),
 		handleSavedViewUpdate(client),
@@ -122,7 +132,9 @@ func setSavedViewFields(body map[string]any, request mcp.CallToolRequest) *mcp.C
 		if err != nil {
 			return errResult(err.Error())
 		}
-		if present {
+		if present && fields == nil {
+			body["display_fields"] = nil // the JSON string "null"
+		} else if present {
 			arr, ok := fields.([]any)
 			if !ok {
 				return errResult("display_fields must be an array of strings")
@@ -132,7 +144,13 @@ func setSavedViewFields(body map[string]any, request mcp.CallToolRequest) *mcp.C
 					return errResult("display_fields must be an array of strings")
 				}
 			}
-			body["display_fields"] = arr
+			if len(arr) == 0 {
+				// The server stores [] as null on update but not on create;
+				// send null so both store the same "use the defaults".
+				body["display_fields"] = nil
+			} else {
+				body["display_fields"] = arr
+			}
 		}
 	}
 	return nil
@@ -149,7 +167,7 @@ func setFilterRules(body map[string]any, request mcp.CallToolRequest) (bool, *mc
 	if !present {
 		return false, nil
 	}
-	const shape = `filter_rules must be an array of {"rule_type": <integer>, "value": <string or null>}`
+	const shape = `filter_rules must be an array of {"rule_type": <integer>, "value": <string, number, boolean or null>}`
 	rules, ok := v.([]any)
 	if !ok {
 		return false, errResult(shape)
@@ -162,8 +180,14 @@ func setFilterRules(body map[string]any, request mcp.CallToolRequest) (bool, *mc
 		if rt, ok := m["rule_type"].(float64); !ok || rt < 0 || rt != float64(int(rt)) {
 			return false, errResult(shape)
 		}
-		switch m["value"].(type) {
+		// paperless-ngx stores value as text and converts numbers itself;
+		// send numbers and booleans in the form the web UI uses.
+		switch val := m["value"].(type) {
 		case string, nil:
+		case float64:
+			m["value"] = strconv.FormatFloat(val, 'f', -1, 64)
+		case bool:
+			m["value"] = strconv.FormatBool(val)
 		default:
 			return false, errResult(shape)
 		}

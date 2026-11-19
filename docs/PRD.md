@@ -149,7 +149,7 @@ The primary search and filtering tool. Supports the full range of Paperless-ngx 
 | is_in_inbox | boolean | no | Filter by inbox status |
 | title | string | no | Filter by title (icontains) |
 | content | string | no | Filter by content (icontains) |
-| custom_field_query | string | no | JSON custom field filter expression |
+| custom_field_query | array or JSON string | no | Custom field filter expression, e.g. `["AND", [[1, "exists", true]]]` |
 | created_after | string | no | Filter by created date (gte) |
 | created_before | string | no | Filter by created date (lte) |
 | added_after | string | no | Filter by added date (gte) |
@@ -611,6 +611,9 @@ The MCP server provides inline instructions via `WithInstructions` that guide ag
 - How custom field queries work
 - Metadata update workflow: get document, review fields, update with `document_update`
 - Bulk operations: use `document_bulk_edit` for batch changes
+- Saved views: filter rules, the `saved_view_rule_types` lookup, and that dashboard/sidebar visibility is a web UI setting
+- Structured parameters: arrays and objects may be sent natively or as JSON-encoded strings
+- Tasks: statuses, UUID-or-id lookup, traceback trimming and `task_stats`
 - API version is always v10 (Paperless-ngx 3.5.0+)
 
 ## Technical Requirements

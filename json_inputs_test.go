@@ -104,6 +104,24 @@ func TestStructuredParamsAcceptNativeValues(t *testing.T) {
 	if checked < 30 {
 		t.Errorf("checked %d structured parameters, want at least 30", checked)
 	}
+
+	// Catch parameters that were never converted: a string-only parameter
+	// whose description talks about JSON, or an array-only parameter.
+	for name, tool := range srv.ListTools() {
+		for prop, raw := range tool.Tool.InputSchema.Properties {
+			schema, _ := raw.(map[string]any)
+			desc, _ := schema["description"].(string)
+			switch typ := schema["type"].(type) {
+			case string:
+				if typ == "string" && strings.Contains(desc, "JSON") {
+					t.Errorf("%s.%s is string-only but its description mentions JSON; declare it with withJSONArray/withJSONObject", name, prop)
+				}
+				if typ == "array" || typ == "object" {
+					t.Errorf("%s.%s is %s-only; also accept a JSON-encoded string", name, prop, typ)
+				}
+			}
+		}
+	}
 }
 
 // capturePOSTOrPATCH records the decoded JSON body of one request.
@@ -233,4 +251,42 @@ func TestNativeArrayPageImageRegion(t *testing.T) {
 	if !strings.Contains(resultText(t, bad), "fractions") {
 		t.Errorf("error %q should explain fractions", resultText(t, bad))
 	}
+}
+
+func TestNativeCustomFieldQuery(t *testing.T) {
+	var got string
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/documents/", func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.Query().Get("custom_field_query")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(paginatedResponse([]any{}, 0))
+	})
+	client := testClientAndServer(t, rh)
+	for name, q := range map[string]any{
+		"native": []any{"AND", []any{[]any{float64(1), "exists", true}}},
+		"string": `["AND",[[1,"exists",true]]]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			assertNotError(t, callTool(t, handleDocumentList(client), map[string]any{"custom_field_query": q}))
+			if got != `["AND",[[1,"exists",true]]]` {
+				t.Errorf("custom_field_query = %q", got)
+			}
+		})
+	}
+}
+
+func TestTaskFiltersAcceptJSONString(t *testing.T) {
+	var got []string
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.Query()["status"]
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(paginatedResponse([]any{}, 0))
+	})
+	assertNotError(t, callTool(t, handleTaskList(testClientAndServer(t, rh)), map[string]any{"status": `["failure", "revoked"]`}))
+	if !reflect.DeepEqual(got, []string{"failure", "revoked"}) {
+		t.Errorf("status = %v, want [failure revoked]", got)
+	}
+	bad := callTool(t, handleTaskList(testClientAndServer(t, newRouteHandler(t))), map[string]any{"status": `["failure",`})
+	assertIsError(t, bad)
 }

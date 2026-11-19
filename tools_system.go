@@ -51,8 +51,8 @@ const tracebackSnippetLen = 500
 // status_counts ignores.
 func taskFilterOptions(withStatus bool) []mcp.ToolOption {
 	opts := []mcp.ToolOption{
-		mcp.WithArray("task_type", mcp.Description("Only these task types (any of)"), mcp.WithStringItems(mcp.Enum(taskTypes...))),
-		mcp.WithArray("trigger_source", mcp.Description("Only these trigger sources (any of)"), mcp.WithStringItems(mcp.Enum(taskTriggerSources...))),
+		withEnumArray("task_type", taskTypes, mcp.Description("Only these task types (any of)")),
+		withEnumArray("trigger_source", taskTriggerSources, mcp.Description("Only these trigger sources (any of)")),
 		mcp.WithBoolean("acknowledged", mcp.Description("Filter by acknowledged state")),
 		withNumber("owner", mcp.Description("Filter by owner user ID")),
 		mcp.WithString("name", mcp.Description("Match the input file name, or the task type / trigger source label (case-insensitive substring)")),
@@ -62,7 +62,7 @@ func taskFilterOptions(withStatus bool) []mcp.ToolOption {
 	}
 	if withStatus {
 		opts = append(opts,
-			mcp.WithArray("status", mcp.Description("Only these statuses (any of)"), mcp.WithStringItems(mcp.Enum(taskStatuses...))),
+			withEnumArray("status", taskStatuses, mcp.Description("Only these statuses (any of)")),
 			mcp.WithBoolean("is_complete", mcp.Description("true: success, failure or revoked; false: pending or started")),
 		)
 	}

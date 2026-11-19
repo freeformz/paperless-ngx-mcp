@@ -28,7 +28,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			mcp.WithBoolean("is_in_inbox", mcp.Description("Filter by inbox status")),
 			mcp.WithString("title", mcp.Description("Filter by title (icontains)")),
 			mcp.WithString("content", mcp.Description("Filter by content (icontains)")),
-			mcp.WithString("custom_field_query", mcp.Description("JSON custom field filter expression")),
+			withJSONArray("custom_field_query", mcp.Description("Custom field filter expression, e.g. [\"AND\", [[1, \"exists\", true]]]")),
 			mcp.WithString("created_after", mcp.Description("Filter by created date (gte, YYYY-MM-DD)")),
 			mcp.WithString("created_before", mcp.Description("Filter by created date (lte, YYYY-MM-DD)")),
 			mcp.WithString("added_after", mcp.Description("Filter by added date (gte, YYYY-MM-DD)")),
@@ -188,7 +188,13 @@ func handleDocumentList(client *Client) server.ToolHandlerFunc {
 		addBoolParam(params, request, "is_in_inbox", "is_in_inbox")
 		addStringParam(params, request, "title", "title__icontains")
 		addStringParam(params, request, "content", "content__icontains")
-		addStringParam(params, request, "custom_field_query", "custom_field_query")
+		cfq, err := getJSONArgText(request, "custom_field_query")
+		if err != nil {
+			return errResult(err.Error()), nil
+		}
+		if cfq != "" {
+			params.Set("custom_field_query", cfq)
+		}
 		addStringParam(params, request, "created_after", "created__date__gte")
 		addStringParam(params, request, "created_before", "created__date__lte")
 		addStringParam(params, request, "added_after", "added__date__gte")

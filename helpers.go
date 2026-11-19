@@ -209,7 +209,8 @@ func stripNotesFields(items any) {
 
 // addMultiParam adds a multi-value filter as repeated query parameters
 // (?name=a&name=b), which is how django-filter's MultipleChoiceFilter reads
-// them. The argument may be an array of strings or a single string. Every
+// them. The argument may be an array of strings, a JSON-encoded array, or a
+// single string (one value). Every
 // value must be in allowed; otherwise an error result is returned and no
 // parameter is added.
 func addMultiParam(params url.Values, request mcp.CallToolRequest, name string, allowed []string) *mcp.CallToolResult {
@@ -220,7 +221,14 @@ func addMultiParam(params url.Values, request mcp.CallToolRequest, name string, 
 	var vals []string
 	switch v := raw.(type) {
 	case string:
-		if v != "" {
+		if strings.HasPrefix(strings.TrimSpace(v), "[") {
+			// A JSON-encoded array, as for every other array parameter.
+			var arr []string
+			if err := json.Unmarshal([]byte(v), &arr); err != nil {
+				return errResult(name + " must be an array of strings")
+			}
+			vals = arr
+		} else if v != "" {
 			vals = []string{v}
 		}
 	case []any:
@@ -318,7 +326,8 @@ func setNullableInt(body map[string]any, args map[string]any, request mcp.CallTo
 
 // getJSONArg reads a structured (array or object) parameter. Agents may send
 // the value natively or as a JSON-encoded string; both give the same result.
-// An absent argument, null and "" all report present = false.
+// An absent argument, null and "" report present = false. The string "null"
+// reports present = true with a nil value; callers decide what it means.
 func getJSONArg(request mcp.CallToolRequest, name string) (v any, present bool, err error) {
 	raw, ok := request.GetArguments()[name]
 	if !ok || raw == nil {
@@ -353,8 +362,8 @@ func setJSONField(body map[string]any, request mcp.CallToolRequest, name string)
 // JSON-encoded string.
 func getJSONInts(request mcp.CallToolRequest, name string) (ids []int, present bool, err error) {
 	v, present, err := getJSONArg(request, name)
-	if err != nil || !present {
-		return nil, present, err
+	if err != nil || !present || v == nil {
+		return nil, false, err
 	}
 	b, err := json.Marshal(v)
 	if err != nil {
@@ -381,6 +390,16 @@ func getJSONArgText(request mcp.CallToolRequest, name string) (string, error) {
 		return "", fmt.Errorf("invalid %s: %w", name, err)
 	}
 	return string(b), nil
+}
+
+// withEnumArray defines a multi-value filter: an array of enum strings, a
+// JSON-encoded array, or a single value. Read it with addMultiParam.
+func withEnumArray(name string, values []string, opts ...mcp.PropertyOption) mcp.ToolOption {
+	allOpts := append([]mcp.PropertyOption{func(schema map[string]any) {
+		schema["type"] = []string{"array", "string"}
+		schema["items"] = map[string]any{"type": "string", "enum": values}
+	}}, opts...)
+	return mcp.WithAny(name, allOpts...)
 }
 
 // withJSONArray defines a parameter that takes an array, natively or as a
