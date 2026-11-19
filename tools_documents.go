@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -29,7 +28,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			mcp.WithBoolean("is_in_inbox", mcp.Description("Filter by inbox status")),
 			mcp.WithString("title", mcp.Description("Filter by title (icontains)")),
 			mcp.WithString("content", mcp.Description("Filter by content (icontains)")),
-			mcp.WithString("custom_field_query", mcp.Description("JSON custom field filter expression")),
+			withJSONArray("custom_field_query", mcp.Description("Custom field filter expression, e.g. [\"AND\", [[1, \"exists\", true]]]")),
 			mcp.WithString("created_after", mcp.Description("Filter by created date (gte, YYYY-MM-DD)")),
 			mcp.WithString("created_before", mcp.Description("Filter by created date (lte, YYYY-MM-DD)")),
 			mcp.WithString("added_after", mcp.Description("Filter by added date (gte, YYYY-MM-DD)")),
@@ -64,10 +63,10 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			withNullableNumber("correspondent", mcp.Description("Correspondent ID (null to clear)")),
 			withNullableNumber("document_type", mcp.Description("Document type ID (null to clear)")),
 			withNullableNumber("storage_path", mcp.Description("Storage path ID (null to clear)")),
-			mcp.WithString("tags", mcp.Description("JSON array of tag IDs (replaces all tags)")),
+			withJSONArray("tags", mcp.Description("Array of tag IDs (replaces all tags)")),
 			withNullableNumber("archive_serial_number", mcp.Description("Archive serial number (null to clear)")),
 			withNullableNumber("owner", mcp.Description("Owner user ID (null to clear)")),
-			mcp.WithString("custom_fields", mcp.Description("JSON array of custom field assignments")),
+			withJSONArray("custom_fields", mcp.Description("Array of custom field assignments")),
 		),
 		handleDocumentUpdate(client),
 	)
@@ -89,7 +88,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			withNumber("correspondent", mcp.Description("Correspondent ID")),
 			withNumber("document_type", mcp.Description("Document type ID")),
 			withNumber("storage_path", mcp.Description("Storage path ID")),
-			mcp.WithString("tags", mcp.Description("JSON array of tag IDs")),
+			withJSONArray("tags", mcp.Description("Array of tag IDs")),
 			withNumber("archive_serial_number", mcp.Description("Archive serial number")),
 		),
 		handleDocumentUpload(client),
@@ -137,7 +136,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_email",
 			mcp.WithDescription("Email one or more documents."),
-			mcp.WithString("documents", mcp.Description("JSON array of document IDs"), mcp.Required()),
+			withJSONArray("documents", mcp.Description("Array of document IDs"), mcp.Required()),
 			mcp.WithString("subject", mcp.Description("Email subject"), mcp.Required()),
 			mcp.WithString("body", mcp.Description("Email message body"), mcp.Required()),
 			mcp.WithString("to", mcp.Description("Recipient email address(es), comma-separated"), mcp.Required()),
@@ -189,7 +188,13 @@ func handleDocumentList(client *Client) server.ToolHandlerFunc {
 		addBoolParam(params, request, "is_in_inbox", "is_in_inbox")
 		addStringParam(params, request, "title", "title__icontains")
 		addStringParam(params, request, "content", "content__icontains")
-		addStringParam(params, request, "custom_field_query", "custom_field_query")
+		cfq, err := getJSONArgText(request, "custom_field_query")
+		if err != nil {
+			return errResult(err.Error()), nil
+		}
+		if cfq != "" {
+			params.Set("custom_field_query", cfq)
+		}
 		addStringParam(params, request, "created_after", "created__date__gte")
 		addStringParam(params, request, "created_before", "created__date__lte")
 		addStringParam(params, request, "added_after", "added__date__gte")
@@ -306,15 +311,13 @@ func handleDocumentUpload(client *Client) server.ToolHandlerFunc {
 		if _, ok := args["storage_path"]; ok {
 			fields.Set("storage_path", strconv.Itoa(int(request.GetFloat("storage_path", 0))))
 		}
-		if v := request.GetString("tags", ""); v != "" {
-			// The API expects repeated form fields for list values, not a JSON array.
-			var tagIDs []int
-			if err := json.Unmarshal([]byte(v), &tagIDs); err != nil {
-				return errResult(fmt.Sprintf("invalid tags JSON: %s", err)), nil
-			}
-			for _, tagID := range tagIDs {
-				fields.Add("tags", strconv.Itoa(tagID))
-			}
+		tagIDs, _, err := getJSONInts(request, "tags")
+		if err != nil {
+			return errResult(err.Error()), nil
+		}
+		// The API expects repeated form fields for list values, not a JSON array.
+		for _, tagID := range tagIDs {
+			fields.Add("tags", strconv.Itoa(tagID))
 		}
 		if _, ok := args["archive_serial_number"]; ok {
 			fields.Set("archive_serial_number", strconv.Itoa(int(request.GetFloat("archive_serial_number", 0))))

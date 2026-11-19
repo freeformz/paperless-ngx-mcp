@@ -51,8 +51,8 @@ const tracebackSnippetLen = 500
 // status_counts ignores.
 func taskFilterOptions(withStatus bool) []mcp.ToolOption {
 	opts := []mcp.ToolOption{
-		mcp.WithArray("task_type", mcp.Description("Only these task types (any of)"), mcp.WithStringItems(mcp.Enum(taskTypes...))),
-		mcp.WithArray("trigger_source", mcp.Description("Only these trigger sources (any of)"), mcp.WithStringItems(mcp.Enum(taskTriggerSources...))),
+		withEnumArray("task_type", taskTypes, mcp.Description("Only these task types (any of)")),
+		withEnumArray("trigger_source", taskTriggerSources, mcp.Description("Only these trigger sources (any of)")),
 		mcp.WithBoolean("acknowledged", mcp.Description("Filter by acknowledged state")),
 		withNumber("owner", mcp.Description("Filter by owner user ID")),
 		mcp.WithString("name", mcp.Description("Match the input file name, or the task type / trigger source label (case-insensitive substring)")),
@@ -62,7 +62,7 @@ func taskFilterOptions(withStatus bool) []mcp.ToolOption {
 	}
 	if withStatus {
 		opts = append(opts,
-			mcp.WithArray("status", mcp.Description("Only these statuses (any of)"), mcp.WithStringItems(mcp.Enum(taskStatuses...))),
+			withEnumArray("status", taskStatuses, mcp.Description("Only these statuses (any of)")),
 			mcp.WithBoolean("is_complete", mcp.Description("true: success, failure or revoked; false: pending or started")),
 		)
 	}
@@ -112,7 +112,7 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(mcp.NewTool("task_acknowledge",
 		mcp.WithDescription("Acknowledge tasks, which hides them from the web UI's task notifications; nothing is deleted, and there is no way to un-acknowledge. Give exactly one of tasks or all. Returns {\"result\": number acknowledged}."),
-		mcp.WithString("tasks", mcp.Description("JSON array of integer task IDs (the id field from task_list, not the task UUID)")),
+		withJSONArray("tasks", mcp.Description("Array of integer task IDs (the id field from task_list, not the task UUID)")),
 		mcp.WithBoolean("all", mcp.Description("Acknowledge every visible unacknowledged task, including pending and failed ones")),
 	), handleTaskAcknowledge(client))
 
@@ -149,7 +149,7 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(mcp.NewTool("trash_action",
 		mcp.WithDescription("Restore or permanently delete trashed documents."),
 		mcp.WithString("action", mcp.Description("Action: restore or empty"), mcp.Required()),
-		mcp.WithString("documents", mcp.Description("JSON array of document IDs (required for restore)")),
+		withJSONArray("documents", mcp.Description("Array of document IDs (required for restore)")),
 	), handleTrashAction(client))
 
 	// System
@@ -178,7 +178,7 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(mcp.NewTool("config_update",
 		mcp.WithDescription("Update a configuration entry."),
 		withNumber("id", mcp.Description("Config entry ID"), mcp.Required()),
-		mcp.WithString("body", mcp.Description("JSON object with fields to update"), mcp.Required()),
+		withJSONObject("body", mcp.Description("Object with fields to update"), mcp.Required()),
 	), handleConfigUpdate(client))
 }
 

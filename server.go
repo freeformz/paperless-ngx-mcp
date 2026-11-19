@@ -47,7 +47,7 @@ const serverInstructions = `Paperless-ngx MCP server — manage documents and me
 - **Custom Fields**: custom_field_list, custom_field_get, custom_field_create, custom_field_update, custom_field_delete
 - **Search**: search_autocomplete, search_global
 - **Statistics**: statistics
-- **Saved Views**: saved_view_list, saved_view_get, saved_view_create, saved_view_update, saved_view_delete
+- **Saved Views**: saved_view_list, saved_view_get, saved_view_create, saved_view_update, saved_view_delete, saved_view_rule_types
 - **Share Links**: share_link_list, share_link_get, share_link_create, share_link_delete (public URL: {PAPERLESS_URL}/share/{slug}; links can't be edited, so delete and recreate to change one)
 - **Users & Groups**: user_list, user_get, user_create, user_update, user_delete, group_list, group_get, group_create, group_update, group_delete, profile_get, profile_update
 - **Mail**: mail_account_list, mail_account_get, mail_account_create, mail_account_update, mail_account_delete, mail_account_test, mail_account_process, mail_rule_list, mail_rule_get, mail_rule_create, mail_rule_update, mail_rule_delete, processed_mail_list, processed_mail_get, processed_mail_bulk_delete
@@ -83,6 +83,12 @@ Use document_bulk_edit for batch operations across multiple documents. Methods: 
 
 ## Document Downloads
 Use document_download to fetch document files. By default, files are saved to local temp storage and file paths are returned — use cleanup_downloads to remove when done. Set content=true to return file content inline instead (no cleanup needed): image files come back as viewable MCP image content, other types as base64 JSON. Specify variant: archived (default, OCR'd PDF/A), original (as uploaded), or thumbnail. If the server is configured with PAPERLESS_MCP_DOWNLOAD_DIR, disk downloads go there (optionally into a dest_dir subdirectory) with their real filenames, and cleanup_downloads leaves them alone.
+
+## Saved Views
+A saved view is a named document filter: filter_rules is a list of {rule_type, value} combined with AND, and multi-value rule types take one rule per value. Call saved_view_rule_types for the codes, value formats and matching document_list filters instead of guessing. filter_rules is required on create ([] matches every document) and replaces all rules on update. Dashboard and sidebar visibility is a per-user web UI setting (ui_settings_get, settings.saved_views); these tools don't change it.
+
+## Structured Parameters
+Array and object parameters accept a native JSON value or the same value as a JSON-encoded string.
 
 ## Tasks
 Background work (consuming uploads, mail fetch, bulk edits, scheduled jobs) runs as tasks. status is pending, started, success, failure or revoked. task_get takes either the task UUID that document_upload and task_run return, or the integer id from task_list; task_acknowledge takes integer ids (or all: true). task_list filters by status, task_type and trigger_source (arrays: any of the values), and trims result_data.traceback to its last 500 bytes unless include_traceback is set. task_stats gives per-type summaries, status counts, or the currently active tasks.

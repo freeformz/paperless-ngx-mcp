@@ -43,7 +43,7 @@ func registerCustomFieldTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Create a new custom field definition. Choose the data type carefully: paperless-ngx treats it as fixed, and custom_field_update does not change it."),
 			mcp.WithString("name", mcp.Description("Field name (must be unique)"), mcp.Required()),
 			mcp.WithString("data_type", mcp.Description("Field data type: "+strings.Join(customFieldDataTypes, ", ")), mcp.Required(), mcp.Enum(customFieldDataTypes...)),
-			mcp.WithString("extra_data", mcp.Description(`JSON object with type-specific configuration. Required for select: {"select_options": [{"label": "Option A"}, ...]} (ids are generated when omitted). Optional for monetary: {"default_currency": "EUR"} (3-letter code).`)),
+			withJSONObject("extra_data", mcp.Description(`Object with type-specific configuration. Required for select: {"select_options": [{"label": "Option A"}, ...]} (ids are generated when omitted). Optional for monetary: {"default_currency": "EUR"} (3-letter code).`)),
 		),
 		handleCustomFieldCreate(client),
 	)
@@ -53,7 +53,7 @@ func registerCustomFieldTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Update a custom field's name or extra_data. The data type is not changed."),
 			withNumber("id", mcp.Description("Custom field ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Field name")),
-			mcp.WithString("extra_data", mcp.Description(`JSON object with type-specific configuration. For select fields, paperless-ngx requires extra_data with the full select_options list on every update, even a rename: pass every option, keeping each existing option's id so documents keep their values. For monetary: {"default_currency": "EUR"}.`)),
+			withJSONObject("extra_data", mcp.Description(`Object with type-specific configuration. For select fields, paperless-ngx requires extra_data with the full select_options list on every update, even a rename: pass every option, keeping each existing option's id so documents keep their values. For monetary: {"default_currency": "EUR"}.`)),
 		),
 		handleCustomFieldUpdate(client),
 	)

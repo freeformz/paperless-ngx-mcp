@@ -24,7 +24,7 @@ func registerDownloadTools(srv *server.MCPServer, client *Client, dl *Downloader
 	srv.AddTool(
 		mcp.NewTool("document_download",
 			mcp.WithDescription("Download one or more document files. By default saves to local storage and returns file paths (use cleanup_downloads to remove temp-dir files). Set content=true to return file content inline instead: image files come back as viewable MCP image content blocks, other types as base64 JSON."),
-			mcp.WithString("ids", mcp.Description("JSON array of document IDs to download"), mcp.Required()),
+			withJSONArray("ids", mcp.Description("Array of document IDs to download"), mcp.Required()),
 			mcp.WithString("variant", mcp.Description("File variant: archived (default, OCR'd PDF/A), original (as uploaded), or thumbnail")),
 			mcp.WithBoolean("content", mcp.Description("Return file content inline instead of saving to disk. Image files come back as viewable MCP image content; other types as base64 in JSON.")),
 			mcp.WithString("dest_dir", mcp.Description("Save into this subdirectory of the configured download directory (requires PAPERLESS_MCP_DOWNLOAD_DIR on the server). Files saved there are not removed by cleanup_downloads.")),
@@ -35,7 +35,7 @@ func registerDownloadTools(srv *server.MCPServer, client *Client, dl *Downloader
 	srv.AddTool(
 		mcp.NewTool("cleanup_downloads",
 			mcp.WithDescription("Clean up downloaded document files. With no arguments, removes all downloaded files. Pass specific file paths to remove only those."),
-			mcp.WithString("files", mcp.Description("JSON array of file paths to remove (must be inside download directory). Omit to remove all.")),
+			withJSONArray("files", mcp.Description("Array of file paths to remove (must be inside download directory). Omit to remove all.")),
 		),
 		handleCleanupDownloads(dl),
 	)
@@ -63,14 +63,12 @@ type documentMeta struct {
 
 func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		idsStr, errRes := getRequiredString(request, "ids")
-		if errRes != nil {
-			return errRes, nil
+		ids, present, err := getJSONInts(request, "ids")
+		if err != nil {
+			return errResult(err.Error()), nil
 		}
-
-		var ids []int
-		if err := json.Unmarshal([]byte(idsStr), &ids); err != nil {
-			return errResult(fmt.Sprintf("invalid ids JSON: %s", err)), nil
+		if !present {
+			return errResult("ids is required"), nil
 		}
 		if len(ids) == 0 {
 			return errResult("ids must contain at least one document ID"), nil
@@ -324,7 +322,10 @@ func extractErrorDetail(resp *http.Response) string {
 
 func handleCleanupDownloads(dl *Downloader) server.ToolHandlerFunc {
 	return func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		filesStr := request.GetString("files", "")
+		filesStr, err := getJSONArgText(request, "files")
+		if err != nil {
+			return errResult(err.Error()), nil
+		}
 
 		if filesStr == "" {
 			removed, err := dl.CleanupAll()

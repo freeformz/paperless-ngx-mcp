@@ -79,13 +79,13 @@ func registerMailTools(srv *server.MCPServer, client *Client) {
 		mcp.WithDescription("Create a mail rule."),
 		mcp.WithString("name", mcp.Description("Rule name"), mcp.Required()),
 		withNumber("account", mcp.Description("Mail account ID"), mcp.Required()),
-		mcp.WithString("body", mcp.Description("JSON object with rule configuration"), mcp.Required()),
+		withJSONObject("body", mcp.Description("Object with rule configuration"), mcp.Required()),
 	), handleMailRuleCreate(client))
 
 	srv.AddTool(mcp.NewTool("mail_rule_update",
 		mcp.WithDescription("Update a mail rule."),
 		withNumber("id", mcp.Description("Mail rule ID"), mcp.Required()),
-		mcp.WithString("body", mcp.Description("JSON object with fields to update"), mcp.Required()),
+		withJSONObject("body", mcp.Description("Object with fields to update"), mcp.Required()),
 	), handleMailRuleUpdate(client))
 
 	srv.AddTool(mcp.NewTool("mail_rule_delete",
@@ -107,7 +107,7 @@ func registerMailTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(mcp.NewTool("processed_mail_bulk_delete",
 		mcp.WithDescription("Bulk delete processed mail records."),
-		mcp.WithString("ids", mcp.Description("JSON array of processed mail IDs to delete"), mcp.Required()),
+		withJSONArray("ids", mcp.Description("Array of processed mail IDs to delete"), mcp.Required()),
 	), handleProcessedMailBulkDelete(client))
 }
 

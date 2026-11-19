@@ -85,6 +85,8 @@ Generate an API token in Paperless-ngx under **Settings > Administration > Auth 
 
 ## Tools
 
+Array and object parameters accept a native JSON value or the same value as a JSON-encoded string.
+
 Responses are shaped to stay compact for MCP clients: document `content` in `document_list` results is truncated to a snippet — default 500 bytes, adjustable per call with `content_snippet_bytes` (0 disables); `full_content: true` opts out and `document_get` returns full text — document `notes` in `document_list` results are replaced with a `notes_count` field (`include_notes: true` keeps them; `document_note_list` returns full notes), the unbounded `all` ID array is stripped from paginated lists (`include_all_ids: true` on `document_list` re-includes it), `task_list` trims each task's `result_data.traceback` to its last 500 bytes (`include_traceback: true` keeps it; `task_get` returns it in full), `log_get` returns only the last `tail` lines (default 100), `document_selection_data` omits zero-count objects, `user_list` omits `inherited_permissions` unless `include_permissions: true`, and `profile_get` redacts the API auth token.
 
 ### Documents
@@ -120,7 +122,9 @@ PDF rendering happens in-process via [go-pdfium](https://github.com/klippa-app/g
 `document_bulk_edit`, `document_selection_data`, `bulk_edit_objects`
 
 ### Saved Views
-`saved_view_list`, `saved_view_get`, `saved_view_create`, `saved_view_update`, `saved_view_delete`
+`saved_view_list`, `saved_view_get`, `saved_view_create`, `saved_view_update`, `saved_view_delete`, `saved_view_rule_types`
+
+A saved view's `filter_rules` is a list of `{rule_type, value}` rules; `saved_view_rule_types` lists every code with its value format, so agents don't have to guess. Dashboard and sidebar visibility is a per-user setting changed in the web UI (readable with `ui_settings_get`), not something these tools set.
 
 ### Share Links
 `share_link_list`, `share_link_get`, `share_link_create`, `share_link_delete`
