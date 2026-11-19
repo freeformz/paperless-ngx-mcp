@@ -410,11 +410,32 @@ Removes downloaded document files. With no arguments, removes all files in the i
 
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
-| `share_link_list` | GET | `/api/share_links/` | List share links |
+| `share_link_list` | GET | `/api/share_links/` | List share links (filter by created/expiration date, sort) |
 | `share_link_get` | GET | `/api/share_links/{id}/` | Get share link |
-| `share_link_create` | POST | `/api/share_links/` | Create share link |
-| `share_link_update` | PATCH | `/api/share_links/{id}/` | Update share link |
+| `share_link_create` | POST | `/api/share_links/` | Create share link (the server generates the slug) |
 | `share_link_delete` | DELETE | `/api/share_links/{id}/` | Delete share link |
+
+The share link API has no update: `ShareLinkViewSet` supports create, retrieve, list and destroy only, so a PATCH gets 405. To change a link, delete it and create a new one, which gets a new random 50-character slug. The public URL of a link is `{PAPERLESS_URL}/share/{slug}`. Results have `id`, `created`, `expiration` (null: never expires), `slug`, `document`, `file_version` and, on Paperless-ngx 3.2.0+, a read-only `document_title`.
+
+**share_link_list parameters:**
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| created_after | string | no | Created on or after (YYYY-MM-DD, `created__date__gte`) |
+| created_before | string | no | Created on or before (YYYY-MM-DD, `created__date__lte`) |
+| expiration_after | string | no | Expires on or after (YYYY-MM-DD, `expiration__date__gte`) |
+| expiration_before | string | no | Expires on or before (YYYY-MM-DD, `expiration__date__lte`) |
+| ordering | string | no | `created`, `expiration`, `document__title` or `document` (prefix `-` for descending). `document__title` needs Paperless-ngx 3.2.0+; `document` (document ID) is for older servers. Each server ignores the other's field. The value is passed through unchanged, with no translation |
+| page | number | no | Page number |
+| page_size | number | no | Results per page |
+
+**share_link_create parameters:**
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| document | number | yes | Document ID |
+| expiration | string | no | Expiration date (YYYY-MM-DD or ISO 8601); omit for no expiry |
+| file_version_archive | boolean | no | Share the archived version (`true`) or the original (`false`) |
 
 #### Users
 

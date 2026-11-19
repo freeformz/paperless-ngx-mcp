@@ -48,7 +48,7 @@ const serverInstructions = `Paperless-ngx MCP server — manage documents and me
 - **Search**: search_autocomplete, search_global
 - **Statistics**: statistics
 - **Saved Views**: saved_view_list, saved_view_get, saved_view_create, saved_view_update, saved_view_delete
-- **Share Links**: share_link_list, share_link_get, share_link_create, share_link_update, share_link_delete
+- **Share Links**: share_link_list, share_link_get, share_link_create, share_link_delete (public URL: {PAPERLESS_URL}/share/{slug}; links can't be edited, so delete and recreate to change one)
 - **Users & Groups**: user_list, user_get, user_create, user_update, user_delete, group_list, group_get, group_create, group_update, group_delete, profile_get, profile_update
 - **Mail**: mail_account_list, mail_account_get, mail_account_create, mail_account_update, mail_account_delete, mail_account_test, mail_account_process, mail_rule_list, mail_rule_get, mail_rule_create, mail_rule_update, mail_rule_delete, processed_mail_list, processed_mail_get, processed_mail_bulk_delete
 - **Workflows**: workflow_list, workflow_get, workflow_create, workflow_update, workflow_delete, workflow_trigger_list, workflow_trigger_get, workflow_trigger_create, workflow_trigger_update, workflow_trigger_delete, workflow_action_list, workflow_action_get, workflow_action_create, workflow_action_update, workflow_action_delete
