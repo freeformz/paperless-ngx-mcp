@@ -56,9 +56,9 @@ func taskFilterOptions(withStatus bool) []mcp.ToolOption {
 		mcp.WithBoolean("acknowledged", mcp.Description("Filter by acknowledged state")),
 		withNumber("owner", mcp.Description("Filter by owner user ID")),
 		mcp.WithString("name", mcp.Description("Match the input file name, or the task type / trigger source label (case-insensitive substring)")),
-		mcp.WithString("result", mcp.Description("Match result_data.reason or error_message (substring); a number also matches result_data.document_id or duplicate_of")),
-		mcp.WithString("date_created_after", mcp.Description("Created at or after this ISO 8601 date or datetime")),
-		mcp.WithString("date_created_before", mcp.Description("Created at or before this ISO 8601 date or datetime")),
+		mcp.WithString("result", mcp.Description("Match result_data.reason or error_message (substring); a number also matches result_data.document_id or duplicate_of, and a value containing \"duplicate\" matches every task that found a duplicate")),
+		mcp.WithString("date_created_after", mcp.Description("Created at or after this ISO 8601 datetime; a date alone means midnight at the start of that day")),
+		mcp.WithString("date_created_before", mcp.Description("Created at or before this ISO 8601 datetime; a date alone means midnight at the start of that day, so pass the next day (or a datetime) to include all of it")),
 	}
 	if withStatus {
 		opts = append(opts,
@@ -105,7 +105,9 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(mcp.NewTool("task_get",
 		mcp.WithDescription("Get one background task by its task UUID (task_id, as returned by document_upload and task_run) or its integer id (from task_list). Returns the task with result_data in full."),
-		mcp.WithString("id", mcp.Description("Task UUID or integer task id"), mcp.Required()),
+		mcp.WithAny("id", mcp.Description("Task UUID or integer task id"), mcp.Required(), func(schema map[string]any) {
+			schema["type"] = []string{"string", "integer"}
+		}),
 	), handleTaskGet(client))
 
 	srv.AddTool(mcp.NewTool("task_acknowledge",
@@ -261,6 +263,9 @@ func handleTaskGet(client *Client) server.ToolHandlerFunc {
 		if !uuidPattern.MatchString(id) {
 			return errResult("id must be a task UUID or an integer task id"), nil
 		}
+		// Celery task ids are lower case and the task_id filter is an exact,
+		// case-sensitive match.
+		id = strings.ToLower(id)
 
 		path := "/api/tasks/"
 		params := url.Values{"task_id": {id}}
@@ -296,7 +301,23 @@ func handleTaskAcknowledge(client *Client) server.ToolHandlerFunc {
 		if err := setJSONField(body, request, "tasks"); err != nil {
 			return errResult(err.Error()), nil
 		}
-		_, hasTasks := body["tasks"]
+		tasks, hasTasks := body["tasks"]
+		if hasTasks && tasks == nil {
+			// JSON null: treat as not given.
+			hasTasks = false
+			delete(body, "tasks")
+		}
+		if hasTasks {
+			ids, ok := tasks.([]any)
+			if !ok {
+				return errResult("tasks must be a JSON array of integer task IDs"), nil
+			}
+			for _, v := range ids {
+				if f, ok := v.(float64); !ok || f != float64(int64(f)) {
+					return errResult("tasks must be a JSON array of integer task IDs"), nil
+				}
+			}
+		}
 		all := request.GetBool("all", false)
 		switch {
 		case all && hasTasks:
@@ -331,8 +352,9 @@ func handleTaskStats(client *Client) server.ToolHandlerFunc {
 		default:
 			return errResult(fmt.Sprintf("mode must be one of: %s", strings.Join(taskStatsModes, ", "))), nil
 		}
-		for name := range request.GetArguments() {
-			if name != "mode" && !slices.Contains(allowed, name) {
+		for name, v := range request.GetArguments() {
+			// Some clients send every optional property, null when unused.
+			if v != nil && name != "mode" && !slices.Contains(allowed, name) {
 				return errResult(fmt.Sprintf("%s does not apply to mode %s", name, mode)), nil
 			}
 		}
@@ -340,7 +362,7 @@ func handleTaskStats(client *Client) server.ToolHandlerFunc {
 		params := url.Values{}
 		switch mode {
 		case "summary":
-			if _, ok := request.GetArguments()["days"]; ok {
+			if v, ok := request.GetArguments()["days"]; ok && v != nil {
 				days := request.GetFloat("days", 0)
 				if days < 1 || days > 365 || days != float64(int(days)) {
 					return errResult("days must be an integer from 1 to 365"), nil

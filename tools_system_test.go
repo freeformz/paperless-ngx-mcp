@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestSystemStatus(t *testing.T) {
@@ -174,6 +175,18 @@ func TestTrashActionRequiresAction(t *testing.T) {
 	assertIsError(t, result)
 }
 
+func TestTaskListTruncatesMultibyteTracebackOnRuneBoundary(t *testing.T) {
+	// 3-byte runes put the 500-byte cut inside a rune unless it is moved.
+	tb := strings.Repeat("€", 400)
+	tasks := []any{map[string]any{"id": float64(1), "result_data": map[string]any{"traceback": tb}}}
+	client, _ := taskTestServer(t, "GET", "/api/tasks/", paginatedResponse(tasks, 1))
+	results := resultJSON(t, callTool(t, handleTaskList(client), nil))["results"].([]any)
+	got := results[0].(map[string]any)["result_data"].(map[string]any)["traceback"].(string)
+	if !utf8.ValidString(got) || !strings.HasSuffix(tb, strings.TrimPrefix(got, "…")) || len(got) > len("…")+tracebackSnippetLen {
+		t.Errorf("traceback = %q (len %d), want valid UTF-8, a suffix of the original, at most %d bytes after the marker", got, len(got), tracebackSnippetLen)
+	}
+}
+
 func TestTaskGetByUUIDUnwrapsEnvelope(t *testing.T) {
 	taskID := "12345678-1234-1234-1234-123456789ABC"
 	task := map[string]any{"id": float64(9), "task_id": taskID, "status": "success"}
@@ -181,8 +194,9 @@ func TestTaskGetByUUIDUnwrapsEnvelope(t *testing.T) {
 	result := callTool(t, handleTaskGet(client), map[string]any{"id": taskID})
 	assertNotError(t, result)
 
-	if got := (*seen)[0].Get("task_id"); got != taskID {
-		t.Errorf("task_id query param = %q, want %q", got, taskID)
+	// Celery ids are lower case and the server's match is case-sensitive.
+	if got, want := (*seen)[0].Get("task_id"), strings.ToLower(taskID); got != want {
+		t.Errorf("task_id query param = %q, want %q", got, want)
 	}
 	m := resultJSON(t, result)
 	if m["id"] != float64(9) || m["task_id"] != taskID {
@@ -196,6 +210,49 @@ func TestTaskGetByUUIDNotFound(t *testing.T) {
 	assertIsError(t, result)
 	if !strings.Contains(resultText(t, result), "no task with task_id") {
 		t.Errorf("error = %s, want a not-found message", resultText(t, result))
+	}
+}
+
+func TestTaskGetPassesErrorsThrough(t *testing.T) {
+	uuid := "12345678-1234-1234-1234-123456789012"
+	tests := []struct {
+		name, path string
+		id         any
+		status     int
+		body       string
+		want       string
+	}{
+		{"uuid 403", "/api/tasks/", uuid, 403, `{"detail":"You do not have permission"}`, "permission"},
+		{"uuid bare array", "/api/tasks/", uuid, 200, `[{"id":1}]`, "unexpected response"},
+		{"uuid not json", "/api/tasks/", uuid, 200, `<html>`, "unexpected response"},
+		{"integer 404", "/api/tasks/99/", "99", 404, `{"detail":"No PaperlessTask matches the given query."}`, "No PaperlessTask"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rh := newRouteHandler(t)
+			rh.Handle("GET", tt.path, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.status)
+				w.Write([]byte(tt.body))
+			})
+			result := callTool(t, handleTaskGet(testClientAndServer(t, rh)), map[string]any{"id": tt.id})
+			assertIsError(t, result)
+			if !strings.Contains(resultText(t, result), tt.want) {
+				t.Errorf("error = %s, want it to mention %q", resultText(t, result), tt.want)
+			}
+		})
+	}
+}
+
+func TestTaskGetIDSchemaAcceptsStringOrInteger(t *testing.T) {
+	srv := NewServer(NewClient("http://unused", "unused"), nil)
+	tool := srv.GetTool("task_get")
+	if tool == nil {
+		t.Fatal("task_get not registered")
+	}
+	b, _ := json.Marshal(tool.Tool.InputSchema.Properties["id"])
+	if !strings.Contains(string(b), `"type":["string","integer"]`) {
+		t.Errorf("id schema = %s, want type [string, integer]", b)
 	}
 }
 
@@ -241,13 +298,16 @@ func TestTaskAcknowledge(t *testing.T) {
 		{"tasks", map[string]any{"tasks": "[12, 34]"}, map[string]any{"tasks": []any{float64(12), float64(34)}}},
 		{"all", map[string]any{"all": true}, map[string]any{"all": true}},
 		{"all false with tasks", map[string]any{"tasks": "[5]", "all": false}, map[string]any{"tasks": []any{float64(5)}}},
+		{"null tasks with all", map[string]any{"tasks": "null", "all": true}, map[string]any{"all": true}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var got map[string]any
 			rh := newRouteHandler(t)
 			rh.Handle("POST", "/api/tasks/acknowledge/", func(w http.ResponseWriter, r *http.Request) {
-				json.NewDecoder(r.Body).Decode(&got)
+				if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+					t.Errorf("decode body: %v", err)
+				}
 				w.Header().Set("Content-Type", "application/json")
 				w.Write([]byte(`{"result": 2}`))
 			})
@@ -265,6 +325,11 @@ func TestTaskAcknowledgeRequiresExactlyOne(t *testing.T) {
 		"neither":   {},
 		"all false": {"all": false},
 		"both":      {"tasks": "[1]", "all": true},
+		"null only": {"tasks": "null"},
+		"scalar":    {"tasks": "5"},
+		"strings":   {"tasks": `["a"]`},
+		"fraction":  {"tasks": "[1.5]"},
+		"object":    {"tasks": `{"id": 1}`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			client := testClientAndServer(t, newRouteHandler(t))
@@ -285,6 +350,9 @@ func TestTaskStats(t *testing.T) {
 		{"status_counts filtered", map[string]any{"mode": "status_counts", "task_type": []any{"mail_fetch"}, "acknowledged": false},
 			"/api/tasks/status_counts/", url.Values{"task_type": {"mail_fetch"}, "acknowledged": {"false"}}},
 		{"active", map[string]any{"mode": "active"}, "/api/tasks/active/", url.Values{}},
+		{"active with nulls", map[string]any{"mode": "active", "days": nil, "task_type": nil, "acknowledged": nil}, "/api/tasks/active/", url.Values{}},
+		{"summary null days", map[string]any{"mode": "summary", "days": nil}, "/api/tasks/summary/", url.Values{}},
+		{"summary string days", map[string]any{"mode": "summary", "days": "7"}, "/api/tasks/summary/", url.Values{"days": {"7"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

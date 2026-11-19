@@ -211,7 +211,7 @@ By default each document's `content` (OCR text) is truncated to a snippet (defau
 | tags | string | no | JSON array of tag IDs |
 | archive_serial_number | integer | no | Archive serial number |
 
-**Returns:** Task UUID for tracking consumption status.
+**Returns:** Task UUID for tracking consumption status. Follow it with `task_get`; a consume that hit a duplicate is reported as status `failure` with `result_data.duplicate_of`.
 
 ##### document_download
 
