@@ -425,7 +425,7 @@ The share link API has no update: `ShareLinkViewSet` supports create, retrieve, 
 | created_before | string | no | Created on or before (YYYY-MM-DD, `created__date__lte`) |
 | expiration_after | string | no | Expires on or after (YYYY-MM-DD, `expiration__date__gte`) |
 | expiration_before | string | no | Expires on or before (YYYY-MM-DD, `expiration__date__lte`) |
-| ordering | string | no | `created`, `expiration` or `document__title` (prefix `-` for descending). `document__title` needs Paperless-ngx 3.2.0+. Older servers only accept `document` (ID) and ignore `document__title`; the value is passed through unchanged, with no translation |
+| ordering | string | no | `created`, `expiration`, `document__title` or `document` (prefix `-` for descending). `document__title` needs Paperless-ngx 3.2.0+; `document` (document ID) is for older servers. Each server ignores the other's field. The value is passed through unchanged, with no translation |
 | page | number | no | Page number |
 | page_size | number | no | Results per page |
 
