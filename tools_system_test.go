@@ -5,7 +5,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"reflect"
+	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestSystemStatus(t *testing.T) {
@@ -24,95 +28,112 @@ func TestSystemStatus(t *testing.T) {
 	}
 }
 
-func TestTaskList(t *testing.T) {
-	tasks := []map[string]any{{"task_id": "abc-123", "status": "SUCCESS"}}
-
+// taskTestServer records the query of every request to path and answers
+// with body.
+func taskTestServer(t *testing.T, method, path string, body any) (*Client, *[]url.Values) {
+	t.Helper()
+	var seen []url.Values
 	rh := newRouteHandler(t)
-	rh.Handle("GET", "/api/tasks/", jsonHandler(t, 200, tasks))
+	rh.Handle(method, path, func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.URL.Query())
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(body)
+	})
+	return testClientAndServer(t, rh), &seen
+}
 
-	client := testClientAndServer(t, rh)
+func TestTaskListForwardsPaginationAndFilters(t *testing.T) {
+	client, seen := taskTestServer(t, "GET", "/api/tasks/", paginatedResponse([]any{}, 0))
+	result := callTool(t, handleTaskList(client), map[string]any{
+		"page":                float64(2),
+		"page_size":           float64(10),
+		"status":              []any{"failure", "revoked"},
+		"task_type":           "consume_file",
+		"trigger_source":      []any{"email_consume"},
+		"is_complete":         true,
+		"acknowledged":        false,
+		"owner":               float64(3),
+		"name":                "invoice",
+		"result":              "duplicate",
+		"date_created_after":  "2026-11-01",
+		"date_created_before": "2026-11-19T12:00:00Z",
+		"ordering":            "-duration_seconds",
+	})
+	assertNotError(t, result)
+
+	want := url.Values{
+		"page": {"2"}, "page_size": {"10"},
+		"status": {"failure", "revoked"}, "task_type": {"consume_file"}, "trigger_source": {"email_consume"},
+		"is_complete": {"true"}, "acknowledged": {"false"}, "owner": {"3"},
+		"name": {"invoice"}, "result": {"duplicate"},
+		"date_created_after": {"2026-11-01"}, "date_created_before": {"2026-11-19T12:00:00Z"},
+		"ordering": {"-duration_seconds"},
+	}
+	if len(*seen) != 1 || !reflect.DeepEqual((*seen)[0], want) {
+		t.Errorf("query = %v, want %v", *seen, want)
+	}
+}
+
+func TestTaskListPassesEnvelopeThrough(t *testing.T) {
+	tasks := []any{map[string]any{"id": float64(7), "task_id": "abc", "status": "success"}}
+	client, _ := taskTestServer(t, "GET", "/api/tasks/", paginatedResponse(tasks, 60))
 	result := callTool(t, handleTaskList(client), nil)
 	assertNotError(t, result)
 
 	m := resultJSON(t, result)
-	if m["count"] != float64(1) {
-		t.Errorf("count = %v, want 1", m["count"])
-	}
-	if len(m["results"].([]any)) != 1 {
-		t.Errorf("results length = %d, want 1", len(m["results"].([]any)))
+	if m["count"] != float64(60) || len(m["results"].([]any)) != 1 {
+		t.Errorf("response = %v, want the server's envelope unchanged", m)
 	}
 }
 
-func TestTaskListPaginatesClientSide(t *testing.T) {
-	// The tasks endpoint ignores pagination and returns a bare array of all
-	// tasks; the handler must slice it client-side.
-	tasks := make([]map[string]any, 60)
-	for i := range tasks {
-		tasks[i] = map[string]any{"id": i, "status": "SUCCESS"}
+func TestTaskListRejectsInvalidInput(t *testing.T) {
+	tests := map[string]map[string]any{
+		"unknown status":         {"status": []any{"FAILURE"}},
+		"unknown task type":      {"task_type": "check_sanity"},
+		"unknown trigger source": {"trigger_source": []any{"auto_task"}},
+		"non-string item":        {"status": []any{float64(1)}},
+		"unknown ordering":       {"ordering": "-created"},
+		"bad ordering prefix":    {"ordering": "+status"},
 	}
-
-	rh := newRouteHandler(t)
-	rh.Handle("GET", "/api/tasks/", jsonHandler(t, 200, tasks))
-
-	client := testClientAndServer(t, rh)
-	result := callTool(t, handleTaskList(client), map[string]any{"page": float64(2), "page_size": float64(25)})
-	assertNotError(t, result)
-
-	m := resultJSON(t, result)
-	if m["count"] != float64(60) {
-		t.Errorf("count = %v, want 60", m["count"])
-	}
-	results := m["results"].([]any)
-	if len(results) != 25 {
-		t.Errorf("results length = %d, want 25", len(results))
-	}
-	if first := results[0].(map[string]any)["id"]; first != float64(25) {
-		t.Errorf("first result id = %v, want 25", first)
-	}
-	if m["next_page"] != float64(3) {
-		t.Errorf("next_page = %v, want 3", m["next_page"])
+	for name, args := range tests {
+		t.Run(name, func(t *testing.T) {
+			// No routes registered: any request the handler makes fails the test.
+			client := testClientAndServer(t, newRouteHandler(t))
+			assertIsError(t, callTool(t, handleTaskList(client), args))
+		})
 	}
 }
 
-func TestTaskListHugePaginationDoesNotPanic(t *testing.T) {
-	tasks := []map[string]any{{"id": 0}, {"id": 1}}
-
-	rh := newRouteHandler(t)
-	rh.Handle("GET", "/api/tasks/", jsonHandler(t, 200, tasks))
-
-	client := testClientAndServer(t, rh)
-	// Values large enough that (page-1)*pageSize overflows int.
-	result := callTool(t, handleTaskList(client), map[string]any{
-		"page":      float64(1e15),
-		"page_size": float64(1e15),
-	})
-	assertNotError(t, result)
-
-	m := resultJSON(t, result)
-	if len(m["results"].([]any)) != 0 {
-		t.Errorf("results length = %d, want 0 for a page past the end", len(m["results"].([]any)))
+func TestTaskListTruncatesTracebacks(t *testing.T) {
+	long := strings.Repeat("x", 3000) + "ValueError: boom"
+	short := "short traceback"
+	tasks := []any{
+		map[string]any{"id": float64(1), "result_data": map[string]any{"traceback": long, "error_message": "boom"}},
+		map[string]any{"id": float64(2), "result_data": map[string]any{"traceback": short}},
+		map[string]any{"id": float64(3), "result_data": nil},
 	}
-	if m["count"] != float64(2) {
-		t.Errorf("count = %v, want 2", m["count"])
+	client, _ := taskTestServer(t, "GET", "/api/tasks/", paginatedResponse(tasks, 3))
+
+	results := resultJSON(t, callTool(t, handleTaskList(client), nil))["results"].([]any)
+	rd := results[0].(map[string]any)["result_data"].(map[string]any)
+	tb := rd["traceback"].(string)
+	if !strings.HasPrefix(tb, "…") || !strings.HasSuffix(tb, "ValueError: boom") || len(tb) != len("…")+tracebackSnippetLen {
+		t.Errorf("traceback = %q (len %d), want … plus the last %d bytes", tb[:min(len(tb), 40)], len(tb), tracebackSnippetLen)
 	}
-}
-
-func TestTaskListLastPageHasNoNextPage(t *testing.T) {
-	tasks := []map[string]any{{"id": 0}, {"id": 1}, {"id": 2}}
-
-	rh := newRouteHandler(t)
-	rh.Handle("GET", "/api/tasks/", jsonHandler(t, 200, tasks))
-
-	client := testClientAndServer(t, rh)
-	result := callTool(t, handleTaskList(client), map[string]any{"page": float64(1), "page_size": float64(5)})
-	assertNotError(t, result)
-
-	m := resultJSON(t, result)
-	if _, ok := m["next_page"]; ok {
-		t.Error("next_page should be absent on the last page")
+	if rd["traceback_truncated"] != true {
+		t.Error("traceback_truncated should be true")
 	}
-	if len(m["results"].([]any)) != 3 {
-		t.Errorf("results length = %d, want 3", len(m["results"].([]any)))
+	if rd["error_message"] != "boom" {
+		t.Error("other result_data fields should be kept")
+	}
+	rd2 := results[1].(map[string]any)["result_data"].(map[string]any)
+	if rd2["traceback"] != short || rd2["traceback_truncated"] != nil {
+		t.Errorf("short traceback changed: %v", rd2)
+	}
+
+	full := resultJSON(t, callTool(t, handleTaskList(client), map[string]any{"include_traceback": true}))["results"].([]any)
+	if got := full[0].(map[string]any)["result_data"].(map[string]any)["traceback"]; got != long {
+		t.Error("include_traceback should keep the traceback whole")
 	}
 }
 
@@ -154,57 +175,214 @@ func TestTrashActionRequiresAction(t *testing.T) {
 	assertIsError(t, result)
 }
 
-func TestTaskGet(t *testing.T) {
-	taskID := "12345678-1234-1234-1234-123456789012"
-	var capturedTaskID string
-	rh := newRouteHandler(t)
-	rh.Handle("GET", "/api/tasks/", func(w http.ResponseWriter, r *http.Request) {
-		capturedTaskID = r.URL.Query().Get("task_id")
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]map[string]any{{"task_id": taskID, "status": "SUCCESS"}})
-	})
-	client := testClientAndServer(t, rh)
-	result := callTool(t, handleTaskGet(client), map[string]any{"id": taskID})
-	assertNotError(t, result)
-
-	if capturedTaskID != taskID {
-		t.Errorf("task_id query param = %q, want %q", capturedTaskID, taskID)
+func TestTaskListTruncatesMultibyteTracebackOnRuneBoundary(t *testing.T) {
+	// 3-byte runes put the 500-byte cut inside a rune unless it is moved.
+	tb := strings.Repeat("€", 400)
+	tasks := []any{map[string]any{"id": float64(1), "result_data": map[string]any{"traceback": tb}}}
+	client, _ := taskTestServer(t, "GET", "/api/tasks/", paginatedResponse(tasks, 1))
+	results := resultJSON(t, callTool(t, handleTaskList(client), nil))["results"].([]any)
+	got := results[0].(map[string]any)["result_data"].(map[string]any)["traceback"].(string)
+	if !utf8.ValidString(got) || !strings.HasSuffix(tb, strings.TrimPrefix(got, "…")) || len(got) > len("…")+tracebackSnippetLen {
+		t.Errorf("traceback = %q (len %d), want valid UTF-8, a suffix of the original, at most %d bytes after the marker", got, len(got), tracebackSnippetLen)
 	}
 }
 
-func TestTaskGetRequiresId(t *testing.T) {
-	client := NewClient("http://unused", "unused")
-	result := callTool(t, handleTaskGet(client), map[string]any{})
-	assertIsError(t, result)
-}
-
-func TestTaskGetAcceptsUppercaseUUID(t *testing.T) {
+func TestTaskGetByUUIDUnwrapsEnvelope(t *testing.T) {
 	taskID := "12345678-1234-1234-1234-123456789ABC"
-	rh := newRouteHandler(t)
-	rh.Handle("GET", "/api/tasks/", jsonHandler(t, 200, []map[string]any{{"task_id": taskID, "status": "SUCCESS"}}))
-	client := testClientAndServer(t, rh)
+	task := map[string]any{"id": float64(9), "task_id": taskID, "status": "success"}
+	client, seen := taskTestServer(t, "GET", "/api/tasks/", paginatedResponse([]any{task}, 1))
 	result := callTool(t, handleTaskGet(client), map[string]any{"id": taskID})
 	assertNotError(t, result)
+
+	// Celery ids are lower case and the server's match is case-sensitive.
+	if got, want := (*seen)[0].Get("task_id"), strings.ToLower(taskID); got != want {
+		t.Errorf("task_id query param = %q, want %q", got, want)
+	}
+	m := resultJSON(t, result)
+	if m["id"] != float64(9) || m["task_id"] != taskID {
+		t.Errorf("result = %v, want the task object", m)
+	}
 }
 
-func TestTaskGetRejectsInvalidId(t *testing.T) {
-	client := NewClient("http://unused", "unused")
-	result := callTool(t, handleTaskGet(client), map[string]any{"id": "abc-123"})
+func TestTaskGetByUUIDNotFound(t *testing.T) {
+	client, _ := taskTestServer(t, "GET", "/api/tasks/", paginatedResponse([]any{}, 0))
+	result := callTool(t, handleTaskGet(client), map[string]any{"id": "12345678-1234-1234-1234-123456789012"})
 	assertIsError(t, result)
+	if !strings.Contains(resultText(t, result), "no task with task_id") {
+		t.Errorf("error = %s, want a not-found message", resultText(t, result))
+	}
+}
+
+func TestTaskGetPassesErrorsThrough(t *testing.T) {
+	uuid := "12345678-1234-1234-1234-123456789012"
+	tests := []struct {
+		name, path string
+		id         any
+		status     int
+		body       string
+		want       string
+	}{
+		{"uuid 403", "/api/tasks/", uuid, 403, `{"detail":"You do not have permission"}`, "permission"},
+		{"uuid bare array", "/api/tasks/", uuid, 200, `[{"id":1}]`, "unexpected response"},
+		{"uuid not json", "/api/tasks/", uuid, 200, `<html>`, "unexpected response"},
+		{"integer 404", "/api/tasks/99/", "99", 404, `{"detail":"No PaperlessTask matches the given query."}`, "No PaperlessTask"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rh := newRouteHandler(t)
+			rh.Handle("GET", tt.path, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.status)
+				w.Write([]byte(tt.body))
+			})
+			result := callTool(t, handleTaskGet(testClientAndServer(t, rh)), map[string]any{"id": tt.id})
+			assertIsError(t, result)
+			if !strings.Contains(resultText(t, result), tt.want) {
+				t.Errorf("error = %s, want it to mention %q", resultText(t, result), tt.want)
+			}
+		})
+	}
+}
+
+func TestTaskGetIDSchemaAcceptsStringOrInteger(t *testing.T) {
+	srv := NewServer(NewClient("http://unused", "unused"), nil)
+	tool := srv.GetTool("task_get")
+	if tool == nil {
+		t.Fatal("task_get not registered")
+	}
+	b, _ := json.Marshal(tool.Tool.InputSchema.Properties["id"])
+	if !strings.Contains(string(b), `"type":["string","integer"]`) {
+		t.Errorf("id schema = %s, want type [string, integer]", b)
+	}
+}
+
+func TestTaskGetByIntegerID(t *testing.T) {
+	for name, id := range map[string]any{"string": "7845", "number": float64(7845)} {
+		t.Run(name, func(t *testing.T) {
+			client, seen := taskTestServer(t, "GET", "/api/tasks/7845/", map[string]any{"id": float64(7845)})
+			result := callTool(t, handleTaskGet(client), map[string]any{"id": id})
+			assertNotError(t, result)
+			if len(*seen) != 1 {
+				t.Fatalf("requests = %d, want 1", len(*seen))
+			}
+			if resultJSON(t, result)["id"] != float64(7845) {
+				t.Error("want the task object passed through")
+			}
+		})
+	}
+}
+
+func TestTaskGetRejectsInvalidID(t *testing.T) {
+	for name, args := range map[string]map[string]any{
+		"missing":  {},
+		"not uuid": {"id": "abc-123"},
+		"path":     {"id": "../users"},
+		"negative": {"id": float64(-1)},
+		"fraction": {"id": float64(1.5)},
+		"signed":   {"id": "-5"},
+		"empty":    {"id": ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			client := testClientAndServer(t, newRouteHandler(t))
+			assertIsError(t, callTool(t, handleTaskGet(client), args))
+		})
+	}
 }
 
 func TestTaskAcknowledge(t *testing.T) {
-	rh := newRouteHandler(t)
-	rh.Handle("POST", "/api/tasks/acknowledge/", jsonHandler(t, 200, map[string]any{"result": "ok"}))
-	client := testClientAndServer(t, rh)
-	result := callTool(t, handleTaskAcknowledge(client), map[string]any{"tasks": `[12, 34]`})
-	assertNotError(t, result)
+	tests := []struct {
+		name string
+		args map[string]any
+		want map[string]any
+	}{
+		{"tasks", map[string]any{"tasks": "[12, 34]"}, map[string]any{"tasks": []any{float64(12), float64(34)}}},
+		{"all", map[string]any{"all": true}, map[string]any{"all": true}},
+		{"all false with tasks", map[string]any{"tasks": "[5]", "all": false}, map[string]any{"tasks": []any{float64(5)}}},
+		{"null tasks with all", map[string]any{"tasks": "null", "all": true}, map[string]any{"all": true}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got map[string]any
+			rh := newRouteHandler(t)
+			rh.Handle("POST", "/api/tasks/acknowledge/", func(w http.ResponseWriter, r *http.Request) {
+				if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+					t.Errorf("decode body: %v", err)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"result": 2}`))
+			})
+			client := testClientAndServer(t, rh)
+			assertNotError(t, callTool(t, handleTaskAcknowledge(client), tt.args))
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("body = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
 
-func TestTaskAcknowledgeRequiresTasks(t *testing.T) {
-	client := NewClient("http://unused", "unused")
-	result := callTool(t, handleTaskAcknowledge(client), map[string]any{})
-	assertIsError(t, result)
+func TestTaskAcknowledgeRequiresExactlyOne(t *testing.T) {
+	for name, args := range map[string]map[string]any{
+		"neither":   {},
+		"all false": {"all": false},
+		"both":      {"tasks": "[1]", "all": true},
+		"null only": {"tasks": "null"},
+		"scalar":    {"tasks": "5"},
+		"strings":   {"tasks": `["a"]`},
+		"fraction":  {"tasks": "[1.5]"},
+		"object":    {"tasks": `{"id": 1}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			client := testClientAndServer(t, newRouteHandler(t))
+			assertIsError(t, callTool(t, handleTaskAcknowledge(client), args))
+		})
+	}
+}
+
+func TestTaskStats(t *testing.T) {
+	tests := []struct {
+		name string
+		args map[string]any
+		path string
+		want url.Values
+	}{
+		{"summary default", map[string]any{"mode": "summary"}, "/api/tasks/summary/", url.Values{}},
+		{"summary days", map[string]any{"mode": "summary", "days": float64(7)}, "/api/tasks/summary/", url.Values{"days": {"7"}}},
+		{"status_counts filtered", map[string]any{"mode": "status_counts", "task_type": []any{"mail_fetch"}, "acknowledged": false},
+			"/api/tasks/status_counts/", url.Values{"task_type": {"mail_fetch"}, "acknowledged": {"false"}}},
+		{"active", map[string]any{"mode": "active"}, "/api/tasks/active/", url.Values{}},
+		{"active with nulls", map[string]any{"mode": "active", "days": nil, "task_type": nil, "acknowledged": nil}, "/api/tasks/active/", url.Values{}},
+		{"summary null days", map[string]any{"mode": "summary", "days": nil}, "/api/tasks/summary/", url.Values{}},
+		{"summary string days", map[string]any{"mode": "summary", "days": "7"}, "/api/tasks/summary/", url.Values{"days": {"7"}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, seen := taskTestServer(t, "GET", tt.path, map[string]any{})
+			assertNotError(t, callTool(t, handleTaskStats(client), tt.args))
+			if len(*seen) != 1 || !reflect.DeepEqual((*seen)[0], tt.want) {
+				t.Errorf("query = %v, want %v", *seen, tt.want)
+			}
+		})
+	}
+}
+
+func TestTaskStatsRejectsInvalidInput(t *testing.T) {
+	for name, args := range map[string]map[string]any{
+		"missing mode":          {},
+		"unknown mode":          {"mode": "counts"},
+		"days with active":      {"mode": "active", "days": float64(7)},
+		"filter with summary":   {"mode": "summary", "task_type": []any{"mail_fetch"}},
+		"status in counts":      {"mode": "status_counts", "status": []any{"failure"}},
+		"is_complete in counts": {"mode": "status_counts", "is_complete": true},
+		"days zero":             {"mode": "summary", "days": float64(0)},
+		"days too large":        {"mode": "summary", "days": float64(366)},
+		"days fraction":         {"mode": "summary", "days": float64(1.5)},
+		"bad enum in counts":    {"mode": "status_counts", "trigger_source": []any{"cron"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			client := testClientAndServer(t, newRouteHandler(t))
+			assertIsError(t, callTool(t, handleTaskStats(client), args))
+		})
+	}
 }
 
 func TestTaskRun(t *testing.T) {

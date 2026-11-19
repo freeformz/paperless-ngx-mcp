@@ -211,7 +211,7 @@ By default each document's `content` (OCR text) is truncated to a snippet (defau
 | tags | string | no | JSON array of tag IDs |
 | archive_serial_number | integer | no | Archive serial number |
 
-**Returns:** Task UUID for tracking consumption status.
+**Returns:** Task UUID for tracking consumption status. Follow it with `task_get`; a consume that hit a duplicate is reported as status `failure` with `result_data.duplicate_of`.
 
 ##### document_download
 
@@ -544,10 +544,11 @@ The share link API has no update: `ShareLinkViewSet` supports create, retrieve, 
 
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
-| `task_list` | GET | `/api/tasks/` | List background tasks (the endpoint returns all tasks unpaginated; pagination is applied client-side with a `count`/`page`/`next_page` envelope) |
-| `task_get` | GET | `/api/tasks/?task_id={uuid}` | Get task details by task UUID |
-| `task_acknowledge` | POST | `/api/tasks/acknowledge/` | Acknowledge tasks (integer task IDs) |
+| `task_list` | GET | `/api/tasks/` | List background tasks, paginated by the server. Filters: `status`, `task_type`, `trigger_source` (arrays, sent as repeated query parameters), `is_complete`, `acknowledged`, `owner`, `name`, `result`, `date_created_after`, `date_created_before`; `ordering` on `date_created`, `date_done`, `status`, `task_type`, `duration_seconds`, `wait_time_seconds` (default `-date_created`). `result_data.traceback` is trimmed to its last 500 bytes unless `include_traceback` is set |
+| `task_get` | GET | `/api/tasks/?task_id={uuid}` or `/api/tasks/{id}/` | Get one task by task UUID or integer id. The UUID lookup's envelope is unwrapped; no match is an error. The traceback is returned in full |
+| `task_acknowledge` | POST | `/api/tasks/acknowledge/` | Acknowledge tasks: exactly one of `tasks` (integer IDs) or `all: true` (every visible unacknowledged task, including pending and failed ones). Returns `{"result": count}` |
 | `task_run` | POST | `/api/tasks/run/` | Run a system task (superuser only). `task_type` is one of `train_classifier`, `sanity_check`, `llm_index` |
+| `task_stats` | GET | `/api/tasks/summary/`, `/api/tasks/status_counts/`, `/api/tasks/active/` | `mode` picks the endpoint: `summary` (per task type over `days`, 1–365, default 30), `status_counts` (`all`, `needs_attention`, `in_progress`, `completed`; takes `task_list`'s filters except `status` and `is_complete`), `active` (pending and started tasks, at most 50). Parameters outside the chosen mode are rejected |
 
 #### Logs
 
@@ -582,12 +583,12 @@ The share link API has no update: `ShareLinkViewSet` supports create, retrieve, 
 
 ## Response Shaping
 
-Paperless-ngx API responses can be far too large for MCP clients (full OCR text per list result, unbounded ID arrays, thousands of unpaginated tasks). The server reshapes responses to keep tool output compact:
+Paperless-ngx API responses can be far too large for MCP clients (full OCR text per list result, unbounded ID arrays, long task tracebacks). The server reshapes responses to keep tool output compact:
 
 - **Content truncation**: `document_list` truncates each document's `content` to a snippet (default 500 bytes, adjustable per call with `content_snippet_bytes`; `0` disables truncation), marking truncated entries with `content_truncated: true`. Opt out per-call with `full_content: true`, or use `document_get` for one document's full text.
 - **Notes stripped**: `document_list` replaces each document's unbounded `notes` array with a `notes_count` field (omitted when zero). Opt out per-call with `include_notes: true`, or use `document_note_list`/`document_get` for one document's full notes.
 - **`all` ID array stripped**: every paginated list response omits Paperless's unbounded `all` array of matching IDs. `document_list` can re-include it with `include_all_ids: true`.
-- **Client-side task pagination**: `/api/tasks/` ignores pagination and returns every task; `task_list` paginates the array client-side.
+- **Task tracebacks trimmed**: `task_list` keeps the last 500 bytes of each `result_data.traceback` (the end, where the exception is), prefixed with `…` and marked `traceback_truncated: true`. Opt out with `include_traceback: true`, or use `task_get` for one task's full traceback.
 - **Log tailing**: `log_get` returns only the last `tail` lines (default 100) with a `total_lines` count.
 - **Selection data filtering**: `document_selection_data` omits objects with `document_count: 0`.
 - **Slim user lists**: `user_list` omits the large `inherited_permissions` list unless `include_permissions: true`.

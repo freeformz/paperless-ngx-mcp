@@ -85,7 +85,7 @@ Generate an API token in Paperless-ngx under **Settings > Administration > Auth 
 
 ## Tools
 
-Responses are shaped to stay compact for MCP clients: document `content` in `document_list` results is truncated to a snippet — default 500 bytes, adjustable per call with `content_snippet_bytes` (0 disables); `full_content: true` opts out and `document_get` returns full text — document `notes` in `document_list` results are replaced with a `notes_count` field (`include_notes: true` keeps them; `document_note_list` returns full notes), the unbounded `all` ID array is stripped from paginated lists (`include_all_ids: true` on `document_list` re-includes it), `task_list` is paginated client-side, `log_get` returns only the last `tail` lines (default 100), `document_selection_data` omits zero-count objects, `user_list` omits `inherited_permissions` unless `include_permissions: true`, and `profile_get` redacts the API auth token.
+Responses are shaped to stay compact for MCP clients: document `content` in `document_list` results is truncated to a snippet — default 500 bytes, adjustable per call with `content_snippet_bytes` (0 disables); `full_content: true` opts out and `document_get` returns full text — document `notes` in `document_list` results are replaced with a `notes_count` field (`include_notes: true` keeps them; `document_note_list` returns full notes), the unbounded `all` ID array is stripped from paginated lists (`include_all_ids: true` on `document_list` re-includes it), `task_list` trims each task's `result_data.traceback` to its last 500 bytes (`include_traceback: true` keeps it; `task_get` returns it in full), `log_get` returns only the last `tail` lines (default 100), `document_selection_data` omits zero-count objects, `user_list` omits `inherited_permissions` unless `include_permissions: true`, and `profile_get` redacts the API auth token.
 
 ### Documents
 `document_list`, `document_get`, `document_update`, `document_delete`, `document_upload`, `document_download`, `document_metadata`, `document_suggestions`, `document_next_asn`, `document_share_links`, `document_history`, `document_email`
@@ -137,7 +137,7 @@ A share link's public URL is `{PAPERLESS_URL}/share/{slug}`. The server generate
 `workflow_list`, `workflow_get`, `workflow_create`, `workflow_update`, `workflow_delete`, `workflow_trigger_list`, `workflow_trigger_get`, `workflow_trigger_create`, `workflow_trigger_update`, `workflow_trigger_delete`, `workflow_action_list`, `workflow_action_get`, `workflow_action_create`, `workflow_action_update`, `workflow_action_delete`
 
 ### System
-`system_status`, `remote_version`, `ui_settings_get`, `config_list`, `config_get`, `config_update`, `task_list`, `task_get`, `task_acknowledge`, `task_run`, `log_list`, `log_get`, `trash_list`, `trash_action`
+`system_status`, `remote_version`, `ui_settings_get`, `config_list`, `config_get`, `config_update`, `task_list`, `task_get`, `task_acknowledge`, `task_run`, `task_stats`, `log_list`, `log_get`, `trash_list`, `trash_action`
 
 ## Development
 

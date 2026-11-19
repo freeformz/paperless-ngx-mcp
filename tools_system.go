@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -20,25 +23,105 @@ var (
 	logNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)*$`)
 	// runnableTaskTypes are the task types /api/tasks/run/ will dispatch manually.
 	runnableTaskTypes = []string{"train_classifier", "sanity_check", "llm_index"}
+	// integerIDPattern matches a task's integer primary key.
+	integerIDPattern = regexp.MustCompile(`^[0-9]+$`)
+
+	// Values of PaperlessTask.TaskType, TriggerSource and Status (API v10).
+	taskTypes = []string{
+		"consume_file", "train_classifier", "sanity_check", "index_optimize", "mail_fetch",
+		"llm_index", "empty_trash", "check_workflows", "bulk_update", "reprocess_document",
+		"build_share_link", "bulk_delete", "apply_ai_suggestions",
+	}
+	taskTriggerSources = []string{"scheduled", "web_ui", "api_upload", "folder_consume", "email_consume", "system", "manual"}
+	taskStatuses       = []string{"pending", "started", "success", "failure", "revoked"}
+	// taskOrderingFields are TasksViewSet.ordering_fields.
+	taskOrderingFields = []string{"date_created", "date_done", "status", "task_type", "duration_seconds", "wait_time_seconds"}
+	// taskStatsModes are the task_stats modes, one per aggregate endpoint.
+	taskStatsModes = []string{"summary", "status_counts", "active"}
+	// taskCountFilters are the task_list filters /api/tasks/status_counts/ honours
+	// (all of them except status and is_complete).
+	taskCountFilters = []string{"task_type", "trigger_source", "acknowledged", "owner", "name", "result", "date_created_after", "date_created_before"}
 )
+
+// tracebackSnippetLen is how many bytes of result_data.traceback task_list keeps.
+const tracebackSnippetLen = 500
+
+// taskFilterOptions returns the schema for the filters task_list shares with
+// task_stats status_counts. withStatus adds status and is_complete, which
+// status_counts ignores.
+func taskFilterOptions(withStatus bool) []mcp.ToolOption {
+	opts := []mcp.ToolOption{
+		mcp.WithArray("task_type", mcp.Description("Only these task types (any of)"), mcp.WithStringItems(mcp.Enum(taskTypes...))),
+		mcp.WithArray("trigger_source", mcp.Description("Only these trigger sources (any of)"), mcp.WithStringItems(mcp.Enum(taskTriggerSources...))),
+		mcp.WithBoolean("acknowledged", mcp.Description("Filter by acknowledged state")),
+		withNumber("owner", mcp.Description("Filter by owner user ID")),
+		mcp.WithString("name", mcp.Description("Match the input file name, or the task type / trigger source label (case-insensitive substring)")),
+		mcp.WithString("result", mcp.Description("Match result_data.reason or error_message (substring); a number also matches result_data.document_id or duplicate_of, and a value containing \"duplicate\" matches every task that found a duplicate")),
+		mcp.WithString("date_created_after", mcp.Description("Created at or after this ISO 8601 datetime; a date alone means midnight at the start of that day")),
+		mcp.WithString("date_created_before", mcp.Description("Created at or before this ISO 8601 datetime; a date alone means midnight at the start of that day, so pass the next day (or a datetime) to include all of it")),
+	}
+	if withStatus {
+		opts = append(opts,
+			mcp.WithArray("status", mcp.Description("Only these statuses (any of)"), mcp.WithStringItems(mcp.Enum(taskStatuses...))),
+			mcp.WithBoolean("is_complete", mcp.Description("true: success, failure or revoked; false: pending or started")),
+		)
+	}
+	return opts
+}
+
+// addTaskFilters adds the task_list filters to params. withStatus adds status
+// and is_complete.
+func addTaskFilters(params url.Values, request mcp.CallToolRequest, withStatus bool) *mcp.CallToolResult {
+	if errRes := addMultiParam(params, request, "task_type", taskTypes); errRes != nil {
+		return errRes
+	}
+	if errRes := addMultiParam(params, request, "trigger_source", taskTriggerSources); errRes != nil {
+		return errRes
+	}
+	addBoolParam(params, request, "acknowledged", "acknowledged")
+	addIntParam(params, request, "owner", "owner")
+	for _, name := range []string{"name", "result", "date_created_after", "date_created_before"} {
+		addStringParam(params, request, name, name)
+	}
+	if withStatus {
+		if errRes := addMultiParam(params, request, "status", taskStatuses); errRes != nil {
+			return errRes
+		}
+		addBoolParam(params, request, "is_complete", "is_complete")
+	}
+	return nil
+}
 
 func registerSystemTools(srv *server.MCPServer, client *Client) {
 	// Tasks
-	srv.AddTool(mcp.NewTool("task_list",
-		mcp.WithDescription("List background tasks (e.g., document consumption). Paginated; use page to iterate."),
+	taskListOpts := []mcp.ToolOption{
+		mcp.WithDescription("List background tasks, newest first by default. Paginated by the server; use page to iterate. Each task has id (integer, for task_acknowledge), task_id (UUID), task_type, trigger_source, status (pending, started, success, failure, revoked), date_created/started/done, duration_seconds, wait_time_seconds, input_data, result_data (document_id, duplicate_of, reason, error_type, error_message, traceback), related_document_ids and acknowledged. A consume that hit a duplicate has status failure and result_data.duplicate_of. result_data.traceback is cut to its last 500 bytes (traceback_truncated: true) unless include_traceback is set; task_get returns it in full. For counts use task_stats."),
 		withNumber("page", mcp.Description("Page number (default: 1)")),
 		withNumber("page_size", mcp.Description("Results per page (default: 25)")),
-	), handleTaskList(client))
+		mcp.WithString("ordering", mcp.Description("Sort field: "+strings.Join(taskOrderingFields, ", ")+"; prefix - for descending (default: -date_created)")),
+		mcp.WithBoolean("include_traceback", mcp.Description("Keep result_data.traceback whole (default: false)")),
+	}
+	srv.AddTool(mcp.NewTool("task_list", append(taskListOpts, taskFilterOptions(true)...)...), handleTaskList(client))
 
 	srv.AddTool(mcp.NewTool("task_get",
-		mcp.WithDescription("Get background task details by task UUID (as returned by document_upload)."),
-		mcp.WithString("id", mcp.Description("Task UUID"), mcp.Required()),
+		mcp.WithDescription("Get one background task by its task UUID (task_id, as returned by document_upload and task_run) or its integer id (from task_list). Returns the task with result_data in full."),
+		mcp.WithAny("id", mcp.Description("Task UUID or integer task id"), mcp.Required(), func(schema map[string]any) {
+			schema["type"] = []string{"string", "integer"}
+		}),
 	), handleTaskGet(client))
 
 	srv.AddTool(mcp.NewTool("task_acknowledge",
-		mcp.WithDescription("Acknowledge completed tasks to clear them from the list."),
-		mcp.WithString("tasks", mcp.Description("JSON array of integer task IDs (the id field from task_list, not the task UUID)"), mcp.Required()),
+		mcp.WithDescription("Acknowledge tasks, which hides them from the web UI's task notifications; nothing is deleted, and there is no way to un-acknowledge. Give exactly one of tasks or all. Returns {\"result\": number acknowledged}."),
+		mcp.WithString("tasks", mcp.Description("JSON array of integer task IDs (the id field from task_list, not the task UUID)")),
+		mcp.WithBoolean("all", mcp.Description("Acknowledge every visible unacknowledged task, including pending and failed ones")),
 	), handleTaskAcknowledge(client))
+
+	statsOpts := []mcp.ToolOption{
+		mcp.WithDescription("Aggregate task information. mode summary: per task type over the last N days (days), total/pending/success/failure counts, average duration and wait, and last run/success/failure times. mode status_counts: counts of all, needs_attention (failure or revoked), in_progress (pending or started) and completed (success); accepts task_list's filters except status and is_complete. mode active: pending and started tasks, newest first, at most 50. Parameters that don't belong to the chosen mode are rejected."),
+		mcp.WithString("mode", mcp.Description("What to return"), mcp.Required(), mcp.Enum(taskStatsModes...)),
+		withNumber("days", mcp.Description("summary only: how many days back, 1 to 365 (default: 30)")),
+	}
+	srv.AddTool(mcp.NewTool("task_stats", append(statsOpts, taskFilterOptions(false)...)...), handleTaskStats(client))
 
 	srv.AddTool(mcp.NewTool("task_run",
 		mcp.WithDescription("Run a system task in the background (superuser only). Returns a task_id; follow it with task_get. Types: train_classifier (retrain the auto-matching classifier), sanity_check (verify stored files against the database), llm_index (update the AI document index; requires AI to be enabled on the server)."),
@@ -99,34 +182,116 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 	), handleConfigUpdate(client))
 }
 
-// handleTaskList lists background tasks. The /api/tasks/ endpoint ignores
-// pagination parameters and returns a bare array of every task, so pagination
-// is applied client-side.
+// handleTaskList lists background tasks with server-side pagination and the
+// v10 task filters, trimming tracebacks unless include_traceback is set.
 func handleTaskList(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		page, pageSize := getPagination(request)
+		params := url.Values{}
+		addPaginationParams(params, request)
+		if errRes := addTaskFilters(params, request, true); errRes != nil {
+			return errRes, nil
+		}
+		if ordering := request.GetString("ordering", ""); ordering != "" {
+			if !slices.Contains(taskOrderingFields, strings.TrimPrefix(ordering, "-")) {
+				return errResult(fmt.Sprintf("ordering must be one of: %s (prefix - for descending)", strings.Join(taskOrderingFields, ", "))), nil
+			}
+			params.Set("ordering", ordering)
+		}
+		includeTraceback := request.GetBool("include_traceback", false)
+
 		path := "/api/tasks/"
-		resp, err := client.Get(ctx, path, nil)
+		resp, err := client.Get(ctx, path, params)
 		return doRequestJSON(resp, err, "GET", path, func(v any) any {
-			return paginateArray(v, page, pageSize)
+			if !includeTraceback {
+				if m, ok := v.(map[string]any); ok {
+					truncateTracebacks(m["results"])
+				}
+			}
+			return v
 		})
 	}
 }
 
+// truncateTracebacks keeps the last tracebackSnippetLen bytes of each task's
+// result_data.traceback (the end, where the exception is), marking shortened
+// ones with result_data.traceback_truncated.
+func truncateTracebacks(items any) {
+	arr, ok := items.([]any)
+	if !ok {
+		return
+	}
+	for _, item := range arr {
+		task, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		rd, ok := task["result_data"].(map[string]any)
+		if !ok {
+			continue
+		}
+		tb, ok := rd["traceback"].(string)
+		if !ok || len(tb) <= tracebackSnippetLen {
+			continue
+		}
+		rd["traceback"] = "…" + truncateUTF8Tail(tb, tracebackSnippetLen)
+		rd["traceback_truncated"] = true
+	}
+}
+
+// handleTaskGet returns one task. An integer id reads /api/tasks/{id}/; a UUID
+// goes through the task_id filter, whose paginated envelope is unwrapped.
 func handleTaskGet(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredString(request, "id")
-		if errRes != nil {
-			return errRes, nil
+		var id string
+		switch v := request.GetArguments()["id"].(type) {
+		case string:
+			id = v
+		case float64:
+			if v >= 0 && v == float64(int64(v)) {
+				id = strconv.FormatInt(int64(v), 10)
+			}
+		}
+		if id == "" {
+			return errResult("id is required: a task UUID or an integer task id"), nil
+		}
+
+		if integerIDPattern.MatchString(id) {
+			path := "/api/tasks/" + id + "/"
+			resp, err := client.Get(ctx, path, nil)
+			return doRequest(resp, err, "GET", path)
 		}
 		if !uuidPattern.MatchString(id) {
-			return errResult("id must be a valid UUID"), nil
+			return errResult("id must be a task UUID or an integer task id"), nil
 		}
-		// Tasks are keyed by integer pk; UUID lookup goes through the task_id filter.
+		// Celery task ids are lower case and the task_id filter is an exact,
+		// case-sensitive match.
+		id = strings.ToLower(id)
+
 		path := "/api/tasks/"
 		params := url.Values{"task_id": {id}}
 		resp, err := client.Get(ctx, path, params)
-		return doRequest(resp, err, "GET", path+"?"+params.Encode())
+		if err != nil {
+			return errResult(fmt.Sprintf("request failed: %s", err)), nil
+		}
+		defer resp.Body.Close()
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return errResult(fmt.Sprintf("read response: %s", readErr)), nil
+		}
+		endpoint := path + "?" + params.Encode()
+		if resp.StatusCode >= 400 {
+			return apiErrorResult(resp.StatusCode, body, "GET", endpoint), nil
+		}
+		var envelope struct {
+			Results []json.RawMessage `json:"results"`
+		}
+		if err := json.Unmarshal(body, &envelope); err != nil {
+			return errResult(fmt.Sprintf("unexpected response from GET %s: %s", endpoint, err)), nil
+		}
+		if len(envelope.Results) == 0 {
+			return errResult("no task with task_id " + id), nil
+		}
+		return rawJSONResult(envelope.Results[0])
 	}
 }
 
@@ -136,13 +301,83 @@ func handleTaskAcknowledge(client *Client) server.ToolHandlerFunc {
 		if err := setJSONField(body, request, "tasks"); err != nil {
 			return errResult(err.Error()), nil
 		}
-		if _, ok := body["tasks"]; !ok {
-			return errResult("tasks is required"), nil
+		tasks, hasTasks := body["tasks"]
+		if hasTasks && tasks == nil {
+			// JSON null: treat as not given.
+			hasTasks = false
+			delete(body, "tasks")
+		}
+		if hasTasks {
+			ids, ok := tasks.([]any)
+			if !ok {
+				return errResult("tasks must be a JSON array of integer task IDs"), nil
+			}
+			for _, v := range ids {
+				if f, ok := v.(float64); !ok || f != float64(int64(f)) {
+					return errResult("tasks must be a JSON array of integer task IDs"), nil
+				}
+			}
+		}
+		all := request.GetBool("all", false)
+		switch {
+		case all && hasTasks:
+			return errResult("Set either all or tasks, not both."), nil
+		case !all && !hasTasks:
+			return errResult("Either all must be true or tasks must be provided."), nil
+		case all:
+			body = map[string]any{"all": true}
 		}
 
 		path := "/api/tasks/acknowledge/"
 		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
+	}
+}
+
+// handleTaskStats serves the three aggregate task endpoints, one per mode,
+// rejecting parameters that don't belong to the chosen mode.
+func handleTaskStats(client *Client) server.ToolHandlerFunc {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		mode, errRes := getRequiredString(request, "mode")
+		if errRes != nil {
+			return errRes, nil
+		}
+		var allowed []string
+		switch mode {
+		case "summary":
+			allowed = []string{"days"}
+		case "status_counts":
+			allowed = taskCountFilters
+		case "active":
+		default:
+			return errResult(fmt.Sprintf("mode must be one of: %s", strings.Join(taskStatsModes, ", "))), nil
+		}
+		for name, v := range request.GetArguments() {
+			// Some clients send every optional property, null when unused.
+			if v != nil && name != "mode" && !slices.Contains(allowed, name) {
+				return errResult(fmt.Sprintf("%s does not apply to mode %s", name, mode)), nil
+			}
+		}
+
+		params := url.Values{}
+		switch mode {
+		case "summary":
+			if v, ok := request.GetArguments()["days"]; ok && v != nil {
+				days := request.GetFloat("days", 0)
+				if days < 1 || days > 365 || days != float64(int(days)) {
+					return errResult("days must be an integer from 1 to 365"), nil
+				}
+				params.Set("days", strconv.Itoa(int(days)))
+			}
+		case "status_counts":
+			if errRes := addTaskFilters(params, request, false); errRes != nil {
+				return errRes, nil
+			}
+		}
+
+		path := "/api/tasks/" + mode + "/"
+		resp, err := client.Get(ctx, path, params)
+		return doRequest(resp, err, "GET", path)
 	}
 }
 

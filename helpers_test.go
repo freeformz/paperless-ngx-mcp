@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -49,6 +51,59 @@ func TestTruncateUTF8(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := truncateUTF8(tt.in, tt.n); got != tt.want {
 				t.Errorf("truncateUTF8(%q, %d) = %q, want %q", tt.in, tt.n, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTruncateUTF8Tail(t *testing.T) {
+	tests := []struct {
+		in   string
+		n    int
+		want string
+	}{
+		{"hello", 10, "hello"},
+		{"hello", 5, "hello"},
+		{"hello", 3, "llo"},
+		{"aé", 1, ""},  // the last byte is inside é, so nothing whole fits
+		{"éa", 2, "a"}, // starting mid-rune moves forward to a
+		{"xéy", 3, "éy"},
+		{"hello", 0, ""},
+	}
+	for _, tt := range tests {
+		if got := truncateUTF8Tail(tt.in, tt.n); got != tt.want {
+			t.Errorf("truncateUTF8Tail(%q, %d) = %q, want %q", tt.in, tt.n, got, tt.want)
+		}
+	}
+}
+
+func TestAddMultiParam(t *testing.T) {
+	allowed := []string{"a", "b", "c"}
+	tests := []struct {
+		name    string
+		args    map[string]any
+		want    url.Values
+		wantErr bool
+	}{
+		{"absent", map[string]any{}, url.Values{}, false},
+		{"null", map[string]any{"f": nil}, url.Values{}, false},
+		{"empty string", map[string]any{"f": ""}, url.Values{}, false},
+		{"single string", map[string]any{"f": "b"}, url.Values{"f": {"b"}}, false},
+		{"array", map[string]any{"f": []any{"a", "c"}}, url.Values{"f": {"a", "c"}}, false},
+		{"empty array", map[string]any{"f": []any{}}, url.Values{}, false},
+		{"invalid value", map[string]any{"f": []any{"a", "z"}}, url.Values{}, true},
+		{"non-string item", map[string]any{"f": []any{"a", float64(1)}}, url.Values{}, true},
+		{"wrong type", map[string]any{"f": float64(1)}, url.Values{}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params := url.Values{}
+			errRes := addMultiParam(params, makeRequest(tt.args), "f", allowed)
+			if (errRes != nil) != tt.wantErr {
+				t.Fatalf("errRes = %v, wantErr %v", errRes, tt.wantErr)
+			}
+			if !reflect.DeepEqual(params, tt.want) {
+				t.Errorf("params = %v, want %v", params, tt.want)
 			}
 		})
 	}
