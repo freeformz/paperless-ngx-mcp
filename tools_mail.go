@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"strconv"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -28,8 +30,8 @@ func registerMailTools(srv *server.MCPServer, client *Client) {
 		mcp.WithDescription("Create a mail account."),
 		mcp.WithString("name", mcp.Description("Account name"), mcp.Required()),
 		mcp.WithString("imap_server", mcp.Description("IMAP server hostname"), mcp.Required()),
-		withNumber("imap_port", mcp.Description("IMAP port")),
-		mcp.WithString("imap_security", mcp.Description("Security: none, ssl, starttls")),
+		withNumber("imap_port", mcp.Description("IMAP port"), mcp.Required()),
+		withIMAPSecurity("imap_security"),
 		mcp.WithString("username", mcp.Description("Username"), mcp.Required()),
 		mcp.WithString("password", mcp.Description("Password"), mcp.Required()),
 		mcp.WithString("character_set", mcp.Description("Character set (default: UTF-8)")),
@@ -41,7 +43,7 @@ func registerMailTools(srv *server.MCPServer, client *Client) {
 		mcp.WithString("name", mcp.Description("Account name")),
 		mcp.WithString("imap_server", mcp.Description("IMAP server hostname")),
 		withNumber("imap_port", mcp.Description("IMAP port")),
-		mcp.WithString("imap_security", mcp.Description("Security: none, ssl, starttls")),
+		withIMAPSecurity("imap_security"),
 		mcp.WithString("username", mcp.Description("Username")),
 		mcp.WithString("password", mcp.Description("Password")),
 	), handleMailAccountUpdate(client))
@@ -109,6 +111,51 @@ func registerMailTools(srv *server.MCPServer, client *Client) {
 	), handleProcessedMailBulkDelete(client))
 }
 
+func withIMAPSecurity(name string) mcp.ToolOption {
+	return mcp.WithString(name,
+		mcp.Description("Security: none (no encryption), ssl, starttls. Sent to paperless-ngx as the integers 1, 2 and 3."),
+		mcp.Enum("none", "ssl", "starttls"),
+	)
+}
+
+func getIMAPSecurity(request mcp.CallToolRequest) (int, bool, *mcp.CallToolResult) {
+	raw, ok := request.GetArguments()["imap_security"]
+	if !ok || raw == nil {
+		return 0, false, nil
+	}
+	if value, ok := imapSecurityValue(raw); ok {
+		return value, true, nil
+	}
+	return 0, false, errResult("imap_security must be one of: none, ssl, starttls (or an integer 1-3)")
+}
+
+func imapSecurityValue(raw any) (int, bool) {
+	switch v := raw.(type) {
+	case string:
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "none":
+			return 1, true
+		case "ssl":
+			return 2, true
+		case "starttls":
+			return 3, true
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		return n, err == nil && n >= 1 && n <= 3
+	case int:
+		return v, v >= 1 && v <= 3
+	case int64:
+		return int(v), v >= 1 && v <= 3
+	case float64:
+		return int(v), v >= 1 && v <= 3 && v == float64(int(v))
+	case json.Number:
+		n, err := v.Int64()
+		return int(n), err == nil && n >= 1 && n <= 3
+	default:
+		return 0, false
+	}
+}
+
 func handleMailAccountCreate(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		name, errRes := getRequiredString(request, "name")
@@ -127,20 +174,25 @@ func handleMailAccountCreate(client *Client) server.ToolHandlerFunc {
 		if errRes != nil {
 			return errRes, nil
 		}
+		imapPort, errRes := getRequiredInt(request, "imap_port")
+		if errRes != nil {
+			return errRes, nil
+		}
+		imapSecurity, hasIMAPSecurity, errRes := getIMAPSecurity(request)
+		if errRes != nil {
+			return errRes, nil
+		}
 
 		body := map[string]any{
 			"name":        name,
 			"imap_server": imapServer,
+			"imap_port":   imapPort,
 			"username":    username,
 			"password":    password,
 		}
-		args := request.GetArguments()
 
-		if _, ok := args["imap_port"]; ok {
-			body["imap_port"] = int(request.GetFloat("imap_port", 993))
-		}
-		if v := request.GetString("imap_security", ""); v != "" {
-			body["imap_security"] = v
+		if hasIMAPSecurity {
+			body["imap_security"] = imapSecurity
 		}
 		if v := request.GetString("character_set", ""); v != "" {
 			body["character_set"] = v
@@ -158,6 +210,10 @@ func handleMailAccountUpdate(client *Client) server.ToolHandlerFunc {
 		if errRes != nil {
 			return errRes, nil
 		}
+		imapSecurity, hasIMAPSecurity, errRes := getIMAPSecurity(request)
+		if errRes != nil {
+			return errRes, nil
+		}
 
 		body := map[string]any{}
 		args := request.GetArguments()
@@ -171,8 +227,8 @@ func handleMailAccountUpdate(client *Client) server.ToolHandlerFunc {
 		if _, ok := args["imap_port"]; ok {
 			body["imap_port"] = int(request.GetFloat("imap_port", 993))
 		}
-		if v := request.GetString("imap_security", ""); v != "" {
-			body["imap_security"] = v
+		if hasIMAPSecurity {
+			body["imap_security"] = imapSecurity
 		}
 		if v := request.GetString("username", ""); v != "" {
 			body["username"] = v

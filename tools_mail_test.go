@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -30,6 +31,7 @@ func TestMailAccountCreate(t *testing.T) {
 	result := callTool(t, handleMailAccountCreate(client), map[string]any{
 		"name":        "Gmail",
 		"imap_server": "imap.gmail.com",
+		"imap_port":   float64(993),
 		"username":    "user@gmail.com",
 		"password":    "secret",
 	})
@@ -48,12 +50,156 @@ func TestMailAccountCreateRequiresFields(t *testing.T) {
 	assertIsError(t, result)
 }
 
+func TestMailAccountCreateIMAPSecuritySSL(t *testing.T) {
+	var capturedBody map[string]any
+	rh := newRouteHandler(t)
+	rh.Handle("POST", "/api/mail_accounts/", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &capturedBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(201)
+		w.Write([]byte(`{"id":1}`))
+	})
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleMailAccountCreate(client), map[string]any{
+		"name":          "Gmail",
+		"imap_server":   "imap.gmail.com",
+		"imap_port":     float64(993),
+		"imap_security": "ssl",
+		"username":      "user@gmail.com",
+		"password":      "secret",
+	})
+	assertNotError(t, result)
+
+	if capturedBody["imap_security"] != float64(2) {
+		t.Errorf("imap_security = %v, want 2", capturedBody["imap_security"])
+	}
+}
+
+func TestMailAccountCreateIMAPSecurityInteger(t *testing.T) {
+	var capturedBody map[string]any
+	rh := newRouteHandler(t)
+	rh.Handle("POST", "/api/mail_accounts/", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &capturedBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(201)
+		w.Write([]byte(`{"id":1}`))
+	})
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleMailAccountCreate(client), map[string]any{
+		"name":          "Gmail",
+		"imap_server":   "imap.gmail.com",
+		"imap_port":     float64(993),
+		"imap_security": 3,
+		"username":      "user@gmail.com",
+		"password":      "secret",
+	})
+	assertNotError(t, result)
+
+	if capturedBody["imap_security"] != float64(3) {
+		t.Errorf("imap_security = %v, want 3", capturedBody["imap_security"])
+	}
+}
+
+func TestMailAccountCreateRequiresIMAPPort(t *testing.T) {
+	called := false
+	rh := newRouteHandler(t)
+	rh.Handle("POST", "/api/mail_accounts/", func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(201)
+		w.Write([]byte(`{"id":1}`))
+	})
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleMailAccountCreate(client), map[string]any{
+		"name":        "Gmail",
+		"imap_server": "imap.gmail.com",
+		"username":    "user@gmail.com",
+		"password":    "secret",
+	})
+	assertIsError(t, result)
+
+	if called {
+		t.Error("server should not be called when imap_port is missing")
+	}
+}
+
+func TestMailAccountCreateRejectsInvalidIMAPSecurity(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		value any
+	}{
+		{name: "unknown name", value: "tls"},
+		{name: "out of range integer", value: 4},
+		{name: "zero", value: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			called := false
+			rh := newRouteHandler(t)
+			rh.Handle("POST", "/api/mail_accounts/", func(w http.ResponseWriter, r *http.Request) {
+				called = true
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(201)
+				w.Write([]byte(`{"id":1}`))
+			})
+			client := testClientAndServer(t, rh)
+			result := callTool(t, handleMailAccountCreate(client), map[string]any{
+				"name":          "Gmail",
+				"imap_server":   "imap.gmail.com",
+				"imap_port":     float64(993),
+				"imap_security": tc.value,
+				"username":      "user@gmail.com",
+				"password":      "secret",
+			})
+			assertIsError(t, result)
+
+			if called {
+				t.Error("server should not be called when imap_security is invalid")
+			}
+			msg := resultText(t, result)
+			for _, want := range []string{"none", "ssl", "starttls"} {
+				if !strings.Contains(msg, want) {
+					t.Errorf("error %q should name accepted value %q", msg, want)
+				}
+			}
+		})
+	}
+}
+
 func TestMailAccountUpdate(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("PATCH", "/api/mail_accounts/1/", jsonHandler(t, 200, map[string]any{"id": 1, "name": "Updated"}))
 	client := testClientAndServer(t, rh)
 	result := callTool(t, handleMailAccountUpdate(client), map[string]any{"id": float64(1), "name": "Updated"})
 	assertNotError(t, result)
+}
+
+func TestMailAccountUpdateIMAPSecurity(t *testing.T) {
+	var capturedBody map[string]any
+	rh := newRouteHandler(t)
+	rh.Handle("PATCH", "/api/mail_accounts/1/", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &capturedBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.Write([]byte(`{"id":1}`))
+	})
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleMailAccountUpdate(client), map[string]any{
+		"id":            float64(1),
+		"imap_security": "starttls",
+	})
+	assertNotError(t, result)
+
+	if capturedBody["imap_security"] != float64(3) {
+		t.Errorf("imap_security = %v, want 3", capturedBody["imap_security"])
+	}
+	for _, field := range []string{"name", "imap_server", "imap_port", "username", "password"} {
+		if _, ok := capturedBody[field]; ok {
+			t.Errorf("body should not contain %q when it was not supplied", field)
+		}
+	}
 }
 
 func TestMailAccountUpdateNoFields(t *testing.T) {
