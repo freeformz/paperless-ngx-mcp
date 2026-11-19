@@ -27,8 +27,8 @@ func jsonHandler(t *testing.T, status int, body any) http.HandlerFunc {
 		if auth := r.Header.Get("Authorization"); auth != "Token test-token" {
 			t.Errorf("expected Authorization: Token test-token, got %s", auth)
 		}
-		if accept := r.Header.Get("Accept"); accept != "application/json; version=9" {
-			t.Errorf("expected Accept: application/json; version=9, got %s", accept)
+		if want := "application/json; version=" + apiVersion; r.Header.Get("Accept") != want {
+			t.Errorf("expected Accept: %s, got %s", want, r.Header.Get("Accept"))
 		}
 
 		w.Header().Set("Content-Type", "application/json")

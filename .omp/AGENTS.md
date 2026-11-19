@@ -78,7 +78,7 @@ The MCP server is configured via environment variables:
 
 ## Architecture
 
-- **HTTP Client**: Token auth + API v9 versioning on all requests
+- **HTTP Client**: Token auth + API v10 versioning on all requests (Paperless-ngx 3.5.0+; no runtime version check)
 - **MCP transport**: stdio via mark3labs/mcp-go
 - **Caching**: In-memory TTL cache for metadata lists (tags, correspondents, document types, storage paths, custom fields)
 - **Stateless**: No local database — all state lives in Paperless-ngx

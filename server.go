@@ -33,7 +33,7 @@ func NewServer(client *Client, dl *Downloader) *server.MCPServer {
 	return srv
 }
 
-const serverInstructions = `Paperless-ngx MCP server — manage documents and metadata via AI agents.
+const serverInstructions = `Paperless-ngx MCP server — manage documents and metadata via AI agents. Requires Paperless-ngx 3.5.0 or newer (REST API v10).
 
 ## Tool Categories
 - **Documents**: document_list (search/filter), document_get, document_update, document_delete, document_upload, document_download, document_metadata, document_suggestions, document_next_asn, document_share_links, document_history, document_email
@@ -62,7 +62,7 @@ All list endpoints support page (default: 1) and page_size (default: 25) paramet
 Responses are trimmed to stay compact. Document content in document_list results is truncated to a snippet (default 500 bytes, content_truncated: true marks truncated entries) — adjust with content_snippet_bytes (0 disables), pass full_content: true, or use document_get for full text. Notes in document_list results are replaced with a notes_count field (include_notes: true re-includes them; document_note_list and document_get return full notes). Paginated lists omit the "all" ID array (include_all_ids: true on document_list re-includes it for bulk workflows). log_get returns only the last 100 lines by default (tail parameter). document_selection_data omits objects with zero matching documents. user_list omits inherited_permissions unless include_permissions: true.
 
 ## Document Search
-Use document_list with query for full-text search. Results include __search_hit__ with score, highlights, and rank. search_global is only a quick lookup across object types: at most 3 results per type, no pagination, a 3 to 4096 character query, and documents with only id, title and created on paperless-ngx 3.3.3+ (older servers return full, untruncated documents).
+Use document_list with query for full-text search. Results include __search_hit__ with score, highlights, and rank. search_global is only a quick lookup across object types: at most 3 results per type, no pagination, a 3 to 4096 character query, and documents with only id, title and created.
 
 ## Tag Filtering
 - tags_id_all: document must have ALL specified tags (comma-separated IDs)
@@ -88,4 +88,4 @@ Use document_download to fetch document files. By default, files are saved to lo
 Use document_page_image to actually see a document page — essential when OCR content is missing or garbled (handwriting, bad scans, stamps, diagrams). Render the full page first; if fine detail is illegible, call it again with region=[x0,y0,x1,y1] (fractions of page width/height, 0-1 — NOT pixels; e.g. [0,0,0.5,0.5] is the top-left quarter) to re-render that area at high resolution.
 
 ## API Version
-All requests use Paperless-ngx REST API version 9.`
+All requests use Paperless-ngx REST API version 10 (Paperless-ngx 3.5.0 or newer).`

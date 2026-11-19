@@ -46,4 +46,4 @@ All list endpoints support `page` (default: 1) and `page_size` (default: 25) par
 
 ### API Version
 
-All requests use Paperless-ngx REST API version 9. This is handled automatically by the MCP server.
+All requests use Paperless-ngx REST API version 10, which requires Paperless-ngx 3.5.0 or newer. This is handled automatically by the MCP server.

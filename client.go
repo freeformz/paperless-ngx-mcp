@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	apiVersion      = "9"
+	apiVersion      = "10"
 	defaultCacheTTL = 5 * time.Minute
 )
 

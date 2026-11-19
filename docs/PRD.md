@@ -70,7 +70,7 @@ The server is configured entirely via environment variables:
 | `PAPERLESS_TOKEN` | yes | API authentication token |
 | `PAPERLESS_MCP_DOWNLOAD_DIR` | no | Directory for `document_download` disk saves. When set, downloads land here (or in a `dest_dir` subdirectory of it) with their real filenames, are never touched by `cleanup_downloads`, and remain after the server exits. When unset, downloads use a per-instance temp directory (`paperless-ngx-mcp-*` in the system temp dir) that is deleted with its contents on shutdown; see [Shutdown](#shutdown). |
 
-The server always uses Paperless-ngx API version 9. These are passed via the MCP server configuration (`.mcp.json` or MCPB manifest) as environment variables, which is compatible with CoWork and MCPB bundle format.
+The server always uses Paperless-ngx API version 10 and requires Paperless-ngx 3.5.0 or newer. These are passed via the MCP server configuration (`.mcp.json` or MCPB manifest) as environment variables, which is compatible with CoWork and MCPB bundle format.
 
 ### Shutdown
 
@@ -95,7 +95,8 @@ SIGKILL can't be caught. A server killed that way (`kill -9`, the OOM killer, or
 ### HTTP Client
 
 - **Authentication**: Token-based via `Authorization: Token <token>` header
-- **API versioning**: `Accept: application/json; version=9` header on all requests (hardcoded to v9)
+- **API versioning**: `Accept: application/json; version=10` header on all requests (hardcoded to v10)
+- **Minimum server**: Paperless-ngx 3.5.0. Older servers stay on MCP v0.3.x. There is no runtime version check: a 2.x server answers v10 requests with 406, and 3.0 to 3.4 accept them with silent differences (for example, 3.0 and 3.1 ignore parameters added in 3.2.0, and 3.5.0 made the bulk and action endpoints asynchronous).
 - **Pagination**: Automatic handling — list tools accept `page` and `page_size` parameters; responses include `count`, `next`, `previous`, and `results`
 - **Error handling**: HTTP error responses are translated to MCP error results with status code, detail message, and endpoint context
 - **Timeouts**: Configurable per-request timeout with sensible default (30s)
@@ -400,7 +401,7 @@ Accepts `id`, `name` and `extra_data`. It does not send `data_type`, because pap
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
 | `search_autocomplete` | GET | `/api/search/autocomplete/` | Autocomplete search terms |
-| `search_global` | GET | `/api/search/` | Quick lookup across object types: at most 3 results per type, not paginated. `query` (required) must be 3 to 4096 characters. Documents carry only `id`, `title` and `created` on paperless-ngx 3.3.3+ (older servers return full documents, which are not truncated); use `document_list` with `query` for real document search |
+| `search_global` | GET | `/api/search/` | Quick lookup across object types: at most 3 results per type, not paginated. `query` (required) must be 3 to 4096 characters. Documents carry only `id`, `title` and `created`; use `document_list` with `query` for real document search |
 
 #### Statistics
 
@@ -429,7 +430,7 @@ Accepts `id`, `name` and `extra_data`. It does not send `data_type`, because pap
 | `share_link_create` | POST | `/api/share_links/` | Create share link (the server generates the slug) |
 | `share_link_delete` | DELETE | `/api/share_links/{id}/` | Delete share link |
 
-The share link API has no update: `ShareLinkViewSet` supports create, retrieve, list and destroy only, so a PATCH gets 405. To change a link, delete it and create a new one, which gets a new random 50-character slug. The public URL of a link is `{PAPERLESS_URL}/share/{slug}`. Results have `id`, `created`, `expiration` (null: never expires), `slug`, `document`, `file_version` and, on Paperless-ngx 3.2.0+, a read-only `document_title`.
+The share link API has no update: `ShareLinkViewSet` supports create, retrieve, list and destroy only, so a PATCH gets 405. To change a link, delete it and create a new one, which gets a new random 50-character slug. The public URL of a link is `{PAPERLESS_URL}/share/{slug}`. Results have `id`, `created`, `expiration` (null: never expires), `slug`, `document`, `file_version` and a read-only `document_title`.
 
 **share_link_list parameters:**
 
@@ -439,7 +440,7 @@ The share link API has no update: `ShareLinkViewSet` supports create, retrieve, 
 | created_before | string | no | Created on or before (YYYY-MM-DD, `created__date__lte`) |
 | expiration_after | string | no | Expires on or after (YYYY-MM-DD, `expiration__date__gte`) |
 | expiration_before | string | no | Expires on or before (YYYY-MM-DD, `expiration__date__lte`) |
-| ordering | string | no | `created`, `expiration`, `document__title` or `document` (prefix `-` for descending). `document__title` needs Paperless-ngx 3.2.0+; `document` (document ID) is for older servers. Each server ignores the other's field. The value is passed through unchanged, with no translation |
+| ordering | string | no | `created`, `expiration` or `document__title` (prefix `-` for descending) |
 | page | number | no | Page number |
 | page_size | number | no | Results per page |
 
@@ -603,7 +604,7 @@ The MCP server provides inline instructions via `WithInstructions` that guide ag
 - How custom field queries work
 - Metadata update workflow: get document, review fields, update with `document_update`
 - Bulk operations: use `document_bulk_edit` for batch changes
-- API version is always v9
+- API version is always v10 (Paperless-ngx 3.5.0+)
 
 ## Technical Requirements
 
@@ -664,7 +665,7 @@ type Client struct {
 }
 ```
 
-The API version is hardcoded to `9` — the `Accept: application/json; version=9` header is always sent.
+The API version is hardcoded to `10` — the `Accept: application/json; version=10` header is always sent.
 
 **Key methods:**
 
