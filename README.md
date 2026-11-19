@@ -119,7 +119,9 @@ PDF rendering happens in-process via [go-pdfium](https://github.com/klippa-app/g
 `saved_view_list`, `saved_view_get`, `saved_view_create`, `saved_view_update`, `saved_view_delete`
 
 ### Share Links
-`share_link_list`, `share_link_get`, `share_link_create`, `share_link_update`, `share_link_delete`
+`share_link_list`, `share_link_get`, `share_link_create`, `share_link_delete`
+
+A share link's public URL is `{PAPERLESS_URL}/share/{slug}`. The server generates the slug, and share links can't be edited: to change a link's expiration or file version, delete it and create a new one, which gets a new slug. `share_link_list` filters by `created` and `expiration` date and sorts by `created`, `expiration` or `document`. On Paperless-ngx 3.2.0+ results include a read-only `document_title`.
 
 ### Users & Groups
 `user_list`, `user_get`, `user_create`, `user_update`, `user_delete`, `user_deactivate_totp`, `group_list`, `group_get`, `group_create`, `group_update`, `group_delete`, `profile_get`, `profile_update`
