@@ -400,7 +400,7 @@ Accepts `id`, `name` and `extra_data`. It does not send `data_type`, because pap
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
 | `search_autocomplete` | GET | `/api/search/autocomplete/` | Autocomplete search terms |
-| `search_global` | GET | `/api/search/` | Quick lookup across object types: at most 3 results per type, not paginated. `query` (required) must be 3 to 4096 characters. Documents carry only `id`, `title` and `created` (paperless-ngx 3.3.3+); use `document_list` with `query` for real document search |
+| `search_global` | GET | `/api/search/` | Quick lookup across object types: at most 3 results per type, not paginated. `query` (required) must be 3 to 4096 characters. Documents carry only `id`, `title` and `created` on paperless-ngx 3.3.3+ (older servers return full documents, which are not truncated); use `document_list` with `query` for real document search |
 
 #### Statistics
 

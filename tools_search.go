@@ -22,7 +22,7 @@ func registerSearchTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("search_global",
-			mcp.WithDescription("Quick lookup across object types (documents, saved views, tags, correspondents, document types, storage paths, users, groups, mail rules, mail accounts, workflows, custom fields). Returns at most 3 results per type and is not paginated. Documents carry only id, title and created; use document_get for a document's details, and document_list with query for real document search."),
+			mcp.WithDescription("Quick lookup across object types (documents, saved views, tags, correspondents, document types, storage paths, users, groups, mail rules, mail accounts, workflows, custom fields). Returns at most 3 results per type and is not paginated. On paperless-ngx 3.3.3+ documents carry only id, title and created (older servers return full documents, untruncated); use document_get for a document's details, and document_list with query for real document search."),
 			mcp.WithString("query", mcp.Description("Search query, 3 to 4096 characters"), mcp.Required()),
 		),
 		handleSearchGlobal(client),
@@ -52,7 +52,8 @@ func handleSearchAutocomplete(client *Client) server.ToolHandlerFunc {
 	}
 }
 
-// Query length limits enforced by paperless-ngx's GlobalSearchView.
+// Query length limits of paperless-ngx's GlobalSearchView (the upper bound
+// since 3.2.0; earlier servers accept longer queries).
 const (
 	minGlobalSearchQueryLen = 3
 	maxGlobalSearchQueryLen = 4096
@@ -65,8 +66,8 @@ func handleSearchGlobal(client *Client) server.ToolHandlerFunc {
 			return errRes, nil
 		}
 
-		// paperless-ngx counts characters (code points) and rejects queries
-		// outside this range with a 400.
+		// paperless-ngx counts characters (code points), not bytes, and
+		// returns a 400 for queries outside this range.
 		if n := utf8.RuneCountInString(query); n < minGlobalSearchQueryLen || n > maxGlobalSearchQueryLen {
 			return errResult(fmt.Sprintf("query must be %d to %d characters, got %d", minGlobalSearchQueryLen, maxGlobalSearchQueryLen, n)), nil
 		}

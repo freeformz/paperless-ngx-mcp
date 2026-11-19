@@ -94,10 +94,13 @@ func TestSearchGlobalQueryLength(t *testing.T) {
 		{"missing", "", true},
 		{"two chars", "ab", true},
 		{"three chars", "abc", false},
+		{"two multibyte chars", "äö", true},
+		{"two astral chars", "🙂🙂", true},
 		{"three multibyte chars", "äöü", false},
 		{"max length", strings.Repeat("a", 4096), false},
 		{"max length multibyte", strings.Repeat("é", 4096), false},
 		{"too long", strings.Repeat("a", 4097), true},
+		{"too long multibyte", strings.Repeat("é", 4097), true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
