@@ -20,7 +20,7 @@ func TestShareLinkList(t *testing.T) {
 		"created_before":    "2025-06-30",
 		"expiration_after":  "2025-07-01",
 		"expiration_before": "2025-12-31",
-		"ordering":          "-expiration",
+		"ordering":          "-document__title",
 	})
 	assertNotError(t, result)
 
@@ -29,7 +29,7 @@ func TestShareLinkList(t *testing.T) {
 		"created__date__lte":    "2025-06-30",
 		"expiration__date__gte": "2025-07-01",
 		"expiration__date__lte": "2025-12-31",
-		"ordering":              "-expiration",
+		"ordering":              "-document__title",
 	}
 	for k, v := range want {
 		if got.Get(k) != v {

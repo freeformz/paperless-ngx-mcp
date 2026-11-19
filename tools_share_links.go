@@ -16,7 +16,7 @@ func registerShareLinkTools(srv *server.MCPServer, client *Client) {
 			mcp.WithString("created_before", mcp.Description("Filter by created date (on or before, YYYY-MM-DD)")),
 			mcp.WithString("expiration_after", mcp.Description("Filter by expiration date (on or after, YYYY-MM-DD). Links that never expire are excluded.")),
 			mcp.WithString("expiration_before", mcp.Description("Filter by expiration date (on or before, YYYY-MM-DD). Links that never expire are excluded.")),
-			mcp.WithString("ordering", mcp.Description("Sort field: created, expiration or document (prefix - for descending)")),
+			mcp.WithString("ordering", mcp.Description("Sort field: created, expiration or document__title (Paperless-ngx 3.2.0+); prefix - for descending")),
 			withNumber("page", mcp.Description("Page number (default: 1)")),
 			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 		),
