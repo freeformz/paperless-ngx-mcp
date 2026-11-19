@@ -82,7 +82,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_upload",
-			mcp.WithDescription("Upload a new document. Returns a task UUID for tracking consumption status."),
+			mcp.WithDescription("Upload a new document. Returns a task UUID; follow it with task_get to see whether consumption succeeded (a duplicate is reported as status failure with result_data.duplicate_of)."),
 			mcp.WithString("file_path", mcp.Description("Local path to the file to upload"), mcp.Required()),
 			mcp.WithString("title", mcp.Description("Document title")),
 			mcp.WithString("created", mcp.Description("Created date")),

@@ -8,7 +8,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -144,6 +146,18 @@ func truncateUTF8(s string, n int) string {
 	return s[:n]
 }
 
+// truncateUTF8Tail keeps the last n bytes of s without splitting a UTF-8 rune.
+func truncateUTF8Tail(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	start := len(s) - max(n, 0)
+	for start < len(s) && !utf8.RuneStart(s[start]) {
+		start++
+	}
+	return s[start:]
+}
+
 // truncateContentFields truncates the "content" field of each object in items
 // to limit bytes, marking truncated entries with content_truncated.
 // A limit of 0 (or less) disables truncation.
@@ -193,46 +207,44 @@ func stripNotesFields(items any) {
 	}
 }
 
-// paginateArray slices a bare JSON array response into a paginated envelope.
-// Used for endpoints (e.g., /api/tasks/) that ignore pagination parameters.
-func paginateArray(v any, page, pageSize int) any {
-	arr, ok := v.([]any)
-	if !ok {
-		return v
+// addMultiParam adds a multi-value filter as repeated query parameters
+// (?name=a&name=b), which is how django-filter's MultipleChoiceFilter reads
+// them. The argument may be an array of strings or a single string. Every
+// value must be in allowed; otherwise an error result is returned and no
+// parameter is added.
+func addMultiParam(params url.Values, request mcp.CallToolRequest, name string, allowed []string) *mcp.CallToolResult {
+	raw, ok := request.GetArguments()[name]
+	if !ok || raw == nil {
+		return nil
 	}
-	// page and pageSize are client-controlled; clamp overflow-to-negative
-	// results to "past the end" so slicing can never panic.
-	start := (page - 1) * pageSize
-	if start < 0 || start > len(arr) {
-		start = len(arr)
+	var vals []string
+	switch v := raw.(type) {
+	case string:
+		if v != "" {
+			vals = []string{v}
+		}
+	case []any:
+		for _, e := range v {
+			s, ok := e.(string)
+			if !ok {
+				return errResult(name + " must be an array of strings")
+			}
+			vals = append(vals, s)
+		}
+	case []string:
+		vals = v
+	default:
+		return errResult(name + " must be an array of strings")
 	}
-	end := start + pageSize
-	if end < start || end > len(arr) {
-		end = len(arr)
+	for _, s := range vals {
+		if !slices.Contains(allowed, s) {
+			return errResult(fmt.Sprintf("%s: invalid value %q; must be one of: %s", name, s, strings.Join(allowed, ", ")))
+		}
 	}
-	out := map[string]any{
-		"count":     len(arr),
-		"page":      page,
-		"page_size": pageSize,
-		"results":   arr[start:end],
+	for _, s := range vals {
+		params.Add(name, s)
 	}
-	if end < len(arr) {
-		out["next_page"] = page + 1
-	}
-	return out
-}
-
-// getPagination extracts page and page_size from the request with defaults.
-func getPagination(request mcp.CallToolRequest) (page, pageSize int) {
-	page = int(request.GetFloat("page", 1))
-	if page < 1 {
-		page = 1
-	}
-	pageSize = int(request.GetFloat("page_size", 25))
-	if pageSize < 1 {
-		pageSize = 25
-	}
-	return page, pageSize
+	return nil
 }
 
 // addPaginationParams adds page and page_size query parameters if provided in the request.
