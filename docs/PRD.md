@@ -381,6 +381,20 @@ Removes downloaded document files. With no arguments, removes all files in the i
 | `custom_field_update` | PATCH | `/api/custom_fields/{id}/` | Update custom field |
 | `custom_field_delete` | DELETE | `/api/custom_fields/{id}/` | Delete custom field |
 
+##### custom_field_create
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| name | string | yes | Field name (must be unique) |
+| data_type | string (enum) | yes | One of `string`, `url`, `date`, `boolean`, `integer`, `float`, `monetary`, `documentlink`, `select`, `longtext` (paperless-ngx `CustomField.FieldDataType`). Values outside this list are rejected before the request is sent. Treated as fixed after creation: paperless-ngx's UI doesn't allow changing it, and `custom_field_update` doesn't send it. |
+| extra_data | string | no | JSON object. Required for `select`: `{"select_options": [{"label": "..."}]}` (option ids are generated when omitted). Optional for `monetary`: `{"default_currency": "EUR"}` (3-letter code). |
+
+##### custom_field_update
+
+Accepts `id`, `name` and `extra_data`. It does not send `data_type`, because paperless-ngx treats the type as fixed (its model marks the field non-editable). For `select` fields, paperless-ngx requires `extra_data` with the full `select_options` list on every update (even a rename); keep each existing option's `id` so documents keep their values.
+
 #### Search
 
 | Tool | Method | Endpoint | Description |
