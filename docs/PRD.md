@@ -97,6 +97,7 @@ SIGKILL can't be caught. A server killed that way (`kill -9`, the OOM killer, or
 - **Authentication**: Token-based via `Authorization: Token <token>` header
 - **API versioning**: `Accept: application/json; version=10` header on all requests (hardcoded to v10)
 - **Minimum server**: Paperless-ngx 3.5.0. Older servers stay on MCP v0.3.x. There is no runtime version check: a 2.x server answers v10 requests with 406, and 3.0 to 3.4 accept them with silent differences (for example, 3.0 and 3.1 ignore parameters added in 3.2.0, and 3.5.0 made the bulk and action endpoints asynchronous).
+- **Structured parameters**: every array or object parameter accepts a native JSON value or the same value as a JSON-encoded string; both produce the same request
 - **Pagination**: Automatic handling — list tools accept `page` and `page_size` parameters; responses include `count`, `next`, `previous`, and `results`
 - **Error handling**: HTTP error responses are translated to MCP error results with status code, detail message, and endpoint context
 - **Timeouts**: Configurable per-request timeout with sensible default (30s)
@@ -189,10 +190,10 @@ By default each document's `content` (OCR text) is truncated to a snippet (defau
 | correspondent | integer | no | Correspondent ID (null to clear) |
 | document_type | integer | no | Document type ID (null to clear) |
 | storage_path | integer | no | Storage path ID (null to clear) |
-| tags | string | no | JSON array of tag IDs (replaces all tags) |
+| tags | array or JSON string | no | Array of tag IDs (replaces all tags) |
 | archive_serial_number | integer | no | Archive serial number (null to clear) |
 | owner | integer | no | Owner user ID (null to clear) |
-| custom_fields | string | no | JSON array of custom field assignments |
+| custom_fields | array or JSON string | no | Array of custom field assignments |
 
 **Returns:** Updated document object.
 
@@ -208,7 +209,7 @@ By default each document's `content` (OCR text) is truncated to a snippet (defau
 | correspondent | integer | no | Correspondent ID |
 | document_type | integer | no | Document type ID |
 | storage_path | integer | no | Storage path ID |
-| tags | string | no | JSON array of tag IDs |
+| tags | array or JSON string | no | Array of tag IDs |
 | archive_serial_number | integer | no | Archive serial number |
 
 **Returns:** Task UUID for tracking consumption status. Follow it with `task_get`; a consume that hit a duplicate is reported as status `failure` with `result_data.duplicate_of`.
@@ -221,7 +222,7 @@ Downloads one or more document files. By default, files are saved to disk and fi
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| ids | string | yes | JSON array of document IDs to download |
+| ids | array or JSON string | yes | Array of document IDs to download |
 | variant | string | no | File variant: `archived` (default, OCR'd PDF/A), `original` (as uploaded), or `thumbnail` |
 | content | boolean | no | Return file content inline instead of saving to disk (images as viewable image blocks, other types as base64) |
 | dest_dir | string | no | Save into this subdirectory of `PAPERLESS_MCP_DOWNLOAD_DIR` (error if that variable is unset, or if the path escapes it). Incompatible with `content=true`. |
@@ -243,7 +244,7 @@ A cancelled call returns immediately, even mid-render; see [Shutdown](#shutdown)
 | id | integer | yes | Document ID |
 | page | integer | no | Page number, 1-indexed (default: 1) |
 | max_width | integer | no | Maximum rendered width in pixels, clamped to 200–2000 (default: 1500) |
-| region | string | no | Crop region as JSON array `[x0,y0,x1,y1]`, values as fractions (0–1) of page width/height, not pixels. Pixel-looking values (> 1) are rejected with a hint |
+| region | array or JSON string | no | Crop region as an array `[x0,y0,x1,y1]`, values as fractions (0–1) of page width/height, not pixels. Pixel-looking values (> 1) are rejected with a hint |
 | grayscale | boolean | no | Render grayscale (default: true; ~3x smaller with no legibility loss on scans) |
 | format | string | no | Output format: `jpeg` (default) or `png` |
 
@@ -257,7 +258,7 @@ Removes downloaded document files. With no arguments, removes all files in the i
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| files | string | no | JSON array of file paths to remove. Omit to remove all downloaded files. |
+| files | array or JSON string | no | Array of file paths to remove. Omit to remove all downloaded files. |
 
 **Returns:** JSON object with `removed` (array of removed paths) and `removed_count`. When removing specific files, may include `failed` and `failed_count` for files that could not be removed.
 
@@ -282,9 +283,9 @@ Removes downloaded document files. With no arguments, removes all files in the i
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| documents | string | yes | JSON array of document IDs |
+| documents | array or JSON string | yes | Array of document IDs |
 | method | string | yes | Operation: `set_correspondent`, `set_document_type`, `set_storage_path`, `add_tag`, `remove_tag`, `modify_tags`, `delete`, `reprocess`, `set_permissions`, `modify_custom_fields`, `rotate`, `delete_pages`, `split`, `merge`, `edit_pdf` |
-| parameters | string | yes | JSON object with method-specific parameters |
+| parameters | object or JSON string | yes | Object with method-specific parameters |
 
 **Returns:** Confirmation of bulk operation.
 
@@ -390,7 +391,7 @@ Removes downloaded document files. With no arguments, removes all files in the i
 |------|------|----------|-------------|
 | name | string | yes | Field name (must be unique) |
 | data_type | string (enum) | yes | One of `string`, `url`, `date`, `boolean`, `integer`, `float`, `monetary`, `documentlink`, `select`, `longtext` (paperless-ngx `CustomField.FieldDataType`). Values outside this list are rejected before the request is sent. Treated as fixed after creation: paperless-ngx's UI doesn't allow changing it, and `custom_field_update` doesn't send it. |
-| extra_data | string | no | JSON object. Required for `select`: `{"select_options": [{"label": "..."}]}` (option ids are generated when omitted). Optional for `monetary`: `{"default_currency": "EUR"}` (3-letter code). |
+| extra_data | object or JSON string | no | Object. Required for `select`: `{"select_options": [{"label": "..."}]}` (option ids are generated when omitted). Optional for `monetary`: `{"default_currency": "EUR"}` (3-letter code). |
 
 ##### custom_field_update
 
@@ -417,9 +418,14 @@ Accepts `id`, `name` and `extra_data`. It does not send `data_type`, because pap
 |------|--------|----------|-------------|
 | `saved_view_list` | GET | `/api/saved_views/` | List saved views |
 | `saved_view_get` | GET | `/api/saved_views/{id}/` | Get saved view |
-| `saved_view_create` | POST | `/api/saved_views/` | Create saved view |
-| `saved_view_update` | PATCH | `/api/saved_views/{id}/` | Update saved view |
+| `saved_view_create` | POST | `/api/saved_views/` | Create saved view. `name` and `filter_rules` are required (`[]` matches every document); optional `icon`, `sort_field`, `sort_reverse`, `page_size`, `display_mode`, `display_fields` |
+| `saved_view_update` | PATCH | `/api/saved_views/{id}/` | Update saved view. `filter_rules` replaces all rules; `null` clears `page_size`, `display_mode` and `display_fields` |
 | `saved_view_delete` | DELETE | `/api/saved_views/{id}/` | Delete saved view |
+| `saved_view_rule_types` | — | — | The filter rule type table (paperless-ngx 3.5.1), answered locally: each `rule_type` code's label, value format, whether it takes one rule per value, the matching `/api/documents/` filter, and notes. Optional `ids` selects codes |
+
+A saved view's `filter_rules` is a list of `{rule_type, value}` combined with AND; `value` is a string or null. Multi-value rule types (such as 6, "has tag") take one rule per value. Field values: `icon` is one of paperless-ngx's 57 icon names (default `funnel`); `display_mode` is `table`, `smallCards` or `largeCards`; `display_fields` draws from `title`, `created`, `added`, `tag`, `correspondent`, `documenttype`, `storagepath`, `note`, `owner`, `shared`, `asn`, `pagecount` and `custom_field_<id>`. The server validates them.
+
+Dashboard and sidebar visibility is not a saved view field under API v10: it is a per-user UI setting (`settings.saved_views.dashboard_views_visible_ids` / `sidebar_views_visible_ids`, readable with `ui_settings_get`), changed in the web UI. The tools don't write it.
 
 #### Share Links
 

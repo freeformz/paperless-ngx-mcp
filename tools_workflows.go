@@ -25,13 +25,13 @@ func registerWorkflowTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(mcp.NewTool("workflow_create",
 		mcp.WithDescription("Create a workflow."),
 		mcp.WithString("name", mcp.Description("Workflow name"), mcp.Required()),
-		mcp.WithString("body", mcp.Description("JSON object with workflow configuration"), mcp.Required()),
+		withJSONObject("body", mcp.Description("Object with workflow configuration"), mcp.Required()),
 	), handleWorkflowCreate(client))
 
 	srv.AddTool(mcp.NewTool("workflow_update",
 		mcp.WithDescription("Update a workflow."),
 		withNumber("id", mcp.Description("Workflow ID"), mcp.Required()),
-		mcp.WithString("body", mcp.Description("JSON object with fields to update"), mcp.Required()),
+		withJSONObject("body", mcp.Description("Object with fields to update"), mcp.Required()),
 	), handleWorkflowUpdate(client))
 
 	srv.AddTool(mcp.NewTool("workflow_delete",
@@ -53,13 +53,13 @@ func registerWorkflowTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(mcp.NewTool("workflow_trigger_create",
 		mcp.WithDescription("Create a workflow trigger."),
-		mcp.WithString("body", mcp.Description("JSON object with trigger configuration"), mcp.Required()),
+		withJSONObject("body", mcp.Description("Object with trigger configuration"), mcp.Required()),
 	), genericJSONCreate(client, "/api/workflow_triggers/", nil))
 
 	srv.AddTool(mcp.NewTool("workflow_trigger_update",
 		mcp.WithDescription("Update a workflow trigger."),
 		withNumber("id", mcp.Description("Trigger ID"), mcp.Required()),
-		mcp.WithString("body", mcp.Description("JSON object with fields to update"), mcp.Required()),
+		withJSONObject("body", mcp.Description("Object with fields to update"), mcp.Required()),
 	), handleGenericJSONUpdateByID(client, "/api/workflow_triggers/%d/"))
 
 	srv.AddTool(mcp.NewTool("workflow_trigger_delete",
@@ -81,13 +81,13 @@ func registerWorkflowTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(mcp.NewTool("workflow_action_create",
 		mcp.WithDescription("Create a workflow action."),
-		mcp.WithString("body", mcp.Description("JSON object with action configuration"), mcp.Required()),
+		withJSONObject("body", mcp.Description("Object with action configuration"), mcp.Required()),
 	), genericJSONCreate(client, "/api/workflow_actions/", nil))
 
 	srv.AddTool(mcp.NewTool("workflow_action_update",
 		mcp.WithDescription("Update a workflow action."),
 		withNumber("id", mcp.Description("Action ID"), mcp.Required()),
-		mcp.WithString("body", mcp.Description("JSON object with fields to update"), mcp.Required()),
+		withJSONObject("body", mcp.Description("Object with fields to update"), mcp.Required()),
 	), handleGenericJSONUpdateByID(client, "/api/workflow_actions/%d/"))
 
 	srv.AddTool(mcp.NewTool("workflow_action_delete",

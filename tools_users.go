@@ -38,7 +38,7 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 			mcp.WithBoolean("is_active", mcp.Description("Active status")),
 			mcp.WithBoolean("is_staff", mcp.Description("Staff status")),
 			mcp.WithBoolean("is_superuser", mcp.Description("Superuser status")),
-			mcp.WithString("groups", mcp.Description("JSON array of group IDs")),
+			withJSONArray("groups", mcp.Description("Array of group IDs")),
 		),
 		handleUserCreate(client),
 	)
@@ -54,7 +54,7 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 			mcp.WithBoolean("is_active", mcp.Description("Active status")),
 			mcp.WithBoolean("is_staff", mcp.Description("Staff status")),
 			mcp.WithBoolean("is_superuser", mcp.Description("Superuser status")),
-			mcp.WithString("groups", mcp.Description("JSON array of group IDs")),
+			withJSONArray("groups", mcp.Description("Array of group IDs")),
 		),
 		handleUserUpdate(client),
 	)
@@ -93,7 +93,7 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("group_create",
 			mcp.WithDescription("Create a new group."),
 			mcp.WithString("name", mcp.Description("Group name"), mcp.Required()),
-			mcp.WithString("permissions", mcp.Description("JSON array of permission codenames")),
+			withJSONArray("permissions", mcp.Description("Array of permission codenames")),
 		),
 		handleGroupCreate(client),
 	)
@@ -102,7 +102,7 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Update a group."),
 			withNumber("id", mcp.Description("Group ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Group name")),
-			mcp.WithString("permissions", mcp.Description("JSON array of permission codenames")),
+			withJSONArray("permissions", mcp.Description("Array of permission codenames")),
 		),
 		handleGroupUpdate(client),
 	)

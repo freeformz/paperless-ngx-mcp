@@ -316,19 +316,89 @@ func setNullableInt(body map[string]any, args map[string]any, request mcp.CallTo
 	}
 }
 
-// setJSONField parses a JSON string parameter and sets it in a body map.
-// Used for array/object fields passed as JSON strings (e.g., tags, custom_fields).
-func setJSONField(body map[string]any, request mcp.CallToolRequest, name string) error {
-	s := request.GetString(name, "")
-	if s == "" {
-		return nil
+// getJSONArg reads a structured (array or object) parameter. Agents may send
+// the value natively or as a JSON-encoded string; both give the same result.
+// An absent argument, null and "" all report present = false.
+func getJSONArg(request mcp.CallToolRequest, name string) (v any, present bool, err error) {
+	raw, ok := request.GetArguments()[name]
+	if !ok || raw == nil {
+		return nil, false, nil
 	}
-	var v any
+	s, isString := raw.(string)
+	if !isString {
+		return raw, true, nil
+	}
+	if s == "" {
+		return nil, false, nil
+	}
 	if err := json.Unmarshal([]byte(s), &v); err != nil {
-		return fmt.Errorf("invalid %s JSON: %w", name, err)
+		return nil, false, fmt.Errorf("invalid %s JSON: %w", name, err)
+	}
+	return v, true, nil
+}
+
+// setJSONField sets a structured parameter in a body map, accepting either a
+// native JSON value or a JSON-encoded string (see getJSONArg). Used for
+// array/object fields such as tags, custom_fields and workflow bodies.
+func setJSONField(body map[string]any, request mcp.CallToolRequest, name string) error {
+	v, present, err := getJSONArg(request, name)
+	if err != nil || !present {
+		return err
 	}
 	body[name] = v
 	return nil
+}
+
+// getJSONInts reads an array-of-integers parameter given natively or as a
+// JSON-encoded string.
+func getJSONInts(request mcp.CallToolRequest, name string) (ids []int, present bool, err error) {
+	v, present, err := getJSONArg(request, name)
+	if err != nil || !present {
+		return nil, present, err
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, true, fmt.Errorf("invalid %s: %w", name, err)
+	}
+	if err := json.Unmarshal(b, &ids); err != nil {
+		return nil, true, fmt.Errorf("%s must be an array of integers", name)
+	}
+	return ids, true, nil
+}
+
+// getJSONArgText returns a structured parameter as JSON text, re-encoding a
+// native value, for handlers that parse the text themselves. "" means absent.
+func getJSONArgText(request mcp.CallToolRequest, name string) (string, error) {
+	raw, ok := request.GetArguments()[name]
+	if !ok || raw == nil {
+		return "", nil
+	}
+	if s, isString := raw.(string); isString {
+		return s, nil
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return "", fmt.Errorf("invalid %s: %w", name, err)
+	}
+	return string(b), nil
+}
+
+// withJSONArray defines a parameter that takes an array, natively or as a
+// JSON-encoded string. Read it with getJSONArg or setJSONField.
+func withJSONArray(name string, opts ...mcp.PropertyOption) mcp.ToolOption {
+	allOpts := append([]mcp.PropertyOption{func(schema map[string]any) {
+		schema["type"] = []string{"array", "string"}
+	}}, opts...)
+	return mcp.WithAny(name, allOpts...)
+}
+
+// withJSONObject defines a parameter that takes an object, natively or as a
+// JSON-encoded string. Read it with getJSONArg or setJSONField.
+func withJSONObject(name string, opts ...mcp.PropertyOption) mcp.ToolOption {
+	allOpts := append([]mcp.PropertyOption{func(schema map[string]any) {
+		schema["type"] = []string{"object", "string"}
+	}}, opts...)
+	return mcp.WithAny(name, allOpts...)
 }
 
 // withNumber defines a tool parameter that accepts both integer and string values.

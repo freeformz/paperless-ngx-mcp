@@ -12,9 +12,9 @@ func registerBulkTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_bulk_edit",
 			mcp.WithDescription("Bulk edit documents. Methods: set_correspondent, set_document_type, set_storage_path, add_tag, remove_tag, modify_tags, delete, reprocess, set_permissions, modify_custom_fields, rotate, delete_pages, split, merge, edit_pdf."),
-			mcp.WithString("documents", mcp.Description("JSON array of document IDs"), mcp.Required()),
+			withJSONArray("documents", mcp.Description("Array of document IDs"), mcp.Required()),
 			mcp.WithString("method", mcp.Description("Operation to perform"), mcp.Required()),
-			mcp.WithString("parameters", mcp.Description("JSON object with method-specific parameters"), mcp.Required()),
+			withJSONObject("parameters", mcp.Description("Object with method-specific parameters"), mcp.Required()),
 		),
 		handleDocumentBulkEdit(client),
 	)
@@ -22,7 +22,7 @@ func registerBulkTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_selection_data",
 			mcp.WithDescription("Get aggregated metadata counts for a selection of documents. Useful for previewing bulk changes. Objects with zero matching documents are omitted."),
-			mcp.WithString("documents", mcp.Description("JSON array of document IDs"), mcp.Required()),
+			withJSONArray("documents", mcp.Description("Array of document IDs"), mcp.Required()),
 		),
 		handleDocumentSelectionData(client),
 	)
@@ -31,9 +31,9 @@ func registerBulkTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("bulk_edit_objects",
 			mcp.WithDescription("Bulk permissions/delete for tags, correspondents, document types, or storage paths."),
 			mcp.WithString("object_type", mcp.Description("Object type: tags, correspondents, document_types, storage_paths"), mcp.Required()),
-			mcp.WithString("objects", mcp.Description("JSON array of object IDs"), mcp.Required()),
+			withJSONArray("objects", mcp.Description("Array of object IDs"), mcp.Required()),
 			mcp.WithString("operation", mcp.Description("Operation: set_permissions, delete"), mcp.Required()),
-			mcp.WithString("parameters", mcp.Description("JSON object with operation-specific parameters")),
+			withJSONObject("parameters", mcp.Description("Object with operation-specific parameters")),
 		),
 		handleBulkEditObjects(client),
 	)
