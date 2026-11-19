@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -32,89 +34,94 @@ func TestSearchAutocompleteRequiresTerm(t *testing.T) {
 }
 
 func TestSearchGlobal(t *testing.T) {
+	var captured url.Values
 	rh := newRouteHandler(t)
-	rh.Handle("GET", "/api/search/", jsonHandler(t, 200, map[string]any{"results": []any{}}))
+	rh.Handle("GET", "/api/search/", func(w http.ResponseWriter, r *http.Request) {
+		captured = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"total":     1,
+			"documents": []map[string]any{{"id": 1, "title": "Invoice", "created": "2026-01-02"}},
+		})
+	})
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleSearchGlobal(client), map[string]any{"query": "test"})
+	result := callTool(t, handleSearchGlobal(client), map[string]any{
+		"query": "invoice",
+		// Removed parameters: a client still sending them must not get them forwarded.
+		"page": 2, "page_size": 50, "full_content": true, "content_snippet_bytes": 10, "include_notes": true,
+	})
 	assertNotError(t, result)
+
+	want := url.Values{"query": {"invoice"}}
+	if !reflect.DeepEqual(captured, want) {
+		t.Errorf("query params = %v, want %v", captured, want)
+	}
+	m := resultJSON(t, result)
+	doc := m["documents"].([]any)[0].(map[string]any)
+	if doc["title"] != "Invoice" {
+		t.Errorf("document = %v, want it passed through", doc)
+	}
 }
 
-func TestSearchGlobalTruncatesDocumentContent(t *testing.T) {
+func TestSearchGlobalPassesResponseThrough(t *testing.T) {
+	// Servers older than 3.3.3 return full documents; they are no longer reshaped.
 	longContent := strings.Repeat("y", 3000)
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/search/", jsonHandler(t, 200, map[string]any{
-		"total":     1,
-		"documents": []map[string]any{{"id": 1, "content": longContent}},
-		"tags":      []map[string]any{{"id": 7, "name": "invoices"}},
+		"documents": []map[string]any{{"id": 1, "content": longContent, "notes": []map[string]any{{"id": 10}}}},
 	}))
 
 	client := testClientAndServer(t, rh)
 	result := callTool(t, handleSearchGlobal(client), map[string]any{"query": "test"})
 	assertNotError(t, result)
 
-	m := resultJSON(t, result)
-	doc := m["documents"].([]any)[0].(map[string]any)
-	if got := len(doc["content"].(string)); got != defaultContentSnippetLen {
-		t.Errorf("content length = %d, want %d", got, defaultContentSnippetLen)
-	}
-	if doc["content_truncated"] != true {
-		t.Error("content_truncated should be true")
-	}
-}
-
-func TestSearchGlobalStripsNotes(t *testing.T) {
-	rh := newRouteHandler(t)
-	rh.Handle("GET", "/api/search/", jsonHandler(t, 200, map[string]any{
-		"documents": []map[string]any{{"id": 1, "notes": []map[string]any{{"id": 10, "note": "verbose"}}}},
-	}))
-
-	client := testClientAndServer(t, rh)
-	result := callTool(t, handleSearchGlobal(client), map[string]any{"query": "test"})
-	assertNotError(t, result)
-
-	m := resultJSON(t, result)
-	doc := m["documents"].([]any)[0].(map[string]any)
-	if _, ok := doc["notes"]; ok {
-		t.Error("notes should be stripped by default")
-	}
-	if doc["notes_count"] != float64(1) {
-		t.Errorf("notes_count = %v, want 1", doc["notes_count"])
-	}
-}
-
-func TestSearchGlobalIncludeNotes(t *testing.T) {
-	rh := newRouteHandler(t)
-	rh.Handle("GET", "/api/search/", jsonHandler(t, 200, map[string]any{
-		"documents": []map[string]any{{"id": 1, "notes": []map[string]any{{"id": 10, "note": "verbose"}}}},
-	}))
-
-	client := testClientAndServer(t, rh)
-	result := callTool(t, handleSearchGlobal(client), map[string]any{"query": "test", "include_notes": true})
-	assertNotError(t, result)
-
-	m := resultJSON(t, result)
-	doc := m["documents"].([]any)[0].(map[string]any)
-	if notes, ok := doc["notes"].([]any); !ok || len(notes) != 1 {
-		t.Fatalf("notes = %v, want 1 full note with include_notes=true", doc["notes"])
-	}
-}
-
-func TestSearchGlobalFullContent(t *testing.T) {
-	longContent := strings.Repeat("y", 3000)
-	rh := newRouteHandler(t)
-	rh.Handle("GET", "/api/search/", jsonHandler(t, 200, map[string]any{
-		"documents": []map[string]any{{"id": 1, "content": longContent}},
-	}))
-
-	client := testClientAndServer(t, rh)
-	result := callTool(t, handleSearchGlobal(client), map[string]any{"query": "test", "full_content": true})
-	assertNotError(t, result)
-
-	m := resultJSON(t, result)
-	doc := m["documents"].([]any)[0].(map[string]any)
+	doc := resultJSON(t, result)["documents"].([]any)[0].(map[string]any)
 	if got := len(doc["content"].(string)); got != 3000 {
-		t.Errorf("content length = %d, want 3000 (untruncated)", got)
+		t.Errorf("content length = %d, want 3000", got)
+	}
+	if _, ok := doc["notes"]; !ok {
+		t.Error("notes should be passed through")
+	}
+}
+
+func TestSearchGlobalQueryLength(t *testing.T) {
+	tests := []struct {
+		name    string
+		query   string
+		wantErr bool
+	}{
+		{"missing", "", true},
+		{"two chars", "ab", true},
+		{"three chars", "abc", false},
+		{"three multibyte chars", "äöü", false},
+		{"max length", strings.Repeat("a", 4096), false},
+		{"max length multibyte", strings.Repeat("é", 4096), false},
+		{"too long", strings.Repeat("a", 4097), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			called := false
+			rh := newRouteHandler(t)
+			rh.Handle("GET", "/api/search/", func(w http.ResponseWriter, r *http.Request) {
+				called = true
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte("{}"))
+			})
+			client := testClientAndServer(t, rh)
+			result := callTool(t, handleSearchGlobal(client), map[string]any{"query": tt.query})
+			if tt.wantErr {
+				assertIsError(t, result)
+				if called {
+					t.Error("request sent for an invalid query")
+				}
+			} else {
+				assertNotError(t, result)
+				if !called {
+					t.Error("request not sent for a valid query")
+				}
+			}
+		})
 	}
 }
 

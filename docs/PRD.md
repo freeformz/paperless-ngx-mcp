@@ -400,7 +400,7 @@ Accepts `id`, `name` and `extra_data`. It does not send `data_type`, because pap
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
 | `search_autocomplete` | GET | `/api/search/autocomplete/` | Autocomplete search terms |
-| `search_global` | GET | `/api/search/` | Global search across all object types (document content truncated to a snippet unless `full_content` is set; notes replaced with `notes_count` unless `include_notes` is set) |
+| `search_global` | GET | `/api/search/` | Quick lookup across object types: at most 3 results per type, not paginated. `query` (required) must be 3 to 4096 characters. Documents carry only `id`, `title` and `created` (paperless-ngx 3.3.3+); use `document_list` with `query` for real document search |
 
 #### Statistics
 
@@ -583,8 +583,8 @@ The share link API has no update: `ShareLinkViewSet` supports create, retrieve, 
 
 Paperless-ngx API responses can be far too large for MCP clients (full OCR text per list result, unbounded ID arrays, thousands of unpaginated tasks). The server reshapes responses to keep tool output compact:
 
-- **Content truncation**: `document_list` and `search_global` truncate each document's `content` to a snippet (default 500 bytes, adjustable per call with `content_snippet_bytes`; `0` disables truncation), marking truncated entries with `content_truncated: true`. Opt out per-call with `full_content: true`, or use `document_get` for one document's full text.
-- **Notes stripped**: `document_list` and `search_global` replace each document's unbounded `notes` array with a `notes_count` field (omitted when zero). Opt out per-call with `include_notes: true`, or use `document_note_list`/`document_get` for one document's full notes.
+- **Content truncation**: `document_list` truncates each document's `content` to a snippet (default 500 bytes, adjustable per call with `content_snippet_bytes`; `0` disables truncation), marking truncated entries with `content_truncated: true`. Opt out per-call with `full_content: true`, or use `document_get` for one document's full text.
+- **Notes stripped**: `document_list` replaces each document's unbounded `notes` array with a `notes_count` field (omitted when zero). Opt out per-call with `include_notes: true`, or use `document_note_list`/`document_get` for one document's full notes.
 - **`all` ID array stripped**: every paginated list response omits Paperless's unbounded `all` array of matching IDs. `document_list` can re-include it with `include_all_ids: true`.
 - **Client-side task pagination**: `/api/tasks/` ignores pagination and returns every task; `task_list` paginates the array client-side.
 - **Log tailing**: `log_get` returns only the last `tail` lines (default 100) with a `total_lines` count.
