@@ -65,7 +65,7 @@ func TestSearchGlobal(t *testing.T) {
 }
 
 func TestSearchGlobalPassesResponseThrough(t *testing.T) {
-	// Servers older than 3.3.3 return full documents; they are no longer reshaped.
+	// The response is passed through unchanged, whatever fields it carries.
 	longContent := strings.Repeat("y", 3000)
 	rh := newRouteHandler(t)
 	rh.Handle("GET", "/api/search/", jsonHandler(t, 200, map[string]any{

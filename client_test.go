@@ -8,13 +8,20 @@ import (
 	"testing"
 )
 
+func TestAPIVersion(t *testing.T) {
+	// paperless-ngx 3.5.0 is the minimum supported server; it serves API v10.
+	if apiVersion != "10" {
+		t.Errorf("apiVersion = %q, want 10", apiVersion)
+	}
+}
+
 func TestClientAuthAndVersionHeaders(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Token test-token" {
 			t.Errorf("Authorization = %q, want %q", got, "Token test-token")
 		}
-		if got := r.Header.Get("Accept"); got != "application/json; version=9" {
-			t.Errorf("Accept = %q, want %q", got, "application/json; version=9")
+		if want := "application/json; version=" + apiVersion; r.Header.Get("Accept") != want {
+			t.Errorf("Accept = %q, want %q", r.Header.Get("Accept"), want)
 		}
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{}`))

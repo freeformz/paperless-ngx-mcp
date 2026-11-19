@@ -11,12 +11,12 @@ import (
 func registerShareLinkTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("share_link_list",
-			mcp.WithDescription("List share links with optional date filtering. Results have id, created, expiration (null: never expires), slug, document, file_version and, on Paperless-ngx 3.2.0+, document_title. The public URL of a link is {PAPERLESS_URL}/share/{slug}."),
+			mcp.WithDescription("List share links with optional date filtering. Results have id, created, expiration (null: never expires), slug, document, file_version and document_title. The public URL of a link is {PAPERLESS_URL}/share/{slug}."),
 			mcp.WithString("created_after", mcp.Description("Filter by created date (on or after, YYYY-MM-DD)")),
 			mcp.WithString("created_before", mcp.Description("Filter by created date (on or before, YYYY-MM-DD)")),
 			mcp.WithString("expiration_after", mcp.Description("Filter by expiration date (on or after, YYYY-MM-DD). Links that never expire are excluded.")),
 			mcp.WithString("expiration_before", mcp.Description("Filter by expiration date (on or before, YYYY-MM-DD). Links that never expire are excluded.")),
-			mcp.WithString("ordering", mcp.Description("Sort field: created, expiration, document__title (Paperless-ngx 3.2.0+) or document (document ID, servers before 3.2.0); prefix - for descending")),
+			mcp.WithString("ordering", mcp.Description("Sort field: created, expiration or document__title; prefix - for descending")),
 			withNumber("page", mcp.Description("Page number (default: 1)")),
 			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 		),

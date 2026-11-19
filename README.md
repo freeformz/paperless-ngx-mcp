@@ -4,7 +4,7 @@ MCP server for [Paperless-ngx](https://docs.paperless-ngx.com/) document managem
 
 ## Features
 
-- **100+ MCP tools** covering the full Paperless-ngx REST API v9
+- **100+ MCP tools** covering the full Paperless-ngx REST API v10
 - **Document management** — list, search, get, update, delete, upload, download, email
 - **Metadata CRUD** — tags, correspondents, document types, storage paths, custom fields
 - **Full-text search** with tag filtering, date ranges, and custom field queries
@@ -14,6 +14,10 @@ MCP server for [Paperless-ngx](https://docs.paperless-ngx.com/) document managem
 - **User & group management** — CRUD, profile, TOTP deactivation
 - **System tools** — status, tasks, logs, config, trash management
 - **In-memory caching** of metadata lists (tags, correspondents, document types, storage paths, custom fields) with automatic invalidation
+
+## Requirements
+
+Paperless-ngx 3.5.0 or newer. The server speaks REST API v10 only. For older Paperless-ngx servers, use a v0.3.x release of this MCP server. The version isn't checked at runtime: a 2.x server rejects v10 requests with 406, and 3.0 to 3.4 accept them but differ in ways that can make tools misbehave.
 
 ## Installation
 
@@ -121,7 +125,7 @@ PDF rendering happens in-process via [go-pdfium](https://github.com/klippa-app/g
 ### Share Links
 `share_link_list`, `share_link_get`, `share_link_create`, `share_link_delete`
 
-A share link's public URL is `{PAPERLESS_URL}/share/{slug}`. The server generates the slug, and share links can't be edited: to change a link's expiration or file version, delete it and create a new one, which gets a new slug. `share_link_list` filters by `created` and `expiration` date and sorts by `created`, `expiration`, `document__title` or `document`. Use `document__title` on Paperless-ngx 3.2.0+ and `document` (document ID) on older servers. Each server ignores the other one, so the results come back unsorted. The tool passes the value through unchanged and doesn't translate between the two. On Paperless-ngx 3.2.0+ results include a read-only `document_title`.
+A share link's public URL is `{PAPERLESS_URL}/share/{slug}`. The server generates the slug, and share links can't be edited: to change a link's expiration or file version, delete it and create a new one, which gets a new slug. `share_link_list` filters by `created` and `expiration` date and sorts by `created`, `expiration` or `document__title`. Results include a read-only `document_title`.
 
 ### Users & Groups
 `user_list`, `user_get`, `user_create`, `user_update`, `user_delete`, `user_deactivate_totp`, `group_list`, `group_get`, `group_create`, `group_update`, `group_delete`, `profile_get`, `profile_update`
