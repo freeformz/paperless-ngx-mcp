@@ -10,6 +10,8 @@ MCP server for Paperless-ngx document management, built in Go.
 - `helpers.go` — Shared helpers (errResult, jsonResult, doRequest, param helpers)
 - `cache.go` — In-memory TTL cache for metadata list endpoints
 - `tools_documents.go` — Document tool handlers (CRUD, notes, metadata, suggestions, upload, email)
+- `tools_document_versions.go` — Document version tool handlers (upload new version, list versions, set version label; require Paperless-ngx 3.0.0+)
+- `server_version.go` — Paperless-ngx server version detection (X-Version header) and minimum-version checks for tools
 - `tools_download.go` — Document download and cleanup tool handlers
 - `download.go` — Downloader (per-instance temp dir, concurrency, file tracking)
 - `tools_tags.go` — Tag tool handlers

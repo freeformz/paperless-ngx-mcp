@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -26,6 +27,9 @@ type Client struct {
 	token      string
 	httpClient *http.Client
 	cache      *Cache
+
+	versionMu     sync.Mutex
+	serverVersion string // last X-Version seen; see recordServerVersion
 }
 
 // NewClient creates a new Paperless-ngx API client with in-memory caching.
@@ -58,7 +62,11 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 func (c *Client) doWithAccept(req *http.Request, accept string) (*http.Response, error) {
 	req.Header.Set("Authorization", "Token "+c.token)
 	req.Header.Set("Accept", accept)
-	return c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req)
+	if err == nil {
+		c.recordServerVersion(resp.Header)
+	}
+	return resp, err
 }
 
 // Get performs a GET request with optional query parameters.
