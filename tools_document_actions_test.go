@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
 
@@ -48,6 +47,18 @@ func TestDocumentActionBodies(t *testing.T) {
 		{"merge", "merge",
 			map[string]any{"documents": []any{float64(4), float64(5)}, "metadata_document_id": float64(5), "delete_originals": true, "archive_fallback": false},
 			map[string]any{"documents": []any{float64(4), float64(5)}, "metadata_document_id": float64(5), "delete_originals": true, "archive_fallback": false}},
+		{"merge source_mode", "merge",
+			map[string]any{"documents": []any{float64(4), float64(5)}, "source_mode": "latest_version"},
+			map[string]any{"documents": []any{float64(4), float64(5)}, "source_mode": "latest_version"}},
+		{"merge string metadata id", "merge",
+			map[string]any{"documents": []any{float64(4), float64(5)}, "metadata_document_id": "4"},
+			map[string]any{"documents": []any{float64(4), float64(5)}, "metadata_document_id": float64(4)}},
+		{"edit_pdf update and delete flags", "edit_pdf",
+			map[string]any{"documents": []any{float64(7)}, "operations": []any{map[string]any{"page": float64(2)}}, "update_document": "true", "delete_original": false, "source_mode": "explicit_selection"},
+			map[string]any{"documents": []any{float64(7)}, "operations": []any{map[string]any{"page": float64(2)}}, "update_document": true, "delete_original": false, "source_mode": "explicit_selection"}},
+		{"remove_password source_mode", "remove_password",
+			map[string]any{"documents": []any{float64(8)}, "password": "p", "source_mode": "explicit_selection"},
+			map[string]any{"documents": []any{float64(8)}, "password": "p", "source_mode": "explicit_selection"}},
 		{"merge null metadata", "merge",
 			map[string]any{"documents": []any{float64(4), float64(5)}, "metadata_document_id": nil},
 			map[string]any{"documents": []any{float64(4), float64(5)}, "metadata_document_id": nil}},
@@ -86,14 +97,20 @@ func TestDocumentActionBodies(t *testing.T) {
 	}
 }
 
-// documentActionHandlerFor builds the handler for a document action, as
-// registerDocumentActionTools does.
+// documentActionTools maps each document action to its registered tool name.
+var documentActionTools = map[string]string{
+	"rotate": "document_rotate", "merge": "document_merge", "edit_pdf": "document_edit_pdf",
+	"remove_password": "document_remove_password", "reprocess": "document_reprocess", "delete": "document_bulk_delete",
+}
+
+// documentActionHandlerFor returns the handler registered for a document
+// action, so the tests cover the registration's op and builder pairing.
 func documentActionHandlerFor(client *Client, op string) server.ToolHandlerFunc {
-	builders := map[string]func(mcp.CallToolRequest, []int) (map[string]any, *mcp.CallToolResult){
-		"rotate": buildRotateBody, "merge": buildMergeBody, "edit_pdf": buildEditPDFBody,
-		"remove_password": buildRemovePasswordBody, "reprocess": buildReprocessBody, "delete": buildDeleteBody,
+	tool := NewServer(client, nil).GetTool(documentActionTools[op])
+	if tool == nil {
+		panic("no tool registered for " + op)
 	}
-	return handleDocumentAction(client, op, builders[op])
+	return tool.Handler
 }
 
 func TestDocumentActionValidation(t *testing.T) {
@@ -108,6 +125,13 @@ func TestDocumentActionValidation(t *testing.T) {
 		{"rotate", map[string]any{"documents": []any{float64(1), float64(1)}, "degrees": float64(90)}, "twice"},
 		{"rotate", map[string]any{"documents": []any{float64(1)}}, "degrees is required"},
 		{"rotate", map[string]any{"documents": []any{float64(1)}, "degrees": float64(45)}, "multiple of 90"},
+		{"rotate", map[string]any{"documents": []any{float64(1)}, "degrees": 90.5}, "multiple of 90"},
+		{"rotate", map[string]any{"documents": []any{float64(1)}, "degrees": float64(1e20)}, "multiple of 90"},
+		{"merge", map[string]any{"documents": []any{float64(1), float64(2)}, "metadata_document_id": "abc"}, "must be a document ID"},
+		{"merge", map[string]any{"documents": []any{float64(1), float64(2)}, "metadata_document_id": 1.5}, "must be a document ID"},
+		{"merge", map[string]any{"documents": []any{float64(1), float64(2)}, "delete_originals": "yes"}, "true or false"},
+		{"reprocess", map[string]any{"documents": []any{float64(1)}, "remote_ocr": float64(1)}, "true or false"},
+		{"edit_pdf", map[string]any{"documents": []any{float64(1)}, "operations": op(map[string]any{"page": "1"})}, "whole number"},
 		{"rotate", map[string]any{"documents": []any{float64(1)}, "degrees": float64(90), "source_mode": "newest"}, "source_mode"},
 		{"merge", map[string]any{"documents": []any{float64(1)}}, "at least 2"},
 		{"merge", map[string]any{"documents": []any{float64(1), float64(2)}, "metadata_document_id": float64(3)}, "one of documents"},
@@ -157,6 +181,7 @@ func TestDocumentActionWaitFollowOn(t *testing.T) {
 		{"edit_pdf", map[string]any{"documents": []any{float64(1)}, "operations": []any{map[string]any{"page": float64(1)}}, "delete_original": true}, []any{"consume_file", "bulk_delete"}},
 		{"edit_pdf", map[string]any{"documents": []any{float64(1)}, "operations": []any{map[string]any{"page": float64(1)}}, "delete_original": true, "update_document": true}, []any{"consume_file"}},
 		{"remove_password", map[string]any{"documents": []any{float64(1)}, "password": "x", "delete_original": true}, []any{"consume_file", "bulk_delete"}},
+		{"remove_password", map[string]any{"documents": []any{float64(1)}, "password": "x", "delete_original": true, "update_document": true}, []any{"consume_file"}},
 		{"reprocess", map[string]any{"documents": []any{float64(1)}}, []any{"reprocess_document"}},
 		{"delete", map[string]any{"documents": []any{float64(1)}}, nil},
 	}
@@ -200,6 +225,19 @@ func TestDocumentActionWaitTimeoutKeepsFollowOn(t *testing.T) {
 	assertNotError(t, result)
 	if m := resultJSON(t, result); m["timed_out"] != true || m["follow_on"] == nil {
 		t.Errorf("result = %v, want timed_out with follow_on", m)
+	}
+}
+
+func TestDocumentActionSchemasStateNinetyDegrees(t *testing.T) {
+	srv := NewServer(NewClient("http://unused", "unused"), nil)
+	deg := srv.GetTool("document_rotate").Tool.InputSchema.Properties["degrees"].(map[string]any)
+	if deg["multipleOf"] != 90 {
+		t.Errorf("degrees schema = %v, want multipleOf 90", deg)
+	}
+	ops := srv.GetTool("document_edit_pdf").Tool.InputSchema.Properties["operations"].(map[string]any)
+	rot := ops["items"].(map[string]any)["properties"].(map[string]any)["rotate"].(map[string]any)
+	if rot["multipleOf"] != 90 {
+		t.Errorf("operations rotate schema = %v, want multipleOf 90", rot)
 	}
 }
 
