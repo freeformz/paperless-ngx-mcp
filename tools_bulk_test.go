@@ -1,6 +1,9 @@
 package main
 
 import (
+	"reflect"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -110,5 +113,57 @@ func TestBulkEditObjectsInvalidatesCache(t *testing.T) {
 
 	if _, ok := client.cache.Get("/api/tags/"); ok {
 		t.Fatal("expected tags cache to be invalidated after bulk_edit_objects")
+	}
+}
+
+func TestDocumentBulkEditMovedMethods(t *testing.T) {
+	for method, tool := range bulkEditMovedMethods {
+		t.Run(method, func(t *testing.T) {
+			client := testClientAndServer(t, newRouteHandler(t))
+			result := callTool(t, handleDocumentBulkEdit(client), map[string]any{
+				"documents": []any{float64(1)}, "method": method, "parameters": map[string]any{},
+			})
+			assertIsError(t, result)
+			if !strings.Contains(resultText(t, result), tool) {
+				t.Errorf("error = %s, want it to name %s", resultText(t, result), tool)
+			}
+		})
+	}
+}
+
+func TestDocumentBulkEditUnknownMethod(t *testing.T) {
+	client := testClientAndServer(t, newRouteHandler(t))
+	result := callTool(t, handleDocumentBulkEdit(client), map[string]any{
+		"documents": []any{float64(1)}, "method": "frobnicate", "parameters": map[string]any{},
+	})
+	assertIsError(t, result)
+	if !strings.Contains(resultText(t, result), "method must be one of") {
+		t.Errorf("error = %s", resultText(t, result))
+	}
+}
+
+func TestDocumentBulkEditMethodEnum(t *testing.T) {
+	srv := NewServer(NewClient("http://unused", "unused"), nil)
+	schema := srv.GetTool("document_bulk_edit").Tool.InputSchema.Properties["method"].(map[string]any)
+	enum, _ := schema["enum"].([]string)
+	if !reflect.DeepEqual(enum, bulkEditMethods) {
+		t.Errorf("method enum = %v, want %v", schema["enum"], bulkEditMethods)
+	}
+	for moved := range bulkEditMovedMethods {
+		if slices.Contains(bulkEditMethods, moved) {
+			t.Errorf("%s is both a bulk_edit method and moved", moved)
+		}
+	}
+}
+
+func TestDocumentBulkEditWaitHasNoFollowOn(t *testing.T) {
+	fastPolling(t)
+	client, _ := bulkWaitServer(t, "pending", "success")
+	result := callTool(t, handleDocumentBulkEdit(client), map[string]any{
+		"documents": []any{float64(1)}, "method": "add_tag", "parameters": map[string]any{"tag": float64(1)}, "wait": true,
+	})
+	assertNotError(t, result)
+	if m := resultJSON(t, result); m["follow_on"] != nil || m["task"].(map[string]any)["status"] != "success" {
+		t.Errorf("result = %v, want the finished task and no follow_on", m)
 	}
 }

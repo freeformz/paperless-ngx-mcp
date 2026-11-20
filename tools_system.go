@@ -129,7 +129,7 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 	), handleTaskRun(client))
 
 	srv.AddTool(mcp.NewTool("task_wait",
-		mcp.WithDescription("Wait for a background task to finish: success, failure or revoked. Returns {task, waited_seconds}; a failed or revoked task comes back as a tool error carrying the task, and if the timeout passes first the current task comes back with timed_out: true (call task_wait again to keep waiting). The MCP host may end a long call before the timeout. Takes the task UUID that document_upload, document_bulk_edit and task_run return, or the integer id from task_list. For a bulk edit, finished means the bulk task: PDF operations then run consume_file (or reprocess_document) tasks of their own."),
+		mcp.WithDescription("Wait for a background task to finish: success, failure or revoked. Returns {task, waited_seconds}; a failed or revoked task comes back as a tool error carrying the task, and if the timeout passes first the current task comes back with timed_out: true (call task_wait again to keep waiting). The MCP host may end a long call before the timeout. Takes the task UUID that document_upload, document_bulk_edit, the document editing tools (document_rotate, document_merge, document_edit_pdf, document_remove_password, document_reprocess, document_bulk_delete) and task_run return, or the integer id from task_list. For those editing tools, finished means their bulk task: rotate, merge, edit_pdf and remove_password then run consume_file tasks, and reprocess runs reprocess_document tasks, of their own."),
 		mcp.WithAny("id", mcp.Description("Task UUID or integer task id"), mcp.Required(), func(schema map[string]any) {
 			schema["type"] = []string{"string", "integer"}
 		}),

@@ -274,7 +274,7 @@ Removes downloaded document files. With no arguments, removes all files in the i
 
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
-| `document_bulk_edit` | POST | `/api/documents/bulk_edit/` | Bulk edit documents |
+| `document_bulk_edit` | POST | `/api/documents/bulk_edit/` | Bulk edit document metadata (and run manual workflows) |
 | `document_selection_data` | POST | `/api/documents/selection_data/` | Get aggregated metadata counts for a selection (objects with zero matching documents are omitted) |
 
 ##### document_bulk_edit
@@ -284,10 +284,26 @@ Removes downloaded document files. With no arguments, removes all files in the i
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | documents | array or JSON string | yes | Array of document IDs |
-| method | string | yes | Operation: `set_correspondent`, `set_document_type`, `set_storage_path`, `add_tag`, `remove_tag`, `modify_tags`, `delete`, `reprocess`, `set_permissions`, `modify_custom_fields`, `rotate`, `delete_pages`, `split`, `merge`, `edit_pdf` |
-| parameters | object or JSON string | yes | Object with method-specific parameters |
+| method | string (enum) | yes | `set_correspondent`, `set_document_type`, `set_storage_path`, `add_tag`, `remove_tag`, `modify_tags`, `modify_custom_fields`, `set_permissions`, `run_workflow` |
+| parameters | object or JSON string | yes | Method-specific: `{correspondent}`, `{document_type}`, `{storage_path}` (id or null); `{tag}`; `{add_tags, remove_tags}`; `{add_custom_fields, remove_custom_fields}`; `{set_permissions, owner?, merge?}` (without `merge`, leaving out `owner` clears it); `{workflow, filter_documents?}` |
+| wait, timeout | boolean, integer | no | See Waiting for Tasks |
 
-**Returns:** Confirmation of bulk operation.
+**Returns:** `{result, task_id}`. The file methods paperless-ngx still accepts as deprecated `bulk_edit` methods (`rotate`, `merge`, `split`, `delete_pages`, `edit_pdf`, `remove_password`, `reprocess`, `delete`) are refused with an error naming the replacement tool below; nothing is sent.
+
+#### Editing Documents
+
+Dedicated endpoints for operations that change a document's file (paperless-ngx 3.0+). Each queues a bulk task and returns `{result, task_id}`; the work runs, and permissions are checked again, inside that task. All take `documents` (a non-empty array of distinct ids) plus `wait` / `timeout`, and never send `from_webui`. `source_mode` is `latest_version` (default: a root id resolves to its latest version) or `explicit_selection`.
+
+| Tool | Endpoint | Parameters | Notes |
+|------|----------|------------|-------|
+| `document_rotate` | `/api/documents/rotate/` | `degrees` (multiple of 90), `source_mode` | Adds a version; skips non-PDFs |
+| `document_merge` | `/api/documents/merge/` | `metadata_document_id` (one of `documents`), `delete_originals`, `archive_fallback`, `source_mode` | At least 2 documents, in page order; a new document owned by the caller |
+| `document_edit_pdf` | `/api/documents/edit_pdf/` | `operations` (`[{page, rotate?, doc?}]`), `update_document`, `delete_original`, `include_metadata`, `source_mode` | One document; operations list the output pages, omitted pages are dropped, `doc` indices must run from 0 without gaps, and with `update_document` all are 0 |
+| `document_remove_password` | `/api/documents/remove_password/` | `password`, `update_document`, `delete_original`, `include_metadata`, `source_mode` | Skips unencrypted PDFs; one document at a time |
+| `document_reprocess` | `/api/documents/reprocess/` | `remote_ocr` | A root reprocesses its latest version |
+| `document_bulk_delete` | `/api/documents/delete/` | — | To the trash, with versions; `trash_action restore` undoes it |
+
+Permissions (a 403 says only "Insufficient permissions"; superusers skip them): change permission on every document for all tools; ownership (or no owner) for delete, rotate, edit_pdf and remove_password, and for merge with `delete_originals`; add permission for merge and for edit_pdf / remove_password without `update_document`; delete permission for delete, merge with `delete_originals`, and edit_pdf / remove_password with `delete_original` and no `update_document`.
 
 #### Tags
 
@@ -592,11 +608,11 @@ The share link API has no update: `ShareLinkViewSet` supports create, retrieve, 
 
 Since paperless-ngx 3.5.0 the document bulk and action endpoints queue a task and return `{"result": "OK", "task_id": …}` at once; uploads have always returned the consume task's UUID. Nothing has changed when these return, and runtime errors (missing permissions on a document, a wrong PDF password) exist only in the task record.
 
-- `document_upload`, `document_bulk_edit` and `task_run` take `wait` (default false: return the id at once, unchanged) and `timeout` (whole seconds, 1 to 600, default 60; only with `wait`). With `wait` the tool returns `{response, task, waited_seconds}`, where `response` is the original API response.
+- `document_upload`, `document_bulk_edit`, the document editing tools and `task_run` take `wait` (default false: return the id at once, unchanged) and `timeout` (whole seconds, 1 to 600, default 60; only with `wait`). With `wait` the tool returns `{response, task, waited_seconds}`, where `response` is the original API response.
 - `task_wait` waits on a task started earlier or elsewhere; an unknown task id fails at once.
 - Polling starts at 1 s and grows by 1.5× to at most 5 s. Each poll sends an MCP progress notification when the client sent a `progressToken`.
 - A `failure` or `revoked` task is a tool error carrying the task record. A problem with waiting itself after a successful POST (the task not appearing, repeated poll errors) is not: the result carries the original `response`, `task_id` and `wait_error`, with a note not to resend. Up to two polls in a row may fail with a network error or a 5xx before waiting gives up, and each poll is bounded by the deadline. Running out of time is not: the current task comes back with `timed_out: true`, and `task_wait` continues. Right after a POST, a task that can't be found yet gets a 5 s grace period.
-- What finished covers: an upload's task is the whole consume. For `document_bulk_edit`, metadata methods are done when the bulk task is; `rotate`, `merge`, `split`, `delete_pages`, `edit_pdf` and `remove_password` schedule `consume_file` tasks, `reprocess` schedules `reprocess_document` tasks, and `merge`/`split` with `delete_originals`, or `edit_pdf`/`remove_password` with `delete_original` (and no `update_document`), also schedule `bulk_delete` once the consume tasks finish. Skipped documents schedule nothing (rotate skips non-PDFs, remove_password skips unencrypted PDFs). The bulk task record doesn't link to them, so the wait result's `follow_on` names the task types and a `task_list` filter (`date_created_after` the bulk task) to find them.
+- What finished covers: an upload's task is the whole consume. `document_bulk_edit`'s metadata methods and `document_bulk_delete` are done when their task is; `document_rotate`, `document_merge`, `document_edit_pdf` and `document_remove_password` schedule `consume_file` tasks, `document_reprocess` schedules `reprocess_document` tasks, and merge with `delete_originals`, or edit_pdf / remove_password with `delete_original` (and no `update_document`), also schedule `bulk_delete` once the consume tasks finish. Skipped documents schedule nothing (rotate and merge skip non-PDFs, remove_password skips unencrypted PDFs). The bulk task record doesn't link to them, so the wait result's `follow_on` names the task types and a `task_list` filter (`date_created_after` the bulk task) to find them.
 - MCP hosts often limit a tool call to about 60 s; a longer wait may be cut off by the host, and `task_wait` with the same id picks it up.
 - The stdio server runs up to 20 tool calls at once (mcp-go's default is 5), so waiting calls don't stall other tools; past 20 running and 100 queued calls, mcp-go runs a call on its read loop. Shutdown interrupts a wait.
 
@@ -623,7 +639,7 @@ The MCP server provides inline instructions via `WithInstructions` that guide ag
 - How tag filtering works (`tags_id_all`, `tags_id_none`, `tags_id_in`)
 - How custom field queries work
 - Metadata update workflow: get document, review fields, update with `document_update`
-- Bulk operations: use `document_bulk_edit` for batch changes
+- Bulk operations: `document_bulk_edit` for metadata changes; the document editing tools for file operations
 - Saved views: filter rules, the `saved_view_rule_types` lookup, and that dashboard/sidebar visibility is a web UI setting
 - Structured parameters: arrays and objects may be sent natively or as JSON-encoded strings
 - Tasks: statuses, UUID-or-id lookup, traceback trimming, `task_stats`, and waiting (`wait`, `task_wait`)
