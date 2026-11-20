@@ -16,8 +16,8 @@ import (
 // field is cleared only when it is named in the tool's clear parameter.
 
 // dropNullArgs is tool middleware that removes top-level null arguments
-// before any handler runs. The string "null" is removed too, except for plain
-// string parameters, where it is real text (a title, a note, a query).
+// before any handler runs. The string "null" is removed too, except for
+// free-text parameters (see freeTextParams), where it is real text.
 func dropNullArgs(srv *server.MCPServer) server.ToolHandlerMiddleware {
 	return func(next server.ToolHandlerFunc) server.ToolHandlerFunc {
 		return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -31,7 +31,7 @@ func dropNullArgs(srv *server.MCPServer) server.ToolHandlerMiddleware {
 			}
 			clean := make(map[string]any, len(args))
 			for k, v := range args {
-				if v == nil || (v == "null" && !plainStringParam(props[k])) {
+				if v == nil || (v == "null" && !freeTextParam(k, props[k])) {
 					continue
 				}
 				clean[k] = v
@@ -45,10 +45,21 @@ func dropNullArgs(srv *server.MCPServer) server.ToolHandlerMiddleware {
 	}
 }
 
-// plainStringParam reports whether a property's schema type is exactly "string".
-func plainStringParam(schema any) bool {
+// freeTextParams names the string parameters that hold free text, where
+// "null" can be a real value: a title, a note, a search query, a name. Every
+// other parameter (numbers, booleans, JSON values, and strings such as dates,
+// colours, orderings and enums) treats "null" as not given.
+var freeTextParams = map[string]bool{
+	"body": true, "content": true, "first_name": true, "last_name": true,
+	"match": true, "name": true, "note": true, "password": true, "path": true,
+	"query": true, "subject": true, "term": true, "title": true, "username": true,
+}
+
+// freeTextParam reports whether a parameter keeps the string "null": it is a
+// plain string parameter listed in freeTextParams.
+func freeTextParam(name string, schema any) bool {
 	m, ok := schema.(map[string]any)
-	return ok && m["type"] == "string"
+	return ok && m["type"] == "string" && freeTextParams[name]
 }
 
 // clearHint is the guidance for tools that have a clear parameter.
@@ -80,15 +91,18 @@ func applyClear(body map[string]any, request mcp.CallToolRequest, allowed []stri
 }
 
 // argIsSet reports whether an argument carries a value: not absent, null,
-// "null", "", or an empty array (which for display_fields also means clear).
+// "null", "", an empty array (which for display_fields also means clear) or an
+// empty object (as some clients pad unused object params).
 func argIsSet(v any) bool {
 	switch x := v.(type) {
 	case nil:
 		return false
 	case string:
 		t := strings.TrimSpace(x)
-		return t != "" && t != "null" && t != "[]"
+		return t != "" && t != "null" && t != "[]" && strings.Trim(t, "{} \t\r\n") != ""
 	case []any:
+		return len(x) > 0
+	case map[string]any:
 		return len(x) > 0
 	}
 	return true

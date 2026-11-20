@@ -189,7 +189,6 @@ func handleUserCreate(client *Client) server.ToolHandlerFunc {
 		}
 
 		body := map[string]any{"username": username, "password": password}
-		args := request.GetArguments()
 
 		if v := request.GetString("email", ""); v != "" {
 			body["email"] = v
@@ -200,14 +199,14 @@ func handleUserCreate(client *Client) server.ToolHandlerFunc {
 		if v := request.GetString("last_name", ""); v != "" {
 			body["last_name"] = v
 		}
-		if _, ok := args["is_active"]; ok {
-			body["is_active"] = request.GetBool("is_active", true)
+		if errRes := setOptionalBool(body, request, "is_active"); errRes != nil {
+			return errRes, nil
 		}
-		if _, ok := args["is_staff"]; ok {
-			body["is_staff"] = request.GetBool("is_staff", false)
+		if errRes := setOptionalBool(body, request, "is_staff"); errRes != nil {
+			return errRes, nil
 		}
-		if _, ok := args["is_superuser"]; ok {
-			body["is_superuser"] = request.GetBool("is_superuser", false)
+		if errRes := setOptionalBool(body, request, "is_superuser"); errRes != nil {
+			return errRes, nil
 		}
 		if err := setJSONField(body, request, "groups"); err != nil {
 			return errResult(err.Error()), nil
@@ -227,7 +226,6 @@ func handleUserUpdate(client *Client) server.ToolHandlerFunc {
 		}
 
 		body := map[string]any{}
-		args := request.GetArguments()
 
 		if v := request.GetString("username", ""); v != "" {
 			body["username"] = v
@@ -244,14 +242,14 @@ func handleUserUpdate(client *Client) server.ToolHandlerFunc {
 		if v := request.GetString("last_name", ""); v != "" {
 			body["last_name"] = v
 		}
-		if _, ok := args["is_active"]; ok {
-			body["is_active"] = request.GetBool("is_active", true)
+		if errRes := setOptionalBool(body, request, "is_active"); errRes != nil {
+			return errRes, nil
 		}
-		if _, ok := args["is_staff"]; ok {
-			body["is_staff"] = request.GetBool("is_staff", false)
+		if errRes := setOptionalBool(body, request, "is_staff"); errRes != nil {
+			return errRes, nil
 		}
-		if _, ok := args["is_superuser"]; ok {
-			body["is_superuser"] = request.GetBool("is_superuser", false)
+		if errRes := setOptionalBool(body, request, "is_superuser"); errRes != nil {
+			return errRes, nil
 		}
 		if err := setJSONField(body, request, "groups"); err != nil {
 			return errResult(err.Error()), nil

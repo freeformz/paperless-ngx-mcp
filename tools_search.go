@@ -44,7 +44,9 @@ func handleSearchAutocomplete(client *Client) server.ToolHandlerFunc {
 		}
 
 		params := url.Values{"term": {term}}
-		addIntParam(params, request, "limit", "limit")
+		if errRes := addIntParam(params, request, "limit", "limit"); errRes != nil {
+			return errRes, nil
+		}
 
 		path := "/api/search/autocomplete/"
 		resp, err := client.Get(ctx, path, params)

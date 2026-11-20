@@ -31,7 +31,7 @@ func NewServer(client *Client, dl *Downloader) *server.MCPServer {
 	registerWorkflowTools(srv, client)
 	registerSystemTools(srv, client)
 
-	// After the tools are registered, so it can read their schemas.
+	// Reads each tool's schema at call time, so registration order doesn't matter.
 	srv.Use(dropNullArgs(srv))
 
 	return srv

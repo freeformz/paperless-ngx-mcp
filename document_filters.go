@@ -191,6 +191,14 @@ func filterValueText(p filterParam, v any, strict bool) (text string, ok bool, e
 // ignore the whole filter.
 func parseIDList(v any) (string, bool) {
 	var items []string
+	if s, ok := v.(string); ok && strings.HasPrefix(strings.TrimSpace(s), "[") {
+		// A JSON-encoded array, as the instructions allow for array params.
+		var decoded []any
+		if err := json.Unmarshal([]byte(s), &decoded); err != nil {
+			return "", false
+		}
+		v = decoded
+	}
 	switch x := v.(type) {
 	case string:
 		items = strings.Split(x, ",")

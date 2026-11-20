@@ -74,7 +74,9 @@ func handleTagList(client *Client) server.ToolHandlerFunc {
 		params := url.Values{}
 		addPaginationParams(params, request)
 		addStringParam(params, request, "name", "name__icontains")
-		addBoolParam(params, request, "is_root", "is_root")
+		if errRes := addBoolParam(params, request, "is_root", "is_root"); errRes != nil {
+			return errRes, nil
+		}
 		addStringParam(params, request, "ordering", "ordering")
 
 		path := "/api/tags/"
@@ -99,17 +101,17 @@ func handleTagCreate(client *Client) server.ToolHandlerFunc {
 		if v := request.GetString("match", ""); v != "" {
 			body["match"] = v
 		}
-		if _, ok := args["is_inbox_tag"]; ok {
-			body["is_inbox_tag"] = request.GetBool("is_inbox_tag", false)
+		if errRes := setOptionalBool(body, request, "is_inbox_tag"); errRes != nil {
+			return errRes, nil
 		}
-		if _, ok := args["matching_algorithm"]; ok {
-			body["matching_algorithm"] = int(request.GetFloat("matching_algorithm", 0))
+		if errRes := setOptionalInt(body, args, "matching_algorithm"); errRes != nil {
+			return errRes, nil
 		}
-		if _, ok := args["is_insensitive"]; ok {
-			body["is_insensitive"] = request.GetBool("is_insensitive", false)
+		if errRes := setOptionalBool(body, request, "is_insensitive"); errRes != nil {
+			return errRes, nil
 		}
-		if _, ok := args["parent"]; ok {
-			body["parent"] = int(request.GetFloat("parent", 0))
+		if errRes := setOptionalInt(body, args, "parent"); errRes != nil {
+			return errRes, nil
 		}
 
 		path := "/api/tags/"
@@ -137,14 +139,14 @@ func handleTagUpdate(client *Client) server.ToolHandlerFunc {
 		if v := request.GetString("match", ""); v != "" {
 			body["match"] = v
 		}
-		if _, ok := args["is_inbox_tag"]; ok {
-			body["is_inbox_tag"] = request.GetBool("is_inbox_tag", false)
+		if errRes := setOptionalBool(body, request, "is_inbox_tag"); errRes != nil {
+			return errRes, nil
 		}
-		if _, ok := args["matching_algorithm"]; ok {
-			body["matching_algorithm"] = int(request.GetFloat("matching_algorithm", 0))
+		if errRes := setOptionalInt(body, args, "matching_algorithm"); errRes != nil {
+			return errRes, nil
 		}
-		if _, ok := args["is_insensitive"]; ok {
-			body["is_insensitive"] = request.GetBool("is_insensitive", false)
+		if errRes := setOptionalBool(body, request, "is_insensitive"); errRes != nil {
+			return errRes, nil
 		}
 		if errRes := setOptionalInt(body, args, "parent"); errRes != nil {
 			return errRes, nil

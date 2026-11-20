@@ -224,8 +224,8 @@ func handleMailAccountUpdate(client *Client) server.ToolHandlerFunc {
 		if v := request.GetString("imap_server", ""); v != "" {
 			body["imap_server"] = v
 		}
-		if _, ok := args["imap_port"]; ok {
-			body["imap_port"] = int(request.GetFloat("imap_port", 993))
+		if errRes := setOptionalInt(body, args, "imap_port"); errRes != nil {
+			return errRes, nil
 		}
 		if hasIMAPSecurity {
 			body["imap_security"] = imapSecurity

@@ -337,6 +337,10 @@ func wholeNumber(v any) (int, bool) {
 	switch x := v.(type) {
 	case float64:
 		f = x
+	case int:
+		f = float64(x)
+	case int64:
+		f = float64(x)
 	case string:
 		p, err := strconv.ParseFloat(x, 64)
 		if err != nil {

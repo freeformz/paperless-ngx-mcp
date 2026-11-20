@@ -272,14 +272,14 @@ func handleDocumentUpload(client *Client) server.ToolHandlerFunc {
 		}
 
 		args := request.GetArguments()
-		if _, ok := args["correspondent"]; ok {
-			fields.Set("correspondent", strconv.Itoa(int(request.GetFloat("correspondent", 0))))
-		}
-		if _, ok := args["document_type"]; ok {
-			fields.Set("document_type", strconv.Itoa(int(request.GetFloat("document_type", 0))))
-		}
-		if _, ok := args["storage_path"]; ok {
-			fields.Set("storage_path", strconv.Itoa(int(request.GetFloat("storage_path", 0))))
+		ids := map[string]any{}
+		for _, name := range []string{"correspondent", "document_type", "storage_path", "archive_serial_number"} {
+			if errRes := setOptionalInt(ids, args, name); errRes != nil {
+				return errRes, nil
+			}
+			if n, ok := ids[name].(int); ok {
+				fields.Set(name, strconv.Itoa(n))
+			}
 		}
 		tagIDs, _, err := getJSONInts(request, "tags")
 		if err != nil {
@@ -288,9 +288,6 @@ func handleDocumentUpload(client *Client) server.ToolHandlerFunc {
 		// The API expects repeated form fields for list values, not a JSON array.
 		for _, tagID := range tagIDs {
 			fields.Add("tags", strconv.Itoa(tagID))
-		}
-		if _, ok := args["archive_serial_number"]; ok {
-			fields.Set("archive_serial_number", strconv.Itoa(int(request.GetFloat("archive_serial_number", 0))))
 		}
 
 		path := "/api/documents/post_document/"
