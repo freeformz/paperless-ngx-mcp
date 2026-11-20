@@ -92,6 +92,26 @@ func doRequest(resp *http.Response, err error, method, path string) (*mcp.CallTo
 	return rawJSONResult(body)
 }
 
+// doRequestBody is like doRequest but returns the raw response body for the
+// caller to use, or an error result for a failed request.
+func doRequestBody(resp *http.Response, err error, method, path string) ([]byte, *mcp.CallToolResult) {
+	if err != nil {
+		return nil, errResult(fmt.Sprintf("request failed: %s", err))
+	}
+	defer resp.Body.Close()
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, errResult(fmt.Sprintf("read response: %s", readErr))
+	}
+	if resp.StatusCode >= 400 {
+		return nil, apiErrorResult(resp.StatusCode, body, method, path)
+	}
+	return body, nil
+}
+
+// httpResponse names *http.Response's type for files that don't import net/http.
+type httpResponse = http.Response
+
 // doRequestJSON is like doRequest but decodes the response body as JSON and
 // applies transform to the decoded value before returning it. Error responses
 // and non-JSON bodies pass through unchanged.

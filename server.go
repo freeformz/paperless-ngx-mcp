@@ -52,7 +52,7 @@ const serverInstructions = `Paperless-ngx MCP server — manage documents and me
 - **Users & Groups**: user_list, user_get, user_create, user_update, user_delete, group_list, group_get, group_create, group_update, group_delete, profile_get, profile_update
 - **Mail**: mail_account_list, mail_account_get, mail_account_create, mail_account_update, mail_account_delete, mail_account_test, mail_account_process, mail_rule_list, mail_rule_get, mail_rule_create, mail_rule_update, mail_rule_delete, processed_mail_list, processed_mail_get, processed_mail_bulk_delete
 - **Workflows**: workflow_list, workflow_get, workflow_create, workflow_update, workflow_delete, workflow_trigger_list, workflow_trigger_get, workflow_trigger_create, workflow_trigger_update, workflow_trigger_delete, workflow_action_list, workflow_action_get, workflow_action_create, workflow_action_update, workflow_action_delete
-- **Tasks**: task_list, task_get, task_acknowledge, task_run, task_stats
+- **Tasks**: task_list, task_get, task_wait, task_acknowledge, task_run, task_stats
 - **System**: system_status, remote_version, ui_settings_get, config_list, config_get, config_update, log_list, log_get, trash_list, trash_action
 
 ## Pagination
@@ -92,6 +92,7 @@ Array and object parameters accept a native JSON value or the same value as a JS
 
 ## Tasks
 Background work (consuming uploads, mail fetch, bulk edits, scheduled jobs) runs as tasks. status is pending, started, success, failure or revoked. task_get takes either the task UUID that document_upload and task_run return, or the integer id from task_list; task_acknowledge takes integer ids (or all: true). task_list filters by status, task_type and trigger_source (arrays: any of the values), and trims result_data.traceback to its last 500 bytes unless include_traceback is set. task_stats gives per-type summaries, status counts, or the currently active tasks.
+document_upload, document_bulk_edit and task_run queue a task and return its id at once, before anything has happened; errors such as missing permissions or a wrong PDF password show up only in the task. Pass wait: true (timeout in seconds, default 60, at most 600) to wait for the task and get its outcome, or call task_wait with the id later. A finished wait returns {task, waited_seconds}; a failed or revoked task is a tool error carrying the task; if time runs out the task comes back with timed_out: true, and task_wait continues. The MCP host may end a long call before the timeout; task_wait picks it up again. An upload's task is the whole consume. For a bulk edit, metadata methods are done when the bulk task is, while rotate, merge, split, delete_pages, edit_pdf and remove_password run consume_file tasks of their own, reprocess runs reprocess_document tasks, and merge or split with delete_originals also run bulk_delete; follow_on in the wait result says how to find them.
 
 ## Viewing Documents
 Use document_page_image to actually see a document page — essential when OCR content is missing or garbled (handwriting, bad scans, stamps, diagrams). Render the full page first; if fine detail is illegible, call it again with region=[x0,y0,x1,y1] (fractions of page width/height, 0-1 — NOT pixels; e.g. [0,0,0.5,0.5] is the top-left quarter) to re-render that area at high resolution.

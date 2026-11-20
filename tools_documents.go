@@ -81,15 +81,16 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_upload",
-			mcp.WithDescription("Upload a new document. Returns a task UUID; follow it with task_get to see whether consumption succeeded (a duplicate is reported as status failure with result_data.duplicate_of)."),
-			mcp.WithString("file_path", mcp.Description("Local path to the file to upload"), mcp.Required()),
-			mcp.WithString("title", mcp.Description("Document title")),
-			mcp.WithString("created", mcp.Description("Created date")),
-			withNumber("correspondent", mcp.Description("Correspondent ID")),
-			withNumber("document_type", mcp.Description("Document type ID")),
-			withNumber("storage_path", mcp.Description("Storage path ID")),
-			withJSONArray("tags", mcp.Description("Array of tag IDs")),
-			withNumber("archive_serial_number", mcp.Description("Archive serial number")),
+			append([]mcp.ToolOption{mcp.WithDescription("Upload a new document. Returns the consume task's UUID at once; pass wait: true to wait for consumption and get its outcome (result_data.document_id on success; a duplicate is reported as status failure with result_data.duplicate_of), or follow the id with task_wait or task_get. This task is the whole consume, so finished means the document exists."),
+				mcp.WithString("file_path", mcp.Description("Local path to the file to upload"), mcp.Required()),
+				mcp.WithString("title", mcp.Description("Document title")),
+				mcp.WithString("created", mcp.Description("Created date")),
+				withNumber("correspondent", mcp.Description("Correspondent ID")),
+				withNumber("document_type", mcp.Description("Document type ID")),
+				withNumber("storage_path", mcp.Description("Storage path ID")),
+				withJSONArray("tags", mcp.Description("Array of tag IDs")),
+				withNumber("archive_serial_number", mcp.Description("Archive serial number")),
+			}, waitToolOptions()...)...,
 		),
 		handleDocumentUpload(client),
 	)
@@ -277,6 +278,10 @@ func handleDocumentUpload(client *Client) server.ToolHandlerFunc {
 		if errRes != nil {
 			return errRes, nil
 		}
+		wait, timeout, errRes := getWaitOptions(request)
+		if errRes != nil {
+			return errRes, nil
+		}
 
 		// Validate file path: resolve to absolute, check it's a regular file
 		absPath, err := filepath.Abs(filePath)
@@ -325,7 +330,7 @@ func handleDocumentUpload(client *Client) server.ToolHandlerFunc {
 
 		path := "/api/documents/post_document/"
 		resp, err := client.PostMultipart(ctx, path, fields, filePath)
-		return doRequest(resp, err, "POST", path)
+		return respondWithWait(ctx, client, request, wait, timeout, resp, err, "POST", path, nil)
 	}
 }
 
