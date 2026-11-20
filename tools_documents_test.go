@@ -35,7 +35,6 @@ func TestDocumentListTruncatesContent(t *testing.T) {
 		"count":    1,
 		"next":     nil,
 		"previous": nil,
-		"all":      []int{1, 2, 3, 4, 5},
 		"results":  []map[string]any{{"id": 1, "title": "Invoice", "content": longContent}},
 	}
 
@@ -54,16 +53,12 @@ func TestDocumentListTruncatesContent(t *testing.T) {
 	if doc["content_truncated"] != true {
 		t.Error("content_truncated should be true")
 	}
-	if _, ok := m["all"]; ok {
-		t.Error("all ID array should be stripped by default")
-	}
 }
 
 func TestDocumentListFullContent(t *testing.T) {
 	longContent := strings.Repeat("x", 2000)
 	docs := map[string]any{
 		"count":   1,
-		"all":     []int{1},
 		"results": []map[string]any{{"id": 1, "content": longContent}},
 	}
 
@@ -72,8 +67,7 @@ func TestDocumentListFullContent(t *testing.T) {
 
 	client := testClientAndServer(t, rh)
 	result := callTool(t, handleDocumentList(client), map[string]any{
-		"full_content":    true,
-		"include_all_ids": true,
+		"full_content": true,
 	})
 	assertNotError(t, result)
 
@@ -84,9 +78,6 @@ func TestDocumentListFullContent(t *testing.T) {
 	}
 	if _, ok := doc["content_truncated"]; ok {
 		t.Error("content_truncated should be absent with full_content=true")
-	}
-	if _, ok := m["all"]; !ok {
-		t.Error("all ID array should be present with include_all_ids=true")
 	}
 }
 
@@ -282,8 +273,8 @@ func TestDocumentUpdateClearCorrespondent(t *testing.T) {
 
 	client := testClientAndServer(t, rh)
 	result := callTool(t, handleDocumentUpdate(client), map[string]any{
-		"id":            float64(1),
-		"correspondent": nil,
+		"id":    float64(1),
+		"clear": []any{"correspondent"},
 	})
 	assertNotError(t, result)
 
@@ -385,7 +376,7 @@ func TestDocumentUpdateClearOwner(t *testing.T) {
 	client := testClientAndServer(t, rh)
 	result := callTool(t, handleDocumentUpdate(client), map[string]any{
 		"id":    float64(1),
-		"owner": nil,
+		"clear": `["owner"]`, // a JSON string works too
 	})
 	assertNotError(t, result)
 

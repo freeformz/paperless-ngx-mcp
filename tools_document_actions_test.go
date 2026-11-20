@@ -59,9 +59,9 @@ func TestDocumentActionBodies(t *testing.T) {
 		{"remove_password source_mode", "remove_password",
 			map[string]any{"documents": []any{float64(8)}, "password": "p", "source_mode": "explicit_selection"},
 			map[string]any{"documents": []any{float64(8)}, "password": "p", "source_mode": "explicit_selection"}},
-		{"merge null metadata", "merge",
+		{"merge null metadata means not given", "merge",
 			map[string]any{"documents": []any{float64(4), float64(5)}, "metadata_document_id": nil},
-			map[string]any{"documents": []any{float64(4), float64(5)}, "metadata_document_id": nil}},
+			map[string]any{"documents": []any{float64(4), float64(5)}}},
 		{"edit_pdf", "edit_pdf",
 			map[string]any{"documents": []any{float64(7)}, "operations": []any{
 				map[string]any{"page": float64(1)}, map[string]any{"page": float64(3), "rotate": float64(90), "doc": float64(1)},
@@ -95,12 +95,6 @@ func TestDocumentActionBodies(t *testing.T) {
 			}
 		})
 	}
-}
-
-// documentActionTools maps each document action to its registered tool name.
-var documentActionTools = map[string]string{
-	"rotate": "document_rotate", "merge": "document_merge", "edit_pdf": "document_edit_pdf",
-	"remove_password": "document_remove_password", "reprocess": "document_reprocess", "delete": "document_bulk_delete",
 }
 
 // documentActionHandlerFor returns the handler registered for a document

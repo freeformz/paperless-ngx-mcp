@@ -155,9 +155,10 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 	), handlePaginatedList(client, "/api/trash/"))
 
 	srv.AddTool(mcp.NewTool("trash_action",
-		mcp.WithDescription("Restore or permanently delete trashed documents."),
-		mcp.WithString("action", mcp.Description("Action: restore or empty"), mcp.Required()),
-		withJSONArray("documents", mcp.Description("Array of document IDs (required for restore)")),
+		mcp.WithDescription("Restore trashed documents, or permanently delete them (empty), which can't be undone and doesn't wait for the trash delay. restore needs documents (restore a root document, not one of its versions). empty takes documents, or all: true to empty the whole trash: for a superuser every trashed document, for anyone else the trashed documents they own or that have no owner. Leaving out documents is an error, not \"everything\". Preview with trash_list."),
+		mcp.WithString("action", mcp.Description("Action"), mcp.Required(), mcp.Enum(trashActions...)),
+		withJSONArray("documents", mcp.Description("Array of trashed document IDs"), mcp.Items(map[string]any{"type": "integer"})),
+		mcp.WithBoolean("all", mcp.Description("empty only: permanently delete everything in the trash that you may delete, instead of listing documents")),
 	), handleTrashAction(client))
 
 	// System
@@ -272,11 +273,6 @@ func handleTaskAcknowledge(client *Client) server.ToolHandlerFunc {
 			return errResult(err.Error()), nil
 		}
 		tasks, hasTasks := body["tasks"]
-		if hasTasks && tasks == nil {
-			// JSON null: treat as not given.
-			hasTasks = false
-			delete(body, "tasks")
-		}
 		if hasTasks {
 			ids, ok := tasks.([]any)
 			if !ok {
@@ -401,16 +397,44 @@ func handleLogGet(client *Client) server.ToolHandlerFunc {
 	}
 }
 
+// trashActions are the trash endpoint's actions.
+var trashActions = []string{"restore", "empty"}
+
 func handleTrashAction(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		action, errRes := getRequiredString(request, "action")
 		if errRes != nil {
 			return errRes, nil
 		}
+		if !slices.Contains(trashActions, action) {
+			return errResult("action must be one of: " + strings.Join(trashActions, ", ")), nil
+		}
+		all, _, errRes := getStrictBool(request, "all")
+		if errRes != nil {
+			return errRes, nil
+		}
+		docs, _, err := getJSONInts(request, "documents")
+		if err != nil {
+			return errResult(err.Error()), nil
+		}
 
 		body := map[string]any{"action": action}
-		if err := setJSONField(body, request, "documents"); err != nil {
-			return errResult(err.Error()), nil
+		switch {
+		case all && action == "restore":
+			return errResult("all is only for empty; restore needs documents"), nil
+		case all && len(docs) > 0:
+			return errResult("set either documents or all: true, not both"), nil
+		case all:
+			// No documents key: the server empties everything the user may delete.
+		case len(docs) == 0 && action == "restore":
+			return errResult("documents is required for restore: a non-empty array of trashed document IDs"), nil
+		case len(docs) == 0:
+			return errResult("empty needs documents, or all: true to permanently delete the whole trash"), nil
+		default:
+			if d, dup := firstDuplicate(docs); dup {
+				return errResult(fmt.Sprintf("documents lists %d twice", d)), nil
+			}
+			body["documents"] = docs
 		}
 
 		path := "/api/trash/"

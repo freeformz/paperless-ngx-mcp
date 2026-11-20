@@ -44,7 +44,7 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 	)
 	srv.AddTool(
 		mcp.NewTool("user_update",
-			mcp.WithDescription("Update a user."),
+			mcp.WithDescription("Update a user; only the fields given change, and "+nullsIgnoredHint+"."),
 			withNumber("id", mcp.Description("User ID"), mcp.Required()),
 			mcp.WithString("username", mcp.Description("Username")),
 			mcp.WithString("password", mcp.Description("Password")),
@@ -99,7 +99,7 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 	)
 	srv.AddTool(
 		mcp.NewTool("group_update",
-			mcp.WithDescription("Update a group."),
+			mcp.WithDescription("Update a group; only the fields given change, and "+nullsIgnoredHint+"."),
 			withNumber("id", mcp.Description("Group ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Group name")),
 			withJSONArray("permissions", mcp.Description("Array of permission codenames")),
@@ -123,7 +123,7 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 	)
 	srv.AddTool(
 		mcp.NewTool("profile_update",
-			mcp.WithDescription("Update the current user's profile."),
+			mcp.WithDescription("Update the current user's profile; only the fields given change, and "+nullsIgnoredHint+"."),
 			mcp.WithString("email", mcp.Description("Email address")),
 			mcp.WithString("first_name", mcp.Description("First name")),
 			mcp.WithString("last_name", mcp.Description("Last name")),
@@ -146,7 +146,6 @@ func handleUserList(client *Client) server.ToolHandlerFunc {
 			if !ok {
 				return v
 			}
-			delete(m, "all")
 			if !request.GetBool("include_permissions", false) {
 				if results, ok := m["results"].([]any); ok {
 					for _, r := range results {

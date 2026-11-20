@@ -150,22 +150,21 @@ The primary search and filtering tool. Supports the full range of Paperless-ngx 
 | title | string | no | Filter by title (icontains) |
 | content | string | no | Filter by content (icontains) |
 | custom_field_query | array or JSON string | no | Custom field filter expression, e.g. `["AND", [[1, "exists", true]]]` |
-| created_after | string | no | Filter by created date (gte) |
-| created_before | string | no | Filter by created date (lte) |
-| added_after | string | no | Filter by added date (gte) |
-| added_before | string | no | Filter by added date (lte) |
+| created_after | string | no | Filter by created date (gte, YYYY-MM-DD) |
+| created_before | string | no | Filter by created date (lte, YYYY-MM-DD) |
+| added_after | string | no | Filter by added date (gte, YYYY-MM-DD) |
+| added_before | string | no | Filter by added date (lte, YYYY-MM-DD) |
 | owner_id | integer | no | Filter by owner |
 | ordering | string | no | Sort field (prefix `-` for descending) |
 | page | integer | no | Page number (default: 1) |
 | page_size | integer | no | Results per page (default: 25, max: 100000) |
 | full_content | boolean | no | Include full document content instead of a truncated snippet (default: false) |
 | content_snippet_bytes | integer | no | Max bytes of document content per result (default: 500; 0 disables truncation) |
-| include_all_ids | boolean | no | Include the `all` array of every matching document ID (default: false) |
 | include_notes | boolean | no | Include full note objects in results (default: false — notes are replaced with `notes_count`) |
 
 **Returns:** Paginated document list with count, next/previous page URLs, and document objects. Each document object includes API URLs for download (`/api/documents/{id}/download/`), preview (`/api/documents/{id}/preview/`), and thumbnail (`/api/documents/{id}/thumb/`) — these are unauthenticated URL paths relative to `PAPERLESS_URL` that require a token to fetch. When `query` is used, includes `__search_hit__` with score, highlights, and rank.
 
-By default each document's `content` (OCR text) is truncated to a snippet (default 500 bytes, adjustable with `content_snippet_bytes`; `content_truncated: true` marks truncated entries) and the unbounded `all` ID array is omitted — full OCR content can be huge, making default responses unusable for MCP clients. Use `document_get` for full content of a single document, `full_content` (or `content_snippet_bytes: 0`) to disable truncation, and `include_all_ids` to keep the `all` array (e.g., to feed `document_bulk_edit`). Each document's `notes` array is likewise replaced with a `notes_count` field (omitted when zero) — notes are unbounded and can dominate response size. Pass `include_notes: true` to keep full note objects, or use `document_note_list`/`document_get` for a single document's notes.
+By default each document's `content` (OCR text) is truncated to a snippet (default 500 bytes, adjustable with `content_snippet_bytes`; `content_truncated: true` marks truncated entries) — full OCR content can be huge, making default responses unusable for MCP clients. Use `document_get` for full content of a single document, and `full_content` (or `content_snippet_bytes: 0`) to disable truncation. `count` is the number of matching documents: with `page_size: 1` it previews an `all: true` selection (see Selecting Documents by Filter). Filter values are checked: `null`, `""` and (for non-text filters) `"null"` mean not given, while an id, tag list, boolean or date that doesn't parse is an error rather than a silent `0` or `false`. Each document's `notes` array is likewise replaced with a `notes_count` field (omitted when zero) — notes are unbounded and can dominate response size. Pass `include_notes: true` to keep full note objects, or use `document_note_list`/`document_get` for a single document's notes.
 
 ##### document_get
 
@@ -187,13 +186,14 @@ By default each document's `content` (OCR text) is truncated to a snippet (defau
 | title | string | no | New title |
 | content | string | no | New document content text (OCR text); empty string clears content |
 | created | string | no | New created date (YYYY-MM-DD) |
-| correspondent | integer | no | Correspondent ID (null to clear) |
-| document_type | integer | no | Document type ID (null to clear) |
-| storage_path | integer | no | Storage path ID (null to clear) |
+| correspondent | integer | no | Correspondent ID |
+| document_type | integer | no | Document type ID |
+| storage_path | integer | no | Storage path ID |
 | tags | array or JSON string | no | Array of tag IDs (replaces all tags) |
-| archive_serial_number | integer | no | Archive serial number (null to clear) |
-| owner | integer | no | Owner user ID (null to clear) |
+| archive_serial_number | integer | no | Archive serial number |
+| owner | integer | no | Owner user ID |
 | custom_fields | array or JSON string | no | Array of custom field assignments |
+| clear | array of strings | no | Fields to clear (sent as null): `correspondent`, `document_type`, `storage_path`, `archive_serial_number`, `owner`. A `null` value is ignored (see Null Values) |
 
 **Returns:** Updated document object.
 
@@ -275,7 +275,9 @@ Removes downloaded document files. With no arguments, removes all files in the i
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
 | `document_bulk_edit` | POST | `/api/documents/bulk_edit/` | Bulk edit document metadata (and run manual workflows) |
-| `document_selection_data` | POST | `/api/documents/selection_data/` | Get aggregated metadata counts for a selection (objects with zero matching documents are omitted) |
+| `document_selection_data` | POST | `/api/documents/selection_data/` | Get per-object document counts for a selection (objects with zero matching documents are omitted; no total) |
+
+Both take a selection: `documents`, or `all: true` with `filters` and `excluded_documents` (see Selecting Documents by Filter).
 
 ##### document_bulk_edit
 
@@ -283,7 +285,7 @@ Removes downloaded document files. With no arguments, removes all files in the i
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| documents | array or JSON string | yes | Array of document IDs |
+| documents / all / filters / excluded_documents | | yes (one form) | The selection, see Selecting Documents by Filter |
 | method | string (enum) | yes | `set_correspondent`, `set_document_type`, `set_storage_path`, `add_tag`, `remove_tag`, `modify_tags`, `modify_custom_fields`, `set_permissions`, `run_workflow` |
 | parameters | object or JSON string | yes | Method-specific: `{correspondent}`, `{document_type}`, `{storage_path}` (id or null); `{tag}`; `{add_tags, remove_tags}`; `{add_custom_fields, remove_custom_fields}`; `{set_permissions, owner?, merge?}` (without `merge`, leaving out `owner` clears it); `{workflow, filter_documents?}` |
 | wait, timeout | boolean, integer | no | See Waiting for Tasks |
@@ -292,7 +294,7 @@ Removes downloaded document files. With no arguments, removes all files in the i
 
 #### Editing Documents
 
-Dedicated endpoints for operations that change a document's file (paperless-ngx 3.0+). Each queues a bulk task and returns `{result, task_id}`; the work runs, and permissions are checked again, inside that task. All take `documents` (a non-empty array of distinct ids) plus `wait` / `timeout`, and never send `from_webui`. `source_mode` is `latest_version` (default: a root id resolves to its latest version) or `explicit_selection`.
+Dedicated endpoints for operations that change a document's file (paperless-ngx 3.0+). Each queues a bulk task and returns `{result, task_id}`; the work runs, and permissions are checked again, inside that task. They take `documents` (a non-empty array of distinct ids) plus `wait` / `timeout`, and never send `from_webui`; `document_rotate`, `document_reprocess` and `document_bulk_delete` can take an `all: true` selection instead (see Selecting Documents by Filter), while merge, edit_pdf and remove_password refuse `all`, `filters` and `excluded_documents`. `source_mode` is `latest_version` (default: a root id resolves to its latest version) or `explicit_selection`.
 
 | Tool | Endpoint | Parameters | Notes |
 |------|----------|------------|-------|
@@ -437,7 +439,7 @@ Accepts `id`, `name` and `extra_data`. It does not send `data_type`, because pap
 | `saved_view_list` | GET | `/api/saved_views/` | List saved views |
 | `saved_view_get` | GET | `/api/saved_views/{id}/` | Get saved view |
 | `saved_view_create` | POST | `/api/saved_views/` | Create saved view. `name` and `filter_rules` are required (`[]` matches every document); optional `icon`, `sort_field`, `sort_reverse`, `page_size`, `display_mode`, `display_fields` |
-| `saved_view_update` | PATCH | `/api/saved_views/{id}/` | Update saved view. `filter_rules` replaces all rules; `null` clears `page_size`, `display_mode` and `display_fields` |
+| `saved_view_update` | PATCH | `/api/saved_views/{id}/` | Update saved view. `filter_rules` replaces all rules; `clear` resets `page_size`, `display_mode` and `display_fields` (`display_fields: []` also resets it) |
 | `saved_view_delete` | DELETE | `/api/saved_views/{id}/` | Delete saved view |
 | `saved_view_rule_types` | — | — | The filter rule type table (paperless-ngx 3.5.1), answered locally: each `rule_type` code's label, value format, whether it takes one rule per value, the matching `/api/documents/` filter, and notes. Optional `ids` selects codes |
 
@@ -587,13 +589,15 @@ The share link API has no update: `ShareLinkViewSet` supports create, retrieve, 
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
 | `trash_list` | GET | `/api/trash/` | List trashed documents |
-| `trash_action` | POST | `/api/trash/` | Restore or permanently delete trashed documents |
+| `trash_action` | POST | `/api/trash/` | `restore` (needs `documents`) or `empty` (permanent; needs `documents`, or `all: true` for the whole trash: everything for a superuser, otherwise the trashed documents the user owns or that have no owner). Leaving out `documents` is an error, not "everything" |
 
 #### Bulk Edit Objects
 
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
-| `bulk_edit_objects` | POST | `/api/bulk_edit_objects/` | Bulk permissions/delete for tags, correspondents, document types, storage paths |
+| `bulk_edit_objects` | POST | `/api/bulk_edit_objects/` | `set_permissions` or `delete` on tags, correspondents, document types, storage paths |
+
+`object_type` and `operation` are enums. Objects are selected by `objects`, or `all: true` with `filters`: `name` (contains) for every type, `is_root` for tags, `path` (contains) for storage paths, the same as the `*_list` tools (`storage_path_list` has `path`). `all: true` acts on the objects the user can change (`set_permissions`) or delete (`delete`), not merely view, so it can differ from a `*_list` count; non-superusers must own every selected object. For tags, `all: true` also takes editable child tags, and a tag delete always takes child tags. `set_permissions` takes top-level `owner`, `permissions` (`{view?: {users?, groups?}, change?: {...}}`; an empty array revokes) and `merge`; `clear: ["owner"]` removes the owner (not with `merge`, which keeps it). Leaving out `owner` keeps it. The old `parameters` object is refused: the server reads these fields at the top level, so it was silently ignored.
 
 #### System
 
@@ -618,13 +622,31 @@ Since paperless-ngx 3.5.0 the document bulk and action endpoints queue a task an
 - MCP hosts often limit a tool call to about 60 s; a longer wait may be cut off by the host, and `task_wait` with the same id picks it up.
 - The stdio server runs up to 20 tool calls at once (mcp-go's default is 5), so waiting calls don't stall other tools; past 20 running and 100 queued calls, mcp-go runs a call on its read loop. Shutdown interrupts a wait.
 
+## Selecting Documents by Filter
+
+`document_bulk_edit`, `document_selection_data`, `document_rotate`, `document_reprocess` and `document_bulk_delete` take either `documents` (explicit ids) or `all: true` with an optional `filters` object and `excluded_documents`. Upstream, `all: true` selects every root document the user can view that matches the filters (resolved when the request arrives; versions never included). paperless-ngx ignores unknown filter keys and any value it can't parse, so a typo would select every document; the MCP therefore:
+
+- takes `document_list`'s filter names (one shared table maps them to the raw query names) and rejects unknown names;
+- rejects values upstream would drop: blank text (after Python-style stripping), text with NUL, impossible dates (`2024-02-30`, year 0), tag lists with empty items or non-integers, booleans other than `true`/`false`, `null` values inside `filters`, a `query` of only wildcards (`*`, `?`) or over 4096 characters, and `query` with `more_like_id`;
+- sends every value as a string (ints in decimal, booleans as `"true"`/`"false"`, tag lists as `"1,2"`, `custom_field_query` as JSON text), since the server's filters only match strings (a JSON `true` for `is_in_inbox` is ignored);
+- rejects `all: true` with `documents`, and `filters` or `excluded_documents` without `all: true`. `all` must be a boolean (`1` or `"t"` are errors).
+
+There is no count guard: `all: true` is the explicit request. Without filters it means every document. Preview with `document_list` and the same filters (`page_size: 1` gives `count`). Filters that widen by design: `more_like_id`, `tags_id_none`, `is_in_inbox: false`, `NOT` in `custom_field_query`, and `query`'s search syntax. Permissions are all-or-nothing: one selected document the user can't change (or doesn't own, where ownership is needed) fails the whole call with a 403. `bulk_download` also accepts `all` upstream but isn't exposed.
+
+The `all` ID array that list responses carried below API v10 no longer exists, so `include_all_ids` is gone.
+
+## Null Values
+
+Some MCP clients send every declared parameter, filling unused ones with `null`. A top-level `null` therefore always means "not given", in every tool: middleware drops it before any handler runs. The string `"null"` is dropped too, except for plain string parameters (titles, notes, passwords, search text), where it is real text. Before this, a padded `null` became a real value in many tools (`document_update` `content: null` wiped the OCR text; `user_update` `is_superuser: null` sent `false`; list filters became `=0` or `=false`).
+
+Clearing a field takes an explicit `clear` array naming it: `document_update` (`correspondent`, `document_type`, `storage_path`, `archive_serial_number`, `owner`), `tag_update` (`parent`), `saved_view_update` (`page_size`, `display_mode`, `display_fields`) and `bulk_edit_objects` (`owner`). A field both given a value and listed in `clear` is an error. Nulls nested inside JSON objects (such as `document_bulk_edit`'s `parameters`, workflow and mail rule bodies, custom field values) are sent as given.
+
 ## Response Shaping
 
-Paperless-ngx API responses can be far too large for MCP clients (full OCR text per list result, unbounded ID arrays, long task tracebacks). The server reshapes responses to keep tool output compact:
+Paperless-ngx API responses can be far too large for MCP clients (full OCR text per list result, long task tracebacks). The server reshapes responses to keep tool output compact:
 
 - **Content truncation**: `document_list` truncates each document's `content` to a snippet (default 500 bytes, adjustable per call with `content_snippet_bytes`; `0` disables truncation), marking truncated entries with `content_truncated: true`. Opt out per-call with `full_content: true`, or use `document_get` for one document's full text.
 - **Notes stripped**: `document_list` replaces each document's unbounded `notes` array with a `notes_count` field (omitted when zero). Opt out per-call with `include_notes: true`, or use `document_note_list`/`document_get` for one document's full notes.
-- **`all` ID array stripped**: every paginated list response omits Paperless's unbounded `all` array of matching IDs. `document_list` can re-include it with `include_all_ids: true`.
 - **Task tracebacks trimmed**: `task_list` keeps the last 500 bytes of each `result_data.traceback` (the end, where the exception is), prefixed with `…` and marked `traceback_truncated: true`. Opt out with `include_traceback: true`, or use `task_get` for one task's full traceback.
 - **Log tailing**: `log_get` returns only the last `tail` lines (default 100) with a `total_lines` count.
 - **Selection data filtering**: `document_selection_data` omits objects with `document_count: 0`.

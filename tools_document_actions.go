@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"strconv"
@@ -32,18 +33,145 @@ func documentsOption(desc string) mcp.ToolOption {
 	return withJSONArray("documents", mcp.Description(desc), mcp.Required(), mcp.Items(map[string]any{"type": "integer"}))
 }
 
+// documentSelectionNote explains all: true selections, shared by every tool
+// that takes one.
+const documentSelectionNote = "Select documents either by documents (explicit IDs) or with all: true, which acts on every root document you can view that matches filters (the same filter names as document_list), minus excluded_documents. The selection is resolved when the request arrives; versions are never included. Without filters, all: true means every document. Preview first with document_list and the same filters (page_size: 1 gives count). Filters that widen by design: more_like_id (matches most documents sharing a word), tags_id_none, is_in_inbox: false, NOT in custom_field_query, and query's full search syntax. Permissions are all-or-nothing: one selected document you can't change (or don't own, where ownership is needed) fails the whole call with a 403."
+
+// documentSelectionOptions declares documents (optional), all, filters and
+// excluded_documents for the tools that accept an all: true selection.
+func documentSelectionOptions() []mcp.ToolOption {
+	return []mcp.ToolOption{
+		withJSONArray("documents", mcp.Description("Array of document IDs; leave out with all: true"), mcp.Items(map[string]any{"type": "integer"})),
+		mcp.WithBoolean("all", mcp.Description("Select every matching root document instead of listing documents (see filters)")),
+		withJSONObject("filters", mcp.Description("Object with document_list filters for all: true, e.g. {\"tags_id_all\": [3], \"created_before\": \"2020-01-01\"}; unknown names and unusable values are rejected"), filtersSchema(documentFilterParams)),
+		withJSONArray("excluded_documents", mcp.Description("Array of document IDs to leave out of an all: true selection"), mcp.Items(map[string]any{"type": "integer"})),
+	}
+}
+
+// getStrictBool reads an optional boolean: true, false, or the strings "true"
+// and "false". Anything else is an error, not a guess.
+func getStrictBool(request mcp.CallToolRequest, name string) (value, present bool, errRes *mcp.CallToolResult) {
+	switch v := request.GetArguments()[name].(type) {
+	case nil:
+		return false, false, nil
+	case bool:
+		return v, true, nil
+	case string:
+		switch v {
+		case "true":
+			return true, true, nil
+		case "false":
+			return false, true, nil
+		case "", "null":
+			return false, false, nil
+		}
+	}
+	return false, true, errResult(name + " must be true or false")
+}
+
+// getDocumentSelection reads a document selection: explicit documents, or
+// all: true with filters and excluded_documents. It returns the body fields
+// to send and the explicit ids (nil with all).
+func getDocumentSelection(request mcp.CallToolRequest) (map[string]any, []int, *mcp.CallToolResult) {
+	all, _, errRes := getStrictBool(request, "all")
+	if errRes != nil {
+		return nil, nil, errRes
+	}
+	if !all {
+		// An empty filters object (as some clients pad unused params) is not a selection.
+		if raw, present, errRes := parseSelectionFilters(request, documentFilterParams, "document"); errRes != nil || (present && len(raw) > 0) {
+			if errRes == nil {
+				errRes = errResult("filters needs all: true; to act on specific documents, list them in documents")
+			}
+			return nil, nil, errRes
+		}
+		if excluded, _, err := getJSONInts(request, "excluded_documents"); err != nil || len(excluded) > 0 {
+			if err != nil {
+				return nil, nil, errResult(err.Error())
+			}
+			return nil, nil, errResult("excluded_documents needs all: true")
+		}
+		docs, errRes := getDocumentIDs(request)
+		if errRes != nil {
+			return nil, nil, errResult(resultTextOf(errRes) + ", or all: true with filters")
+		}
+		return map[string]any{"documents": docs}, docs, nil
+	}
+	if docs, _, err := getJSONInts(request, "documents"); err != nil || len(docs) > 0 {
+		if err != nil {
+			return nil, nil, errResult(err.Error())
+		}
+		return nil, nil, errResult("documents can't be combined with all: true; use excluded_documents to leave some out, or list documents without all")
+	}
+	filters, _, errRes := parseSelectionFilters(request, documentFilterParams, "document")
+	if errRes != nil {
+		return nil, nil, errRes
+	}
+	if filters == nil {
+		filters = map[string]any{}
+	}
+	sel := map[string]any{"all": true, "filters": filters}
+	excluded, _, err := getJSONInts(request, "excluded_documents")
+	if err != nil {
+		return nil, nil, errResult(err.Error())
+	}
+	if len(excluded) > 0 {
+		if d, dup := firstDuplicate(excluded); dup {
+			return nil, nil, errResult(fmt.Sprintf("excluded_documents lists %d twice", d))
+		}
+		sel["excluded_documents"] = excluded
+	}
+	return sel, nil, nil
+}
+
+// rejectSelectionArgs refuses all / filters / excluded_documents on a tool
+// that only takes explicit documents, instead of silently ignoring them.
+func rejectSelectionArgs(request mcp.CallToolRequest, tool string) *mcp.CallToolResult {
+	args := request.GetArguments()
+	for _, name := range []string{"all", "filters", "excluded_documents"} {
+		v := args[name]
+		if v == false || v == "false" || !argIsSet(v) {
+			continue
+		}
+		return errResult(fmt.Sprintf("%s doesn't support %s: paperless-ngx only takes explicit documents here", tool, name))
+	}
+	return nil
+}
+
+// firstDuplicate returns the first id that appears twice.
+func firstDuplicate(ids []int) (int, bool) {
+	seen := map[int]bool{}
+	for _, d := range ids {
+		if seen[d] {
+			return d, true
+		}
+		seen[d] = true
+	}
+	return 0, false
+}
+
+// resultTextOf returns the text of a single-text error result.
+func resultTextOf(r *mcp.CallToolResult) string {
+	if len(r.Content) > 0 {
+		if tc, ok := r.Content[0].(mcp.TextContent); ok {
+			return tc.Text
+		}
+	}
+	return ""
+}
+
 func registerDocumentActionTools(srv *server.MCPServer, client *Client) {
-	srv.AddTool(mcp.NewTool("document_rotate", append([]mcp.ToolOption{
-		mcp.WithDescription("Rotate documents' PDFs; each rotation adds a new version of the document (via a consume_file task). Non-PDF documents are skipped without failing the task. Ids that share a root document are rotated once. degrees 0 adds a version that changes nothing. Needs change permission on every document and ownership of each (or no owner). " + documentActionPermissionNote + " " + documentActionAsync),
-		documentsOption("Array of document IDs"),
+	srv.AddTool(mcp.NewTool("document_rotate", append(append([]mcp.ToolOption{
+		mcp.WithDescription("Rotate documents' PDFs; each rotation adds a new version of the document (via a consume_file task). Non-PDF documents are skipped without failing the task. Ids that share a root document are rotated once. degrees 0 adds a version that changes nothing. Needs change permission on every document and ownership of each (or no owner). " + documentActionPermissionNote + " " + documentSelectionNote + " " + documentActionAsync),
+	}, documentSelectionOptions()...), append([]mcp.ToolOption{
 		withNumber("degrees", mcp.Description("Clockwise rotation, a multiple of 90 (e.g. 90, 180, 270, -90)"), mcp.Required(), func(schema map[string]any) { schema["multipleOf"] = 90 }),
 		sourceModeOption(),
-	}, waitToolOptions()...)...), handleDocumentAction(client, "rotate", buildRotateBody))
+	}, waitToolOptions()...)...)...), handleDocumentAction(client, "rotate", buildRotateBody))
 
 	srv.AddTool(mcp.NewTool("document_merge", append([]mcp.ToolOption{
 		mcp.WithDescription("Merge documents into one new PDF document, pages in the order of documents. Without metadata_document_id the new document gets no metadata; with it, it copies that document's metadata and its title gets \" (merged)\". The caller owns the new document. Non-PDF documents are skipped unless archive_fallback uses their archived PDF. The originals stay unless delete_originals is set. Needs change permission on every document and the global add-document permission; delete_originals also needs ownership of each document and the global delete-document permission. " + documentActionPermissionNote + " " + documentActionAsync),
 		documentsOption("Array of at least 2 document IDs, in page order"),
-		withNullableNumber("metadata_document_id", mcp.Description("Copy metadata from this document; must be one of documents")),
+		withNumber("metadata_document_id", mcp.Description("Copy metadata from this document; must be one of documents")),
 		mcp.WithBoolean("delete_originals", mcp.Description("Move the source documents to the trash once the merged document has been consumed successfully (default: false)")),
 		mcp.WithBoolean("archive_fallback", mcp.Description("Use the archived PDF of documents that aren't PDFs (default: false; they are skipped)")),
 		sourceModeOption(),
@@ -75,15 +203,13 @@ func registerDocumentActionTools(srv *server.MCPServer, client *Client) {
 	}, waitToolOptions()...)...), handleDocumentAction(client, "remove_password", buildRemovePasswordBody))
 
 	srv.AddTool(mcp.NewTool("document_reprocess", append([]mcp.ToolOption{
-		mcp.WithDescription("Re-run parsing (OCR and content extraction) for documents; a root document with versions reprocesses its latest version. Consumption workflows don't run. Needs change permission on every document. " + documentActionPermissionNote + " " + documentActionAsync),
-		documentsOption("Array of document IDs"),
+		mcp.WithDescription("Re-run parsing (OCR and content extraction) for documents, replacing their content; a root document with versions reprocesses its latest version. Consumption workflows don't run. Needs change permission on every document. " + documentActionPermissionNote + " " + documentSelectionNote + " " + documentActionAsync),
 		mcp.WithBoolean("remote_ocr", mcp.Description("Use the remote OCR engine (default: false)")),
-	}, waitToolOptions()...)...), handleDocumentAction(client, "reprocess", buildReprocessBody))
+	}, append(documentSelectionOptions(), waitToolOptions()...)...)...), handleDocumentAction(client, "reprocess", buildReprocessBody))
 
 	srv.AddTool(mcp.NewTool("document_bulk_delete", append([]mcp.ToolOption{
-		mcp.WithDescription("Move documents to the trash; a root document takes its versions with it, while a version id trashes only that version. trash_action restore brings them back until the trash is emptied (after 30 days by default). Needs change permission and ownership (or no owner) for every document, and the global delete-document permission. " + documentActionPermissionNote + " " + documentActionAsync),
-		documentsOption("Array of document IDs"),
-	}, waitToolOptions()...)...), handleDocumentAction(client, "delete", buildDeleteBody))
+		mcp.WithDescription("Move documents to the trash; a root document takes its versions with it, while a version id trashes only that version. trash_action restore brings them back until the trash is emptied (after 30 days by default). Needs change permission and ownership (or no owner) for every document, and the global delete-document permission. " + documentActionPermissionNote + " " + documentSelectionNote + " " + documentActionAsync),
+	}, append(documentSelectionOptions(), waitToolOptions()...)...)...), handleDocumentAction(client, "delete", buildDeleteBody))
 }
 
 // documentActionPaths are the endpoints of the document actions.
@@ -96,20 +222,39 @@ var documentActionPaths = map[string]string{
 	"delete":          "/api/documents/delete/",
 }
 
+// documentActionTools maps each document action to its registered tool name.
+var documentActionTools = map[string]string{
+	"rotate": "document_rotate", "merge": "document_merge", "edit_pdf": "document_edit_pdf",
+	"remove_password": "document_remove_password", "reprocess": "document_reprocess", "delete": "document_bulk_delete",
+}
+
+// documentSelectionActions accept an all: true selection upstream; the
+// others take explicit documents only.
+var documentSelectionActions = []string{"rotate", "reprocess", "delete"}
+
 // handleDocumentAction validates an action's arguments with build, sends the
 // request and optionally waits for its task.
 func handleDocumentAction(client *Client, op string, build func(mcp.CallToolRequest, []int) (map[string]any, *mcp.CallToolResult)) server.ToolHandlerFunc {
 	path := documentActionPaths[op]
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		docs, errRes := getDocumentIDs(request)
+		var sel map[string]any
+		var docs []int
+		var errRes *mcp.CallToolResult
+		if slices.Contains(documentSelectionActions, op) {
+			sel, docs, errRes = getDocumentSelection(request)
+		} else if errRes = rejectSelectionArgs(request, documentActionTools[op]); errRes == nil {
+			docs, errRes = getDocumentIDs(request)
+			sel = map[string]any{"documents": docs}
+		}
 		if errRes != nil {
 			return errRes, nil
 		}
+		// With all: true docs is nil; only the selection actions accept that.
 		body, errRes := build(request, docs)
 		if errRes != nil {
 			return errRes, nil
 		}
-		body["documents"] = docs
+		maps.Copy(body, sel)
 		wait, timeout, errRes := getWaitOptions(request)
 		if errRes != nil {
 			return errRes, nil
@@ -130,12 +275,8 @@ func getDocumentIDs(request mcp.CallToolRequest) ([]int, *mcp.CallToolResult) {
 	if !present || len(docs) == 0 {
 		return nil, errResult("documents is required: a non-empty array of document IDs")
 	}
-	seen := map[int]bool{}
-	for _, d := range docs {
-		if seen[d] {
-			return nil, errResult(fmt.Sprintf("documents lists %d twice", d))
-		}
-		seen[d] = true
+	if d, dup := firstDuplicate(docs); dup {
+		return nil, errResult(fmt.Sprintf("documents lists %d twice", d))
 	}
 	return docs, nil
 }
@@ -149,6 +290,9 @@ func setOptionalBool(body map[string]any, request mcp.CallToolRequest, name stri
 	case bool:
 		body[name] = v
 	case string:
+		if v == "" || v == "null" {
+			return nil
+		}
 		b, err := strconv.ParseBool(v)
 		if err != nil {
 			return errResult(name + " must be true or false")
@@ -227,19 +371,15 @@ func buildMergeBody(request mcp.CallToolRequest, docs []int) (map[string]any, *m
 	}
 	body := map[string]any{}
 	args := request.GetArguments()
-	if v, ok := args["metadata_document_id"]; ok {
-		if v == nil {
-			body["metadata_document_id"] = nil
-		} else {
-			id, whole := wholeNumber(v)
-			if !whole {
-				return nil, errResult("metadata_document_id must be a document ID")
-			}
-			if !slices.Contains(docs, id) {
-				return nil, errResult("metadata_document_id must be one of documents")
-			}
-			body["metadata_document_id"] = id
+	if v := args["metadata_document_id"]; argIsSet(v) {
+		id, whole := wholeNumber(v)
+		if !whole {
+			return nil, errResult("metadata_document_id must be a document ID")
 		}
+		if !slices.Contains(docs, id) {
+			return nil, errResult("metadata_document_id must be one of documents")
+		}
+		body["metadata_document_id"] = id
 	}
 	if errRes := setOptionalBools(body, request, "delete_originals", "archive_fallback"); errRes != nil {
 		return nil, errRes

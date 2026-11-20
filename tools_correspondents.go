@@ -42,7 +42,7 @@ func registerCorrespondentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("correspondent_update",
-			mcp.WithDescription("Update a correspondent."),
+			mcp.WithDescription("Update a correspondent; only the fields given change, and "+nullsIgnoredHint+"."),
 			withNumber("id", mcp.Description("Correspondent ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Correspondent name")),
 			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
@@ -70,7 +70,7 @@ func handleCorrespondentList(client *Client) server.ToolHandlerFunc {
 
 		path := "/api/correspondents/"
 		resp, err := client.Get(ctx, path, params)
-		return doRequestJSON(resp, err, "GET", path, stripAllIDs)
+		return doRequest(resp, err, "GET", path)
 	}
 }
 
