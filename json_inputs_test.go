@@ -26,7 +26,8 @@ func TestGetJSONArg(t *testing.T) {
 		{"native object", map[string]any{"v": map[string]any{"a": "b"}}, map[string]any{"a": "b"}, true, false},
 		{"json array string", map[string]any{"v": "[1, 2]"}, []any{float64(1), float64(2)}, true, false},
 		{"json object string", map[string]any{"v": `{"a": "b"}`}, map[string]any{"a": "b"}, true, false},
-		{"json null string", map[string]any{"v": "null"}, nil, true, false},
+		{"json null string", map[string]any{"v": "null"}, nil, false, false},
+		{"json null string with spaces", map[string]any{"v": " null "}, nil, false, false},
 		{"invalid json", map[string]any{"v": "[1,"}, nil, false, true},
 	}
 	for _, tt := range tests {

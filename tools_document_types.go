@@ -42,7 +42,7 @@ func registerDocumentTypeTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_type_update",
-			mcp.WithDescription("Update a document type."),
+			mcp.WithDescription("Update a document type.; only the fields given change, and "+nullsIgnoredHint+"."),
 			withNumber("id", mcp.Description("Document type ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Document type name")),
 			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
@@ -70,7 +70,7 @@ func handleDocumentTypeList(client *Client) server.ToolHandlerFunc {
 
 		path := "/api/document_types/"
 		resp, err := client.Get(ctx, path, params)
-		return doRequestJSON(resp, err, "GET", path, stripAllIDs)
+		return doRequest(resp, err, "GET", path)
 	}
 }
 

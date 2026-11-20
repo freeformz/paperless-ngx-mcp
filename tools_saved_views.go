@@ -31,13 +31,9 @@ func savedViewFieldOptions() []mcp.ToolOption {
 		mcp.WithString("icon", mcp.Description("Icon name (default: funnel). One of: "+strings.Join(savedViewIcons, ", "))),
 		mcp.WithString("sort_field", mcp.Description("Document field to sort by, e.g. created, added, title, archive_serial_number")),
 		mcp.WithBoolean("sort_reverse", mcp.Description("Reverse sort order")),
-		withNullableNumber("page_size", mcp.Description("Documents per page, 1 or more; null clears it (use the user's default)")),
-		mcp.WithAny("display_mode", mcp.Description("How documents are shown: "+strings.Join(savedViewDisplayModes, ", ")+"; null clears it"), func(schema map[string]any) {
-			schema["type"] = []string{"string", "null"}
-		}),
-		withJSONArray("display_fields", mcp.Items(map[string]any{"type": "string"}), mcp.Description("Array of fields to show, from: "+strings.Join(savedViewDisplayFields, ", ")+", or custom_field_<id> for an existing custom field; null or [] clears it (use the defaults)"), func(schema map[string]any) {
-			schema["type"] = []string{"array", "string", "null"}
-		}),
+		withNumber("page_size", mcp.Description("Documents per page, 1 or more (saved_view_update: clear: [\"page_size\"] goes back to the user's default)")),
+		mcp.WithString("display_mode", mcp.Description("How documents are shown: "+strings.Join(savedViewDisplayModes, ", ")+" (saved_view_update: clear: [\"display_mode\"] goes back to the default)"), mcp.Enum(savedViewDisplayModes...)),
+		withJSONArray("display_fields", mcp.Items(map[string]any{"type": "string"}), mcp.Description("Array of fields to show, from: "+strings.Join(savedViewDisplayFields, ", ")+", or custom_field_<id> for an existing custom field; [] uses the defaults")),
 	}
 }
 
@@ -73,10 +69,11 @@ func registerSavedViewTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("saved_view_update",
 			append([]mcp.ToolOption{
-				mcp.WithDescription("Update a saved view; only the fields given change. " + savedViewRulesHint + " " + savedViewVisibilityHint),
+				mcp.WithDescription("Update a saved view; only the fields given change. " + clearHint + ". " + savedViewRulesHint + " " + savedViewVisibilityHint),
 				withNumber("id", mcp.Description("Saved view ID"), mcp.Required()),
 				mcp.WithString("name", mcp.Description("View name")),
 				withJSONArray("filter_rules", mcp.Description("Array of {\"rule_type\": <code>, \"value\": <string or null; numbers and booleans are sent as text>}, at most 255 characters per value; replaces all of the view's rules"), filterRuleItems),
+				withClear(savedViewClearable...),
 			}, savedViewFieldOptions()...)...,
 		),
 		handleSavedViewUpdate(client),
@@ -99,8 +96,11 @@ func registerSavedViewTools(srv *server.MCPServer, client *Client) {
 	)
 }
 
-// setSavedViewFields copies the optional writable fields into body. Nullable
-// fields send null when the argument is explicitly null, which clears them.
+// savedViewClearable are the saved view fields saved_view_update's clear can reset.
+var savedViewClearable = []string{"page_size", "display_mode", "display_fields"}
+
+// setSavedViewFields copies the optional writable fields into body. A null
+// value means not given; saved_view_update clears fields through clear.
 func setSavedViewFields(body map[string]any, request mcp.CallToolRequest) *mcp.CallToolResult {
 	args := request.GetArguments()
 	if v := request.GetString("icon", ""); v != "" {
@@ -109,48 +109,41 @@ func setSavedViewFields(body map[string]any, request mcp.CallToolRequest) *mcp.C
 	if v := request.GetString("sort_field", ""); v != "" {
 		body["sort_field"] = v
 	}
-	if _, ok := args["sort_reverse"]; ok {
-		body["sort_reverse"] = request.GetBool("sort_reverse", false)
+	if errRes := setOptionalBool(body, request, "sort_reverse"); errRes != nil {
+		return errRes
 	}
-	setNullableInt(body, args, request, "page_size")
-	if v, ok := args["display_mode"]; ok {
-		switch v := v.(type) {
-		case nil:
-			body["display_mode"] = nil
-		case string:
-			if v != "" {
-				body["display_mode"] = v
-			}
-		default:
-			return errResult("display_mode must be a string or null")
-		}
+	if errRes := setOptionalInt(body, args, "page_size"); errRes != nil {
+		return errRes
 	}
-	if v, ok := args["display_fields"]; ok && v == nil {
-		body["display_fields"] = nil
-	} else {
-		fields, present, err := getJSONArg(request, "display_fields")
-		if err != nil {
-			return errResult(err.Error())
+	switch v := args["display_mode"].(type) {
+	case nil:
+	case string:
+		if v != "" && v != "null" {
+			body["display_mode"] = v
 		}
-		if present && fields == nil {
-			body["display_fields"] = nil // the JSON string "null"
-		} else if present {
-			arr, ok := fields.([]any)
-			if !ok {
+	default:
+		return errResult("display_mode must be a string")
+	}
+	fields, present, err := getJSONArg(request, "display_fields")
+	if err != nil {
+		return errResult(err.Error())
+	}
+	if present {
+		arr, ok := fields.([]any)
+		if !ok {
+			return errResult("display_fields must be an array of strings")
+		}
+		for _, f := range arr {
+			if _, ok := f.(string); !ok {
 				return errResult("display_fields must be an array of strings")
 			}
-			for _, f := range arr {
-				if _, ok := f.(string); !ok {
-					return errResult("display_fields must be an array of strings")
-				}
-			}
-			if len(arr) == 0 {
-				// The server stores [] as null on update but not on create;
-				// send null so both store the same "use the defaults".
-				body["display_fields"] = nil
-			} else {
-				body["display_fields"] = arr
-			}
+		}
+		if len(arr) == 0 {
+			// The server stores [] as null on update but not on create;
+			// send null so both store the same "use the defaults".
+			body["display_fields"] = nil
+		} else {
+			body["display_fields"] = arr
 		}
 	}
 	return nil
@@ -236,8 +229,11 @@ func handleSavedViewUpdate(client *Client) server.ToolHandlerFunc {
 		if errRes := setSavedViewFields(body, request); errRes != nil {
 			return errRes, nil
 		}
+		if errRes := applyClear(body, request, savedViewClearable); errRes != nil {
+			return errRes, nil
+		}
 		if len(body) == 0 {
-			return errResult("no fields to update"), nil
+			return errResult("no fields to update; " + clearHint), nil
 		}
 
 		path := fmt.Sprintf("/api/saved_views/%d/", id)

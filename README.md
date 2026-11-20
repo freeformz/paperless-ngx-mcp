@@ -87,9 +87,13 @@ Generate an API token in Paperless-ngx under **Settings > Administration > Auth 
 
 Array and object parameters accept a native JSON value or the same value as a JSON-encoded string.
 
+A top-level `null` (and the string `"null"`, except in plain text parameters) means "not given" in every tool, because some MCP clients fill every unused parameter with null. To clear a field, name it in the tool's `clear` array: `document_update` (`correspondent`, `document_type`, `storage_path`, `archive_serial_number`, `owner`), `tag_update` (`parent`), `saved_view_update` (`page_size`, `display_mode`, `display_fields`) and `bulk_edit_objects` (`owner`).
+
+`document_bulk_edit`, `document_selection_data`, `document_rotate`, `document_reprocess` and `document_bulk_delete` select documents by `documents` or by `all: true` with `filters` (the same names as `document_list`'s filters) and `excluded_documents`; `bulk_edit_objects` takes `all: true` with its own `filters` (`name`, tags' `is_root`, storage paths' `path`). Unknown filter names and values the server would silently ignore are rejected, since paperless-ngx would otherwise select everything. Preview with `document_list` and the same filters (`page_size: 1` gives `count`).
+
 `document_upload`, `document_bulk_edit`, the document editing tools and `task_run` start background tasks and return at once; pass `wait: true` (optional `timeout`, default 60 s, at most 600 s) to get the task's outcome in the same call, or use `task_wait` later. A failed or revoked task comes back as a tool error.
 
-Responses are shaped to stay compact for MCP clients: document `content` in `document_list` results is truncated to a snippet — default 500 bytes, adjustable per call with `content_snippet_bytes` (0 disables); `full_content: true` opts out and `document_get` returns full text — document `notes` in `document_list` results are replaced with a `notes_count` field (`include_notes: true` keeps them; `document_note_list` returns full notes), the unbounded `all` ID array is stripped from paginated lists (`include_all_ids: true` on `document_list` re-includes it), `task_list` trims each task's `result_data.traceback` to its last 500 bytes (`include_traceback: true` keeps it; `task_get` returns it in full), `log_get` returns only the last `tail` lines (default 100), `document_selection_data` omits zero-count objects, `user_list` omits `inherited_permissions` unless `include_permissions: true`, and `profile_get` redacts the API auth token.
+Responses are shaped to stay compact for MCP clients: document `content` in `document_list` results is truncated to a snippet — default 500 bytes, adjustable per call with `content_snippet_bytes` (0 disables); `full_content: true` opts out and `document_get` returns full text — document `notes` in `document_list` results are replaced with a `notes_count` field (`include_notes: true` keeps them; `document_note_list` returns full notes), `task_list` trims each task's `result_data.traceback` to its last 500 bytes (`include_traceback: true` keeps it; `task_get` returns it in full), `log_get` returns only the last `tail` lines (default 100), `document_selection_data` omits zero-count objects, `user_list` omits `inherited_permissions` unless `include_permissions: true`, and `profile_get` redacts the API auth token.
 
 ### Documents
 `document_list`, `document_get`, `document_update`, `document_delete`, `document_upload`, `document_download`, `document_metadata`, `document_suggestions`, `document_next_asn`, `document_share_links`, `document_history`, `document_email`
@@ -127,6 +131,13 @@ PDF rendering happens in-process via [go-pdfium](https://github.com/klippa-app/g
 `document_rotate`, `document_merge`, `document_edit_pdf` (split, drop, reorder or rotate pages), `document_remove_password`, `document_reprocess`, `document_bulk_delete`
 
 Since v0.4.0 these file operations are their own tools with typed parameters; `document_bulk_edit` no longer accepts `rotate`, `merge`, `split`, `delete_pages`, `edit_pdf`, `remove_password`, `reprocess` or `delete`, and names the replacement tool if asked.
+
+Other v0.4.0 changes:
+- `document_list`'s `include_all_ids` is gone: API v10 lists no longer carry the `all` ID array. Use `all: true` selections instead.
+- A `null` no longer clears a field; use `clear`. This also fixes padded nulls that used to become real values (`document_update` `content: null` wiped the OCR text, `user_update` `is_superuser: null` sent `false`, `matching_algorithm: null` sent `0`, list filters such as `task_list` `acknowledged: null` became `false`).
+- `bulk_edit_objects` takes `owner`, `permissions`, `merge` and `clear` as top-level parameters; the old `parameters` object (which the server silently ignored) is refused. `object_type` and `operation` are checked.
+- `trash_action` `empty` without `documents` is an error; pass `all: true` to empty the whole trash. `restore` needs `documents`.
+- `document_list` rejects filter values that don't parse (`is_in_inbox: "yes"`, `correspondent_id: "abc"`, a bad date or tag list) instead of sending `false` or `0`.
 
 ### Saved Views
 `saved_view_list`, `saved_view_get`, `saved_view_create`, `saved_view_update`, `saved_view_delete`, `saved_view_rule_types`

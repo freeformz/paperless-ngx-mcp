@@ -292,18 +292,18 @@ func addStringParam(params url.Values, request mcp.CallToolRequest, mcpName, api
 	}
 }
 
-// addIntParam adds an integer query parameter if explicitly provided in the request.
+// addIntParam adds an integer query parameter if explicitly provided in the
+// request. null (and "null" or "") means not given.
 func addIntParam(params url.Values, request mcp.CallToolRequest, mcpName, apiName string) {
-	args := request.GetArguments()
-	if _, ok := args[mcpName]; ok {
+	if argIsSet(request.GetArguments()[mcpName]) {
 		params.Set(apiName, strconv.Itoa(int(request.GetFloat(mcpName, 0))))
 	}
 }
 
-// addBoolParam adds a boolean query parameter if explicitly provided in the request.
+// addBoolParam adds a boolean query parameter if explicitly provided in the
+// request. null (and "null" or "") means not given.
 func addBoolParam(params url.Values, request mcp.CallToolRequest, mcpName, apiName string) {
-	args := request.GetArguments()
-	if _, ok := args[mcpName]; ok {
+	if argIsSet(request.GetArguments()[mcpName]) {
 		params.Set(apiName, strconv.FormatBool(request.GetBool(mcpName, false)))
 	}
 }
@@ -328,26 +328,26 @@ func getRequiredString(request mcp.CallToolRequest, name string) (string, *mcp.C
 	return v, nil
 }
 
-// setNullableInt sets a nullable integer field in a body map for PATCH requests.
-// If the argument is present and nil, sets the field to nil (clears it).
-// If the argument is present and a number, sets the field to the int value.
-// If the argument is not present, does nothing.
-func setNullableInt(body map[string]any, args map[string]any, request mcp.CallToolRequest, name string) {
-	val, ok := args[name]
-	if !ok {
-		return
+// setOptionalInt copies an integer argument into body when it has a value.
+// null, "null" and "" mean not given (clearing a field goes through clear);
+// anything else that isn't a whole number is an error.
+func setOptionalInt(body map[string]any, args map[string]any, name string) *mcp.CallToolResult {
+	val := args[name]
+	if !argIsSet(val) {
+		return nil
 	}
-	if val == nil {
-		body[name] = nil
-	} else {
-		body[name] = int(request.GetFloat(name, 0))
+	n, whole := wholeNumber(val)
+	if !whole {
+		return errResult(name + " must be a whole number")
 	}
+	body[name] = n
+	return nil
 }
 
 // getJSONArg reads a structured (array or object) parameter. Agents may send
 // the value natively or as a JSON-encoded string; both give the same result.
-// An absent argument, null and "" report present = false. The string "null"
-// reports present = true with a nil value; callers decide what it means.
+// An absent argument, null, "" and a string that decodes to JSON null (such
+// as "null") report present = false.
 func getJSONArg(request mcp.CallToolRequest, name string) (v any, present bool, err error) {
 	raw, ok := request.GetArguments()[name]
 	if !ok || raw == nil {
@@ -363,7 +363,7 @@ func getJSONArg(request mcp.CallToolRequest, name string) (v any, present bool, 
 	if err := json.Unmarshal([]byte(s), &v); err != nil {
 		return nil, false, fmt.Errorf("invalid %s JSON: %w", name, err)
 	}
-	return v, true, nil
+	return v, v != nil, nil
 }
 
 // setJSONField sets a structured parameter in a body map, accepting either a
@@ -452,16 +452,6 @@ func withNumber(name string, opts ...mcp.PropertyOption) mcp.ToolOption {
 	return mcp.WithAny(name, allOpts...)
 }
 
-// withNullableNumber defines a tool parameter that accepts integer, string, or null.
-// Used for fields that can be cleared by sending null (e.g., correspondent, document_type).
-func withNullableNumber(name string, opts ...mcp.PropertyOption) mcp.ToolOption {
-	allOpts := append([]mcp.PropertyOption{func(schema map[string]any) {
-		schema["type"] = []string{"integer", "string", "null"}
-		schema["pattern"] = `^-?\d+$`
-	}}, opts...)
-	return mcp.WithAny(name, allOpts...)
-}
-
 // --- Generic CRUD handlers ---
 
 // handleSimpleGet returns a handler that GETs a fixed path with no parameters.
@@ -472,23 +462,13 @@ func handleSimpleGet(client *Client, path string) server.ToolHandlerFunc {
 	}
 }
 
-// stripAllIDs removes the unbounded "all" ID array Paperless includes
-// alongside each page of a list response. Only document_list offers an
-// opt-out (include_all_ids) for bulk-select workflows.
-func stripAllIDs(v any) any {
-	if m, ok := v.(map[string]any); ok {
-		delete(m, "all")
-	}
-	return v
-}
-
 // handlePaginatedList returns a handler that GETs a paginated list endpoint.
 func handlePaginatedList(client *Client, path string) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		params := url.Values{}
 		addPaginationParams(params, request)
 		resp, err := client.Get(ctx, path, params)
-		return doRequestJSON(resp, err, "GET", path, stripAllIDs)
+		return doRequest(resp, err, "GET", path)
 	}
 }
 

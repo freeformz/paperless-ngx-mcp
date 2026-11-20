@@ -14,34 +14,16 @@ import (
 
 func registerDocumentTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
-		mcp.NewTool("document_list",
-			mcp.WithDescription("List/search documents with filtering and full-text search. Returns paginated results. Document content is truncated to a snippet; use document_get or full_content for the complete text."),
-			mcp.WithString("query", mcp.Description("Full-text search query")),
-			withNumber("more_like_id", mcp.Description("Find documents similar to this document ID")),
-			withNumber("correspondent_id", mcp.Description("Filter by correspondent ID")),
-			withNumber("document_type_id", mcp.Description("Filter by document type ID")),
-			withNumber("storage_path_id", mcp.Description("Filter by storage path ID")),
-			mcp.WithString("tags_id_all", mcp.Description("Comma-separated tag IDs — document must have ALL")),
-			mcp.WithString("tags_id_none", mcp.Description("Comma-separated tag IDs — document must have NONE")),
-			mcp.WithString("tags_id_in", mcp.Description("Comma-separated tag IDs — document must have ANY")),
-			mcp.WithBoolean("is_tagged", mcp.Description("Filter by whether document has any tags")),
-			mcp.WithBoolean("is_in_inbox", mcp.Description("Filter by inbox status")),
-			mcp.WithString("title", mcp.Description("Filter by title (icontains)")),
-			mcp.WithString("content", mcp.Description("Filter by content (icontains)")),
-			withJSONArray("custom_field_query", mcp.Description("Custom field filter expression, e.g. [\"AND\", [[1, \"exists\", true]]]")),
-			mcp.WithString("created_after", mcp.Description("Filter by created date (gte, YYYY-MM-DD)")),
-			mcp.WithString("created_before", mcp.Description("Filter by created date (lte, YYYY-MM-DD)")),
-			mcp.WithString("added_after", mcp.Description("Filter by added date (gte, YYYY-MM-DD)")),
-			mcp.WithString("added_before", mcp.Description("Filter by added date (lte, YYYY-MM-DD)")),
-			withNumber("owner_id", mcp.Description("Filter by owner")),
+		mcp.NewTool("document_list", append(append([]mcp.ToolOption{
+			mcp.WithDescription("List/search documents with filtering and full-text search. Returns paginated results; count is the number of matching documents (pass page_size: 1 to preview a selection's size before an all: true bulk call with the same filters). Document content is truncated to a snippet; use document_get or full_content for the complete text. null values are ignored."),
+		}, documentListFilterOptions()...),
 			mcp.WithString("ordering", mcp.Description("Sort field (prefix - for descending)")),
 			withNumber("page", mcp.Description("Page number (default: 1)")),
 			withNumber("page_size", mcp.Description("Results per page (default: 25, max: 100000)")),
 			mcp.WithBoolean("full_content", mcp.Description("Include full document content in results instead of a truncated snippet (default: false)")),
 			withNumber("content_snippet_bytes", mcp.Description("Max bytes of document content per result (default: 500; 0 disables truncation)")),
-			mcp.WithBoolean("include_all_ids", mcp.Description("Include the 'all' array of every matching document ID (default: false)")),
 			mcp.WithBoolean("include_notes", mcp.Description("Include full note objects in results (default: false — notes are replaced with notes_count; use document_note_list for full notes)")),
-		),
+		)...),
 		handleDocumentList(client),
 	)
 
@@ -55,18 +37,19 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_update",
-			mcp.WithDescription("Update document metadata. Only specified fields are changed. Pass null for correspondent/document_type/storage_path/archive_serial_number/owner to clear."),
+			mcp.WithDescription("Update document metadata. Only specified fields are changed. "+clearHint+": clear: [\"correspondent\"] removes the correspondent."),
 			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 			mcp.WithString("title", mcp.Description("New title")),
 			mcp.WithString("content", mcp.Description("New document content text (OCR text). Pass empty string to clear.")),
 			mcp.WithString("created", mcp.Description("New created date (YYYY-MM-DD)")),
-			withNullableNumber("correspondent", mcp.Description("Correspondent ID (null to clear)")),
-			withNullableNumber("document_type", mcp.Description("Document type ID (null to clear)")),
-			withNullableNumber("storage_path", mcp.Description("Storage path ID (null to clear)")),
+			withNumber("correspondent", mcp.Description("Correspondent ID (clear: [\"correspondent\"] removes it)")),
+			withNumber("document_type", mcp.Description("Document type ID (clear: [\"document_type\"] removes it)")),
+			withNumber("storage_path", mcp.Description("Storage path ID (clear: [\"storage_path\"] removes it)")),
 			withJSONArray("tags", mcp.Description("Array of tag IDs (replaces all tags)")),
-			withNullableNumber("archive_serial_number", mcp.Description("Archive serial number (null to clear)")),
-			withNullableNumber("owner", mcp.Description("Owner user ID (null to clear)")),
+			withNumber("archive_serial_number", mcp.Description("Archive serial number (clear: [\"archive_serial_number\"] removes it)")),
+			withNumber("owner", mcp.Description("Owner user ID (clear: [\"owner\"] removes the owner)")),
 			withJSONArray("custom_fields", mcp.Description("Array of custom field assignments")),
+			withClear(documentUpdateClearable...),
 		),
 		handleDocumentUpdate(client),
 	)
@@ -177,30 +160,9 @@ func handleDocumentList(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		params := url.Values{}
 		addPaginationParams(params, request)
-		addStringParam(params, request, "query", "query")
-		addIntParam(params, request, "more_like_id", "more_like_id")
-		addIntParam(params, request, "correspondent_id", "correspondent__id")
-		addIntParam(params, request, "document_type_id", "document_type__id")
-		addIntParam(params, request, "storage_path_id", "storage_path__id")
-		addStringParam(params, request, "tags_id_all", "tags__id__all")
-		addStringParam(params, request, "tags_id_none", "tags__id__none")
-		addStringParam(params, request, "tags_id_in", "tags__id__in")
-		addBoolParam(params, request, "is_tagged", "is_tagged")
-		addBoolParam(params, request, "is_in_inbox", "is_in_inbox")
-		addStringParam(params, request, "title", "title__icontains")
-		addStringParam(params, request, "content", "content__icontains")
-		cfq, err := getJSONArgText(request, "custom_field_query")
-		if err != nil {
-			return errResult(err.Error()), nil
+		if errRes := addDocumentListFilters(params, request); errRes != nil {
+			return errRes, nil
 		}
-		if cfq != "" {
-			params.Set("custom_field_query", cfq)
-		}
-		addStringParam(params, request, "created_after", "created__date__gte")
-		addStringParam(params, request, "created_before", "created__date__lte")
-		addStringParam(params, request, "added_after", "added__date__gte")
-		addStringParam(params, request, "added_before", "added__date__lte")
-		addIntParam(params, request, "owner_id", "owner__id")
 		addStringParam(params, request, "ordering", "ordering")
 
 		snippetLen, errRes := getContentSnippetLen(request)
@@ -221,13 +183,13 @@ func handleDocumentList(client *Client) server.ToolHandlerFunc {
 			if !request.GetBool("include_notes", false) {
 				stripNotesFields(m["results"])
 			}
-			if !request.GetBool("include_all_ids", false) {
-				delete(m, "all")
-			}
 			return v
 		})
 	}
 }
+
+// documentUpdateClearable are the document fields clear can remove.
+var documentUpdateClearable = []string{"correspondent", "document_type", "storage_path", "archive_serial_number", "owner"}
 
 func handleDocumentUpdate(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -242,18 +204,21 @@ func handleDocumentUpdate(client *Client) server.ToolHandlerFunc {
 		if v := request.GetString("title", ""); v != "" {
 			body["title"] = v
 		}
-		if _, ok := args["content"]; ok {
-			body["content"] = request.GetString("content", "")
+		if v, ok := args["content"].(string); ok {
+			body["content"] = v
 		}
 		if v := request.GetString("created", ""); v != "" {
 			body["created"] = v
 		}
 
-		setNullableInt(body, args, request, "correspondent")
-		setNullableInt(body, args, request, "document_type")
-		setNullableInt(body, args, request, "storage_path")
-		setNullableInt(body, args, request, "archive_serial_number")
-		setNullableInt(body, args, request, "owner")
+		for _, name := range documentUpdateClearable {
+			if errRes := setOptionalInt(body, args, name); errRes != nil {
+				return errRes, nil
+			}
+		}
+		if errRes := applyClear(body, request, documentUpdateClearable); errRes != nil {
+			return errRes, nil
+		}
 
 		if err := setJSONField(body, request, "tags"); err != nil {
 			return errResult(err.Error()), nil
@@ -263,7 +228,7 @@ func handleDocumentUpdate(client *Client) server.ToolHandlerFunc {
 		}
 
 		if len(body) == 0 {
-			return errResult("no fields to update"), nil
+			return errResult("no fields to update; " + clearHint), nil
 		}
 
 		path := fmt.Sprintf("/api/documents/%d/", id)

@@ -14,6 +14,7 @@ func registerStoragePathTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("storage_path_list",
 			mcp.WithDescription("List storage paths with optional filtering."),
 			mcp.WithString("name", mcp.Description("Filter by name (icontains)")),
+			mcp.WithString("path", mcp.Description("Filter by path template (icontains)")),
 			mcp.WithString("ordering", mcp.Description("Sort field")),
 			withNumber("page", mcp.Description("Page number (default: 1)")),
 			withNumber("page_size", mcp.Description("Results per page (default: 25)")),
@@ -43,7 +44,7 @@ func registerStoragePathTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("storage_path_update",
-			mcp.WithDescription("Update a storage path."),
+			mcp.WithDescription("Update a storage path.; only the fields given change, and "+nullsIgnoredHint+"."),
 			withNumber("id", mcp.Description("Storage path ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Storage path name")),
 			mcp.WithString("path", mcp.Description("Path template")),
@@ -77,11 +78,12 @@ func handleStoragePathList(client *Client) server.ToolHandlerFunc {
 		params := url.Values{}
 		addPaginationParams(params, request)
 		addStringParam(params, request, "name", "name__icontains")
+		addStringParam(params, request, "path", "path__icontains")
 		addStringParam(params, request, "ordering", "ordering")
 
 		path := "/api/storage_paths/"
 		resp, err := client.Get(ctx, path, params)
-		return doRequestJSON(resp, err, "GET", path, stripAllIDs)
+		return doRequest(resp, err, "GET", path)
 	}
 }
 

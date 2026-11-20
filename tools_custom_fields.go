@@ -50,7 +50,7 @@ func registerCustomFieldTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("custom_field_update",
-			mcp.WithDescription("Update a custom field's name or extra_data. The data type is not changed."),
+			mcp.WithDescription("Update a custom field's name or extra_data. The data type is not changed.; only the fields given change, and "+nullsIgnoredHint+"."),
 			withNumber("id", mcp.Description("Custom field ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Field name")),
 			withJSONObject("extra_data", mcp.Description(`Object with type-specific configuration. For select fields, paperless-ngx requires extra_data with the full select_options list on every update, even a rename: pass every option, keeping each existing option's id so documents keep their values. For monetary: {"default_currency": "EUR"}.`)),
@@ -76,7 +76,7 @@ func handleCustomFieldList(client *Client) server.ToolHandlerFunc {
 
 		path := "/api/custom_fields/"
 		resp, err := client.Get(ctx, path, params)
-		return doRequestJSON(resp, err, "GET", path, stripAllIDs)
+		return doRequest(resp, err, "GET", path)
 	}
 }
 

@@ -193,28 +193,6 @@ func TestStripNotesFields(t *testing.T) {
 	}
 }
 
-func TestHandlePaginatedListStripsAllIDs(t *testing.T) {
-	body := map[string]any{
-		"count":   2,
-		"all":     []int{1, 2, 3, 4, 5, 6, 7, 8},
-		"results": []map[string]any{{"id": 1}, {"id": 2}},
-	}
-
-	rh := newRouteHandler(t)
-	rh.Handle("GET", "/api/correspondents/", jsonHandler(t, 200, body))
-	client := testClientAndServer(t, rh)
-
-	result := callTool(t, handlePaginatedList(client, "/api/correspondents/"), nil)
-	assertNotError(t, result)
-	m := resultJSON(t, result)
-	if _, ok := m["all"]; ok {
-		t.Error("all ID array should be stripped by default")
-	}
-	if m["count"] != float64(2) {
-		t.Errorf("count = %v, want 2", m["count"])
-	}
-}
-
 func TestRawJSONResult(t *testing.T) {
 	result, err := rawJSONResult([]byte(`{"a":1}`))
 	if err != nil {
@@ -370,23 +348,6 @@ func TestWithNumberSchema(t *testing.T) {
 	}
 	if prop["pattern"] != `^-?\d+$` {
 		t.Errorf("pattern = %v, want integer pattern", prop["pattern"])
-	}
-}
-
-func TestWithNullableNumberSchema(t *testing.T) {
-	tool := mcp.NewTool("test_tool",
-		withNullableNumber("correspondent", mcp.Description("Correspondent ID")),
-	)
-	prop, ok := tool.InputSchema.Properties["correspondent"].(map[string]any)
-	if !ok {
-		t.Fatal("expected correspondent property")
-	}
-	types, ok := prop["type"].([]string)
-	if !ok {
-		t.Fatalf("expected type to be []string, got %T", prop["type"])
-	}
-	if len(types) != 3 || types[0] != "integer" || types[1] != "string" || types[2] != "null" {
-		t.Errorf("type = %v, want [integer string null]", types)
 	}
 }
 

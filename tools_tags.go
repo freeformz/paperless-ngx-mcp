@@ -46,7 +46,7 @@ func registerTagTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("tag_update",
-			mcp.WithDescription("Update a tag."),
+			mcp.WithDescription("Update a tag; only the fields given change. "+clearHint+"."),
 			withNumber("id", mcp.Description("Tag ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Tag name")),
 			mcp.WithString("color", mcp.Description("Hex color")),
@@ -54,7 +54,8 @@ func registerTagTools(srv *server.MCPServer, client *Client) {
 			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
-			withNullableNumber("parent", mcp.Description("Parent tag ID")),
+			withNumber("parent", mcp.Description("Parent tag ID (clear: [\"parent\"] makes it a top-level tag)")),
+			withClear("parent"),
 		),
 		handleTagUpdate(client),
 	)
@@ -78,7 +79,7 @@ func handleTagList(client *Client) server.ToolHandlerFunc {
 
 		path := "/api/tags/"
 		resp, err := client.Get(ctx, path, params)
-		return doRequestJSON(resp, err, "GET", path, stripAllIDs)
+		return doRequest(resp, err, "GET", path)
 	}
 }
 
@@ -145,10 +146,15 @@ func handleTagUpdate(client *Client) server.ToolHandlerFunc {
 		if _, ok := args["is_insensitive"]; ok {
 			body["is_insensitive"] = request.GetBool("is_insensitive", false)
 		}
-		setNullableInt(body, args, request, "parent")
+		if errRes := setOptionalInt(body, args, "parent"); errRes != nil {
+			return errRes, nil
+		}
+		if errRes := applyClear(body, request, []string{"parent"}); errRes != nil {
+			return errRes, nil
+		}
 
 		if len(body) == 0 {
-			return errResult("no fields to update"), nil
+			return errResult("no fields to update; " + clearHint), nil
 		}
 
 		path := fmt.Sprintf("/api/tags/%d/", id)

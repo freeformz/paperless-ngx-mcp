@@ -103,11 +103,12 @@ func TestSavedViewFilterRuleValuesSentAsText(t *testing.T) {
 	}
 }
 
-func TestSavedViewDisplayFieldsNullString(t *testing.T) {
-	client, got := savedViewBodyServer(t, "PATCH", "/api/saved_views/1/")
-	assertNotError(t, callTool(t, handleSavedViewUpdate(client), map[string]any{"id": float64(1), "display_fields": "null"}))
-	if v, ok := (*got)["display_fields"]; !ok || v != nil {
-		t.Errorf("display_fields = %v (present %v), want null", v, ok)
+func TestSavedViewDisplayFieldsNullStringIsNotGiven(t *testing.T) {
+	client := testClientAndServer(t, newRouteHandler(t))
+	result := callTool(t, handleSavedViewUpdate(client), map[string]any{"id": float64(1), "display_fields": "null"})
+	assertIsError(t, result)
+	if !strings.Contains(resultText(t, result), "no fields to update") {
+		t.Errorf("error = %s", resultText(t, result))
 	}
 }
 
@@ -153,7 +154,7 @@ func TestSavedViewUpdate(t *testing.T) {
 func TestSavedViewUpdateClearsNullableFields(t *testing.T) {
 	client, got := savedViewBodyServer(t, "PATCH", "/api/saved_views/1/")
 	assertNotError(t, callTool(t, handleSavedViewUpdate(client), map[string]any{
-		"id": float64(1), "page_size": nil, "display_mode": nil, "display_fields": nil,
+		"id": float64(1), "clear": []any{"page_size", "display_mode", "display_fields"},
 	}))
 	want := map[string]any{"page_size": nil, "display_mode": nil, "display_fields": nil}
 	if !reflect.DeepEqual(*got, want) {

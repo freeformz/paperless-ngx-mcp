@@ -62,7 +62,7 @@ func handleShareLinkList(client *Client) server.ToolHandlerFunc {
 
 		path := "/api/share_links/"
 		resp, err := client.Get(ctx, path, params)
-		return doRequestJSON(resp, err, "GET", path, stripAllIDs)
+		return doRequest(resp, err, "GET", path)
 	}
 }
 

@@ -1,0 +1,134 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"slices"
+	"strings"
+
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
+)
+
+// Some MCP clients send every parameter a tool declares, filling the unused
+// ones with null. A top-level null therefore always means "not given", and a
+// field is cleared only when it is named in the tool's clear parameter.
+
+// dropNullArgs is tool middleware that removes top-level null arguments
+// before any handler runs. The string "null" is removed too, except for plain
+// string parameters, where it is real text (a title, a note, a query).
+func dropNullArgs(srv *server.MCPServer) server.ToolHandlerMiddleware {
+	return func(next server.ToolHandlerFunc) server.ToolHandlerFunc {
+		return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			args, ok := request.Params.Arguments.(map[string]any)
+			if !ok {
+				return next(ctx, request)
+			}
+			var props map[string]any
+			if tool := srv.GetTool(request.Params.Name); tool != nil {
+				props = tool.Tool.InputSchema.Properties
+			}
+			clean := make(map[string]any, len(args))
+			for k, v := range args {
+				if v == nil || (v == "null" && !plainStringParam(props[k])) {
+					continue
+				}
+				clean[k] = v
+			}
+			// The arguments map is shared with the caller; replace it rather
+			// than editing it, and drop the raw copy so nothing reads nulls back.
+			request.Params.Arguments = clean
+			request.Params.RawArguments = nil
+			return next(ctx, request)
+		}
+	}
+}
+
+// plainStringParam reports whether a property's schema type is exactly "string".
+func plainStringParam(schema any) bool {
+	m, ok := schema.(map[string]any)
+	return ok && m["type"] == "string"
+}
+
+// clearHint is the guidance for tools that have a clear parameter.
+const clearHint = "null values are ignored; to clear a field, name it in clear"
+
+// nullsIgnoredHint is the guidance for update tools without one.
+const nullsIgnoredHint = "null values are ignored"
+
+// withClear declares a tool's clear parameter: the fields it may set to null.
+func withClear(fields ...string) mcp.ToolOption {
+	return withEnumArray("clear", fields, mcp.Description("Array of fields to clear (sent as null): "+strings.Join(fields, ", ")+". A null value elsewhere in the call is ignored, not cleared."))
+}
+
+// applyClear reads clear and sets each named field to null in body. A field
+// that is also given a value (see argIsSet) is an error.
+func applyClear(body map[string]any, request mcp.CallToolRequest, allowed []string) *mcp.CallToolResult {
+	fields, errRes := getClearFields(request, allowed)
+	if errRes != nil {
+		return errRes
+	}
+	args := request.GetArguments()
+	for _, f := range fields {
+		if argIsSet(args[f]) {
+			return errResult(fmt.Sprintf("%s is both given a value and listed in clear; pick one", f))
+		}
+		body[f] = nil
+	}
+	return nil
+}
+
+// argIsSet reports whether an argument carries a value: not absent, null,
+// "null", "", or an empty array (which for display_fields also means clear).
+func argIsSet(v any) bool {
+	switch x := v.(type) {
+	case nil:
+		return false
+	case string:
+		t := strings.TrimSpace(x)
+		return t != "" && t != "null" && t != "[]"
+	case []any:
+		return len(x) > 0
+	}
+	return true
+}
+
+// getClearFields reads clear: an array of field names, a JSON-encoded array,
+// or a single name. Every name must be in allowed.
+func getClearFields(request mcp.CallToolRequest, allowed []string) ([]string, *mcp.CallToolResult) {
+	raw, ok := request.GetArguments()["clear"]
+	if !ok || raw == nil {
+		return nil, nil
+	}
+	var names []string
+	switch v := raw.(type) {
+	case string:
+		s := strings.TrimSpace(v)
+		switch {
+		case s == "" || s == "null":
+		case strings.HasPrefix(s, "["):
+			if err := json.Unmarshal([]byte(s), &names); err != nil {
+				return nil, errResult("clear must be an array of field names")
+			}
+		default:
+			names = []string{s}
+		}
+	case []any:
+		for _, e := range v {
+			s, ok := e.(string)
+			if !ok {
+				return nil, errResult("clear must be an array of field names")
+			}
+			names = append(names, s)
+		}
+	default:
+		return nil, errResult("clear must be an array of field names")
+	}
+	for _, n := range names {
+		if !slices.Contains(allowed, n) {
+			return nil, errResult(fmt.Sprintf("clear: %q can't be cleared here; clearable fields: %s", n, strings.Join(allowed, ", ")))
+		}
+	}
+	return names, nil
+}
