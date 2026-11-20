@@ -56,17 +56,29 @@ func taskIDArg(request mcp.CallToolRequest, name string) (string, *mcp.CallToolR
 // fetchTask reads one task by UUID or integer id. found is false when a UUID
 // matches no task; an unknown integer id is an API error (404).
 func fetchTask(ctx context.Context, client *Client, id string) (task map[string]any, raw []byte, found bool, errRes *mcp.CallToolResult) {
+	task, raw, found, errRes, _ = fetchTaskRetryable(ctx, client, id)
+	return task, raw, found, errRes
+}
+
+// fetchTaskRetryable is fetchTask that also reports whether an error is worth
+// polling through: a network error or a 5xx.
+func fetchTaskRetryable(ctx context.Context, client *Client, id string) (task map[string]any, raw []byte, found bool, errRes *mcp.CallToolResult, retryable bool) {
+	get := func(path string, params url.Values, endpoint string) ([]byte, *mcp.CallToolResult, bool) {
+		resp, err := client.Get(ctx, path, params)
+		transient := err != nil || resp.StatusCode >= 500
+		body, errRes := doRequestBody(resp, err, "GET", endpoint)
+		return body, errRes, transient
+	}
 	if integerIDPattern.MatchString(id) {
 		path := "/api/tasks/" + id + "/"
-		resp, err := client.Get(ctx, path, nil)
-		body, errRes := doRequestBody(resp, err, "GET", path)
+		body, errRes, transient := get(path, nil, path)
 		if errRes != nil {
-			return nil, nil, false, errRes
+			return nil, nil, false, errRes, transient
 		}
 		if err := json.Unmarshal(body, &task); err != nil {
-			return nil, nil, false, errResult(fmt.Sprintf("unexpected response from GET %s: %s", path, err))
+			return nil, nil, false, errResult(fmt.Sprintf("unexpected response from GET %s: %s", path, err)), false
 		}
-		return task, body, true, nil
+		return task, body, true, nil, false
 	}
 
 	// Celery task ids are lower case and the task_id filter is an exact,
@@ -75,24 +87,23 @@ func fetchTask(ctx context.Context, client *Client, id string) (task map[string]
 	path := "/api/tasks/"
 	params := url.Values{"task_id": {id}}
 	endpoint := path + "?" + params.Encode()
-	resp, err := client.Get(ctx, path, params)
-	body, errRes := doRequestBody(resp, err, "GET", endpoint)
+	body, errRes, transient := get(path, params, endpoint)
 	if errRes != nil {
-		return nil, nil, false, errRes
+		return nil, nil, false, errRes, transient
 	}
 	var envelope struct {
 		Results []json.RawMessage `json:"results"`
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
-		return nil, nil, false, errResult(fmt.Sprintf("unexpected response from GET %s: %s", endpoint, err))
+		return nil, nil, false, errResult(fmt.Sprintf("unexpected response from GET %s: %s", endpoint, err)), false
 	}
 	if len(envelope.Results) == 0 {
-		return nil, nil, false, nil
+		return nil, nil, false, nil, false
 	}
 	if err := json.Unmarshal(envelope.Results[0], &task); err != nil {
-		return nil, nil, false, errResult(fmt.Sprintf("unexpected response from GET %s: %s", endpoint, err))
+		return nil, nil, false, errResult(fmt.Sprintf("unexpected response from GET %s: %s", endpoint, err)), false
 	}
-	return task, envelope.Results[0], true, nil
+	return task, envelope.Results[0], true, nil, false
 }
 
 // getWaitTimeout reads the timeout argument in seconds.
@@ -102,10 +113,10 @@ func getWaitTimeout(request mcp.CallToolRequest) (time.Duration, *mcp.CallToolRe
 		return defaultTaskWaitTimeout, nil
 	}
 	secs := request.GetFloat("timeout", 0)
-	if secs <= 0 || secs > maxTaskWaitTimeout.Seconds() || math.IsNaN(secs) {
-		return 0, errResult(fmt.Sprintf("timeout must be more than 0 and at most %d seconds", int(maxTaskWaitTimeout.Seconds())))
+	if secs < 1 || secs > maxTaskWaitTimeout.Seconds() || secs != math.Trunc(secs) {
+		return 0, errResult(fmt.Sprintf("timeout must be a whole number of seconds from 1 to %d", int(maxTaskWaitTimeout.Seconds())))
 	}
-	return time.Duration(secs * float64(time.Second)), nil
+	return time.Duration(secs) * time.Second, nil
 }
 
 // getWaitOptions reads wait and timeout for tools that start a task. A timeout
@@ -153,6 +164,10 @@ func progressReporter(ctx context.Context, request mcp.CallToolRequest, timeout 
 	}
 }
 
+// maxTransientPollErrors is how many polls in a row may fail with a network
+// error or a 5xx before waiting gives up.
+const maxTransientPollErrors = 2
+
 // waitForTask polls a task until it reaches a terminal status, the timeout
 // passes or ctx is done. grace is how long a task that can't be found yet is
 // treated as about to appear; 0 makes an unknown task an error at once.
@@ -161,39 +176,68 @@ func waitForTask(ctx context.Context, client *Client, id string, timeout, grace 
 	start := time.Now()
 	deadline := start.Add(timeout)
 	interval := taskPollInitial
+	var last map[string]any // the last task record seen
+	transientErrors := 0
+	stopped := func() *mcp.CallToolResult {
+		return errResult(fmt.Sprintf("stopped waiting for task %s: %s", id, ctx.Err()))
+	}
+	notFound := func() *mcp.CallToolResult { return errResult("no task with task_id " + strings.ToLower(id)) }
+	outcome := func(task map[string]any, timedOut bool) map[string]any {
+		o := map[string]any{"task": task, "waited_seconds": math.Round(time.Since(start).Seconds()*10) / 10}
+		if timedOut {
+			o["timed_out"] = true
+		}
+		return o
+	}
+	timedOut := func() (map[string]any, *mcp.CallToolResult) {
+		if last == nil {
+			return nil, notFound()
+		}
+		return outcome(last, true), nil
+	}
+
 	for {
-		task, _, found, errRes := fetchTask(ctx, client, id)
-		if errRes != nil {
+		// Bound each poll by the deadline, so a hung request can't overrun it.
+		pollCtx, cancel := context.WithDeadline(ctx, deadline)
+		task, _, found, errRes, retryable := fetchTaskRetryable(pollCtx, client, id)
+		pollExpired := pollCtx.Err() != nil
+		cancel()
+		switch {
+		case ctx.Err() != nil:
+			return nil, stopped()
+		case errRes != nil && pollExpired:
+			return timedOut()
+		case errRes != nil && retryable && transientErrors < maxTransientPollErrors:
+			transientErrors++
+		case errRes != nil:
 			return nil, errRes
-		}
-		elapsed := time.Since(start)
-		outcome := map[string]any{"task": task, "waited_seconds": math.Round(elapsed.Seconds()*10) / 10}
-		if !found {
-			if elapsed >= grace {
-				return nil, errResult("no task with task_id " + strings.ToLower(id))
-			}
-		} else {
-			status, _ := task["status"].(string)
-			if slices.Contains(taskTerminalStatuses, status) {
-				return outcome, nil
-			}
-			if progress != nil {
-				progress(status, elapsed)
+		default:
+			transientErrors = 0
+			if found {
+				last = task
+				if status, _ := task["status"].(string); slices.Contains(taskTerminalStatuses, status) {
+					return outcome(task, false), nil
+				}
+			} else if time.Since(start) >= grace {
+				return nil, notFound()
 			}
 		}
+
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
-			if !found {
-				return nil, errResult("no task with task_id " + strings.ToLower(id))
-			}
-			outcome["timed_out"] = true
-			return outcome, nil
+			return timedOut()
+		}
+		// Report progress only while the call goes on, so no notification
+		// follows the response.
+		if progress != nil && last != nil {
+			status, _ := last["status"].(string)
+			progress(status, time.Since(start))
 		}
 		timer := time.NewTimer(min(interval, remaining))
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return nil, errResult(fmt.Sprintf("stopped waiting for task %s: %s", id, ctx.Err()))
+			return nil, stopped()
 		case <-timer.C:
 		}
 		interval = nextPollInterval(interval)
@@ -236,18 +280,18 @@ func respondWithWait(ctx context.Context, client *Client, request mcp.CallToolRe
 	}
 	id := taskIDFromResponse(v)
 	if !uuidPattern.MatchString(id) {
-		// Nothing to wait for; return the response as it is.
-		return rawJSONResult(body)
+		return jsonResult(map[string]any{"response": v, "wait_skipped": "the response has no task id to wait for"})
 	}
 	outcome, errRes := waitForTask(ctx, client, id, timeout, taskNotFoundGrace, progressReporter(ctx, request, timeout))
 	if errRes != nil {
-		// The request itself succeeded: keep its response next to the error.
-		msg := resultMessage(errRes)
-		res, jerr := jsonResult(map[string]any{"response": v, "task_id": id, "wait_error": msg})
-		if res != nil {
-			res.IsError = true
-		}
-		return res, jerr
+		// The request itself succeeded and its task is queued, so this is not
+		// a tool error: resending could repeat a merge or an upload.
+		return jsonResult(map[string]any{
+			"response":   v,
+			"task_id":    id,
+			"wait_error": resultMessage(errRes),
+			"note":       "The request was accepted and its task queued; only waiting for it failed. Do not resend it; call task_wait with task_id to check on it.",
+		})
 	}
 	outcome["response"] = v
 	if followOn != nil {

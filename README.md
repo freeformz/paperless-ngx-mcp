@@ -87,7 +87,7 @@ Generate an API token in Paperless-ngx under **Settings > Administration > Auth 
 
 Array and object parameters accept a native JSON value or the same value as a JSON-encoded string.
 
-`document_upload`, `document_bulk_edit` and `task_run` start background tasks and return at once; pass `wait: true` (optional `timeout`, default 60 s, at most 600 s) to get the task's outcome in the same call, or use `task_wait` later. A failed task comes back as a tool error.
+`document_upload`, `document_bulk_edit` and `task_run` start background tasks and return at once; pass `wait: true` (optional `timeout`, default 60 s, at most 600 s) to get the task's outcome in the same call, or use `task_wait` later. A failed or revoked task comes back as a tool error.
 
 Responses are shaped to stay compact for MCP clients: document `content` in `document_list` results is truncated to a snippet — default 500 bytes, adjustable per call with `content_snippet_bytes` (0 disables); `full_content: true` opts out and `document_get` returns full text — document `notes` in `document_list` results are replaced with a `notes_count` field (`include_notes: true` keeps them; `document_note_list` returns full notes), the unbounded `all` ID array is stripped from paginated lists (`include_all_ids: true` on `document_list` re-includes it), `task_list` trims each task's `result_data.traceback` to its last 500 bytes (`include_traceback: true` keeps it; `task_get` returns it in full), `log_get` returns only the last `tail` lines (default 100), `document_selection_data` omits zero-count objects, `user_list` omits `inherited_permissions` unless `include_permissions: true`, and `profile_get` redacts the API auth token.
 

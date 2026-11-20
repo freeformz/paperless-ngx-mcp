@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -77,23 +78,39 @@ func TestMCPTaskWaitDoesNotBlockOtherCalls(t *testing.T) {
 	statsID := p.request(t, "tools/call", map[string]any{"name": "statistics", "arguments": map[string]any{}})
 	seen := p.readMessages(t, isResponse(statsID))
 
-	progress := 0
-	for _, m := range seen {
-		for _, id := range waitIDs {
-			if isResponse(id)(m) {
-				t.Fatalf("task_wait %d answered before its timeout: %v", id, m)
+	// Each wait reports progress after its first poll; read until every token
+	// has been seen, so the check doesn't depend on timing.
+	tokens := map[string]bool{}
+	check := func(msgs []map[string]any) {
+		for _, m := range msgs {
+			for _, id := range waitIDs {
+				if isResponse(id)(m) {
+					t.Fatalf("task_wait %d answered before its timeout: %v", id, m)
+				}
 			}
-		}
-		if m["method"] == "notifications/progress" {
-			params, _ := m["params"].(map[string]any)
-			if params["progressToken"] == nil || params["total"] != float64(300) {
-				t.Errorf("progress notification = %v", m)
+			if m["method"] == "notifications/progress" {
+				params, _ := m["params"].(map[string]any)
+				tok, _ := params["progressToken"].(string)
+				if !strings.HasPrefix(tok, "wait-") || params["total"] != float64(300) {
+					t.Errorf("progress notification = %v", m)
+				}
+				tokens[tok] = true
 			}
-			progress++
 		}
 	}
-	if progress == 0 {
-		t.Error("no progress notifications while waiting")
+	check(seen)
+	if len(tokens) < len(waitIDs) {
+		check(p.readMessages(t, func(m map[string]any) bool {
+			if m["method"] == "notifications/progress" {
+				params, _ := m["params"].(map[string]any)
+				tok, _ := params["progressToken"].(string)
+				tokens[tok] = true
+			}
+			return len(tokens) >= len(waitIDs)
+		}))
+	}
+	if len(tokens) != len(waitIDs) {
+		t.Errorf("progress seen for %d of %d waits: %v", len(tokens), len(waitIDs), tokens)
 	}
 
 	start := time.Now()

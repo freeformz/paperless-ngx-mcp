@@ -83,7 +83,8 @@ func mcpCmd() *cobra.Command {
 			srv := NewServer(client, dl)
 			// Tool calls that wait for a task hold a worker for up to the wait
 			// timeout; mcp-go's default of 5 workers would let a few waits stall
-			// every other call.
+			// every other call. Past 20 running and 100 queued calls, mcp-go runs
+			// a call on its read loop, which would block reading stdin.
 			stdio := server.NewStdioServer(srv)
 			server.WithWorkerPoolSize(stdioWorkers)(stdio)
 			err = stdio.Listen(ctx, os.Stdin, os.Stdout)

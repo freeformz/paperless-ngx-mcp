@@ -143,8 +143,9 @@ func TestWaitForTaskNotFound(t *testing.T) {
 }
 
 func TestWaitForTaskStopsOnCancel(t *testing.T) {
+	initial, maxi := taskPollInitial, taskPollMax
 	taskPollInitial, taskPollMax = time.Hour, time.Hour // only ctx can end the wait early
-	t.Cleanup(func() { taskPollInitial, taskPollMax = time.Second, 5*time.Second })
+	t.Cleanup(func() { taskPollInitial, taskPollMax = initial, maxi })
 	client, _ := taskSequenceClient(t, "pending")
 	ctx, cancel := context.WithCancel(t.Context())
 	time.AfterFunc(30*time.Millisecond, cancel)
@@ -193,6 +194,8 @@ func TestGetWaitOptions(t *testing.T) {
 		"string timeout":  {map[string]any{"wait": true, "timeout": "30"}, true, 30 * time.Second, false},
 		"timeout no wait": {map[string]any{"timeout": float64(10)}, false, 0, true},
 		"zero":            {map[string]any{"wait": true, "timeout": float64(0)}, false, 0, true},
+		"fraction":        {map[string]any{"wait": true, "timeout": 1.5}, false, 0, true},
+		"max":             {map[string]any{"wait": true, "timeout": float64(600)}, true, 600 * time.Second, false},
 		"negative":        {map[string]any{"wait": true, "timeout": float64(-1)}, false, 0, true},
 		"too long":        {map[string]any{"wait": true, "timeout": float64(601)}, false, 0, true},
 	} {
@@ -255,9 +258,16 @@ func TestDocumentBulkEditWait(t *testing.T) {
 		{"reprocess", map[string]any{}, []any{"reprocess_document"}},
 		{"merge", map[string]any{"delete_originals": true}, []any{"consume_file", "bulk_delete"}},
 		{"split", map[string]any{"pages": "1,2"}, []any{"consume_file"}},
+		{"edit_pdf", map[string]any{"operations": []any{}, "delete_original": true}, []any{"consume_file", "bulk_delete"}},
+		{"edit_pdf", map[string]any{"operations": []any{}, "delete_original": true, "update_document": true}, []any{"consume_file"}},
+		{"remove_password", map[string]any{"password": "x", "delete_original": true}, []any{"consume_file", "bulk_delete"}},
 	}
 	for _, tt := range tests {
-		t.Run(tt.method, func(t *testing.T) {
+		name := tt.method
+		if b, _ := json.Marshal(tt.params); len(tt.params) > 0 {
+			name += string(b)
+		}
+		t.Run(name, func(t *testing.T) {
 			client, _ := bulkWaitServer(t, "pending", "success")
 			result := callTool(t, handleDocumentBulkEdit(client), map[string]any{
 				"documents": []any{float64(1)}, "method": tt.method, "parameters": tt.params, "wait": true,
@@ -295,7 +305,7 @@ func TestDocumentBulkEditWaitTimeoutKeepsFollowOn(t *testing.T) {
 	client, _ := bulkWaitServer(t, "pending")
 	result := callTool(t, handleDocumentBulkEdit(client), map[string]any{
 		"documents": []any{float64(1)}, "method": "rotate", "parameters": map[string]any{"degrees": float64(90)},
-		"wait": true, "timeout": 0.05,
+		"wait": true, "timeout": float64(1),
 	})
 	assertNotError(t, result)
 	m := resultJSON(t, result)
@@ -332,10 +342,12 @@ func TestWaitErrorKeepsResponse(t *testing.T) {
 	result := callTool(t, handleDocumentBulkEdit(client), map[string]any{
 		"documents": []any{float64(1)}, "method": "add_tag", "parameters": map[string]any{"tag": float64(1)}, "wait": true,
 	})
-	assertIsError(t, result)
+	// The bulk edit was queued: a wait problem is not a tool error, so an
+	// agent isn't invited to resend it.
+	assertNotError(t, result)
 	m := resultJSON(t, result)
-	if m["response"] == nil || m["task_id"] != testTaskUUID || !strings.Contains(m["wait_error"].(string), "no task") {
-		t.Errorf("result = %v, want response, task_id and wait_error", m)
+	if m["response"] == nil || m["task_id"] != testTaskUUID || !strings.Contains(m["wait_error"].(string), "no task") || !strings.Contains(m["note"].(string), "Do not resend") {
+		t.Errorf("result = %v, want response, task_id, wait_error and a do-not-resend note", m)
 	}
 }
 
@@ -373,5 +385,156 @@ func TestDocumentUploadWaitReadsBareUUID(t *testing.T) {
 	}
 	if got := seq.queries[0].Get("task_id"); got != testTaskUUID {
 		t.Errorf("polled task_id = %q", got)
+	}
+}
+
+// flakyTasks serves GET /api/tasks/ with a 502 for the first failures calls,
+// then a finished task.
+func flakyTasks(t *testing.T, failures int) (*Client, *int) {
+	t.Helper()
+	calls := 0
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls <= failures {
+			w.WriteHeader(http.StatusBadGateway)
+			w.Write([]byte("bad gateway"))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(paginatedResponse([]any{map[string]any{"task_id": testTaskUUID, "status": "success"}}, 1))
+	})
+	return testClientAndServer(t, rh), &calls
+}
+
+func TestWaitForTaskToleratesTransientErrors(t *testing.T) {
+	fastPolling(t)
+	client, calls := flakyTasks(t, maxTransientPollErrors)
+	outcome, errRes := waitForTask(t.Context(), client, testTaskUUID, time.Second, 0, nil)
+	if errRes != nil || outcome["task"].(map[string]any)["status"] != "success" {
+		t.Fatalf("outcome = %v, err = %v; want success after %d transient errors", outcome, errRes, maxTransientPollErrors)
+	}
+	if *calls != maxTransientPollErrors+1 {
+		t.Errorf("polls = %d", *calls)
+	}
+
+	client, _ = flakyTasks(t, maxTransientPollErrors+1)
+	if _, errRes := waitForTask(t.Context(), client, testTaskUUID, time.Second, 0, nil); errRes == nil || !strings.Contains(resultText(t, errRes), "502") {
+		t.Errorf("want the API error after %d failures in a row, got %v", maxTransientPollErrors+1, errRes)
+	}
+}
+
+func TestWaitForTaskClientErrorEndsAtOnce(t *testing.T) {
+	fastPolling(t)
+	calls := 0
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"detail":"forbidden"}`))
+	})
+	if _, errRes := waitForTask(t.Context(), testClientAndServer(t, rh), testTaskUUID, time.Second, 0, nil); errRes == nil {
+		t.Fatal("want an error for a 403")
+	}
+	if calls != 1 {
+		t.Errorf("polls = %d, want 1 (a 4xx is not retried)", calls)
+	}
+}
+
+func TestWaitForTaskPollBoundedByDeadline(t *testing.T) {
+	fastPolling(t)
+	first := true
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		if !first {
+			select { // hang until the client gives up
+			case <-r.Context().Done():
+			case <-release:
+			}
+			return
+		}
+		first = false
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(paginatedResponse([]any{map[string]any{"task_id": testTaskUUID, "status": "started"}}, 1))
+	})
+	start := time.Now()
+	outcome, errRes := waitForTask(t.Context(), testClientAndServer(t, rh), testTaskUUID, 200*time.Millisecond, 0, nil)
+	if errRes != nil || outcome["timed_out"] != true || outcome["task"].(map[string]any)["status"] != "started" {
+		t.Fatalf("outcome = %v, err = %v; want timed_out with the last task seen", outcome, errRes)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("returned after %s, want close to the 200ms timeout", elapsed)
+	}
+}
+
+func TestWaitForTaskCancelDuringPoll(t *testing.T) {
+	fastPolling(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		cancel()
+		<-r.Context().Done()
+	})
+	_, errRes := waitForTask(ctx, testClientAndServer(t, rh), testTaskUUID, time.Minute, 0, nil)
+	if errRes == nil || !strings.Contains(resultText(t, errRes), "stopped waiting") {
+		t.Fatalf("want a stopped-waiting error, got %v", errRes)
+	}
+}
+
+func TestWaitForTaskProgressNotAfterDeadline(t *testing.T) {
+	fastPolling(t)
+	client, _ := taskSequenceClient(t, "pending")
+	var reports []time.Duration
+	timeout := 60 * time.Millisecond
+	outcome, _ := waitForTask(t.Context(), client, testTaskUUID, timeout, 0, func(_ string, elapsed time.Duration) {
+		reports = append(reports, elapsed)
+	})
+	if outcome["timed_out"] != true || len(reports) == 0 {
+		t.Fatalf("outcome = %v, reports = %v", outcome, reports)
+	}
+	for _, r := range reports {
+		if r >= timeout {
+			t.Errorf("progress reported at %s, at or after the %s deadline", r, timeout)
+		}
+	}
+	if w, _ := outcome["waited_seconds"].(float64); w < 0.05 || w > 1 {
+		t.Errorf("waited_seconds = %v, want about the timeout", outcome["waited_seconds"])
+	}
+}
+
+func TestWaitForTaskGraceLongerThanTimeout(t *testing.T) {
+	fastPolling(t)
+	client, _ := taskSequenceClient(t, "")
+	_, errRes := waitForTask(t.Context(), client, testTaskUUID, 50*time.Millisecond, time.Minute, nil)
+	if errRes == nil || !strings.Contains(resultText(t, errRes), "no task with task_id") {
+		t.Fatalf("want not found at the deadline, got %v", errRes)
+	}
+}
+
+func TestTaskWaitIntegerIDNotFound(t *testing.T) {
+	fastPolling(t)
+	calls := 0
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/tasks/99/", func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"detail":"No PaperlessTask matches the given query."}`))
+	})
+	result := callTool(t, handleTaskWait(testClientAndServer(t, rh)), map[string]any{"id": "99"})
+	assertIsError(t, result)
+	if calls != 1 || !strings.Contains(resultText(t, result), "No PaperlessTask") {
+		t.Errorf("calls = %d, result = %s", calls, resultText(t, result))
+	}
+}
+
+func TestWaitSkippedWithoutTaskID(t *testing.T) {
+	rh := newRouteHandler(t)
+	rh.Handle("POST", "/api/tasks/run/", jsonHandler(t, 200, map[string]any{"result": "OK"}))
+	result := callTool(t, handleTaskRun(testClientAndServer(t, rh)), map[string]any{"task_type": "sanity_check", "wait": true})
+	assertNotError(t, result)
+	if m := resultJSON(t, result); m["wait_skipped"] == nil || m["response"] == nil {
+		t.Errorf("result = %v, want response and wait_skipped", m)
 	}
 }
