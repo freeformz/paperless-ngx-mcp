@@ -553,7 +553,8 @@ The share link API has no update: `ShareLinkViewSet` supports create, retrieve, 
 | `task_list` | GET | `/api/tasks/` | List background tasks, paginated by the server. Filters: `status`, `task_type`, `trigger_source` (arrays, sent as repeated query parameters), `is_complete`, `acknowledged`, `owner`, `name`, `result`, `date_created_after`, `date_created_before`; `ordering` on `date_created`, `date_done`, `status`, `task_type`, `duration_seconds`, `wait_time_seconds` (default `-date_created`). `result_data.traceback` is trimmed to its last 500 bytes unless `include_traceback` is set |
 | `task_get` | GET | `/api/tasks/?task_id={uuid}` or `/api/tasks/{id}/` | Get one task by task UUID or integer id. The UUID lookup's envelope is unwrapped; no match is an error. The traceback is returned in full |
 | `task_acknowledge` | POST | `/api/tasks/acknowledge/` | Acknowledge tasks: exactly one of `tasks` (integer IDs) or `all: true` (every visible unacknowledged task, including pending and failed ones). Returns `{"result": count}` |
-| `task_run` | POST | `/api/tasks/run/` | Run a system task (superuser only). `task_type` is one of `train_classifier`, `sanity_check`, `llm_index` |
+| `task_run` | POST | `/api/tasks/run/` | Run a system task (superuser only). `task_type` is one of `train_classifier`, `sanity_check`, `llm_index`. Optional `wait` / `timeout` (see Waiting for tasks) |
+| `task_wait` | GET | `/api/tasks/?task_id={uuid}` or `/api/tasks/{id}/`, polled | Wait for a task to finish (success, failure or revoked). `id` is a task UUID or integer id; `timeout` in seconds (default 60, at most 600). See Waiting for tasks |
 | `task_stats` | GET | `/api/tasks/summary/`, `/api/tasks/status_counts/`, `/api/tasks/active/` | `mode` picks the endpoint: `summary` (per task type over `days`, 1–365, default 30), `status_counts` (`all`, `needs_attention`, `in_progress`, `completed`; takes `task_list`'s filters except `status` and `is_complete`), `active` (pending and started tasks, at most 50). Parameters outside the chosen mode are rejected |
 
 #### Logs
@@ -587,6 +588,18 @@ The share link API has no update: `ShareLinkViewSet` supports create, retrieve, 
 | `config_get` | GET | `/api/config/{id}/` | Get config entry |
 | `config_update` | PATCH | `/api/config/{id}/` | Update config entry |
 
+## Waiting for Tasks
+
+Since paperless-ngx 3.5.0 the document bulk and action endpoints queue a task and return `{"result": "OK", "task_id": …}` at once; uploads have always returned the consume task's UUID. Nothing has changed when these return, and runtime errors (missing permissions on a document, a wrong PDF password) exist only in the task record.
+
+- `document_upload`, `document_bulk_edit` and `task_run` take `wait` (default false: return the id at once, unchanged) and `timeout` (whole seconds, 1 to 600, default 60; only with `wait`). With `wait` the tool returns `{response, task, waited_seconds}`, where `response` is the original API response.
+- `task_wait` waits on a task started earlier or elsewhere; an unknown task id fails at once.
+- Polling starts at 1 s and grows by 1.5× to at most 5 s. Each poll sends an MCP progress notification when the client sent a `progressToken`.
+- A `failure` or `revoked` task is a tool error carrying the task record. A problem with waiting itself after a successful POST (the task not appearing, repeated poll errors) is not: the result carries the original `response`, `task_id` and `wait_error`, with a note not to resend. Up to two polls in a row may fail with a network error or a 5xx before waiting gives up, and each poll is bounded by the deadline. Running out of time is not: the current task comes back with `timed_out: true`, and `task_wait` continues. Right after a POST, a task that can't be found yet gets a 5 s grace period.
+- What finished covers: an upload's task is the whole consume. For `document_bulk_edit`, metadata methods are done when the bulk task is; `rotate`, `merge`, `split`, `delete_pages`, `edit_pdf` and `remove_password` schedule `consume_file` tasks, `reprocess` schedules `reprocess_document` tasks, and `merge`/`split` with `delete_originals`, or `edit_pdf`/`remove_password` with `delete_original` (and no `update_document`), also schedule `bulk_delete` once the consume tasks finish. Skipped documents schedule nothing (rotate skips non-PDFs, remove_password skips unencrypted PDFs). The bulk task record doesn't link to them, so the wait result's `follow_on` names the task types and a `task_list` filter (`date_created_after` the bulk task) to find them.
+- MCP hosts often limit a tool call to about 60 s; a longer wait may be cut off by the host, and `task_wait` with the same id picks it up.
+- The stdio server runs up to 20 tool calls at once (mcp-go's default is 5), so waiting calls don't stall other tools; past 20 running and 100 queued calls, mcp-go runs a call on its read loop. Shutdown interrupts a wait.
+
 ## Response Shaping
 
 Paperless-ngx API responses can be far too large for MCP clients (full OCR text per list result, unbounded ID arrays, long task tracebacks). The server reshapes responses to keep tool output compact:
@@ -613,7 +626,7 @@ The MCP server provides inline instructions via `WithInstructions` that guide ag
 - Bulk operations: use `document_bulk_edit` for batch changes
 - Saved views: filter rules, the `saved_view_rule_types` lookup, and that dashboard/sidebar visibility is a web UI setting
 - Structured parameters: arrays and objects may be sent natively or as JSON-encoded strings
-- Tasks: statuses, UUID-or-id lookup, traceback trimming and `task_stats`
+- Tasks: statuses, UUID-or-id lookup, traceback trimming, `task_stats`, and waiting (`wait`, `task_wait`)
 - API version is always v10 (Paperless-ngx 3.5.0+)
 
 ## Technical Requirements

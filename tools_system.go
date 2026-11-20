@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/url"
 	"regexp"
 	"slices"
@@ -124,9 +122,19 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(mcp.NewTool("task_stats", append(statsOpts, taskFilterOptions(false)...)...), handleTaskStats(client))
 
 	srv.AddTool(mcp.NewTool("task_run",
-		mcp.WithDescription("Run a system task in the background (superuser only). Returns a task_id; follow it with task_get. Types: train_classifier (retrain the auto-matching classifier), sanity_check (verify stored files against the database), llm_index (update the AI document index; requires AI to be enabled on the server)."),
-		mcp.WithString("task_type", mcp.Description("Task type to run"), mcp.Required(), mcp.Enum(runnableTaskTypes...)),
+		append([]mcp.ToolOption{
+			mcp.WithDescription("Run a system task in the background (superuser only). Returns a task_id at once; pass wait: true to wait for the task and get its outcome, or follow the id with task_wait or task_get. Types: train_classifier (retrain the auto-matching classifier), sanity_check (verify stored files against the database), llm_index (update the AI document index; requires AI to be enabled on the server)."),
+			mcp.WithString("task_type", mcp.Description("Task type to run"), mcp.Required(), mcp.Enum(runnableTaskTypes...)),
+		}, waitToolOptions()...)...,
 	), handleTaskRun(client))
+
+	srv.AddTool(mcp.NewTool("task_wait",
+		mcp.WithDescription("Wait for a background task to finish: success, failure or revoked. Returns {task, waited_seconds}; a failed or revoked task comes back as a tool error carrying the task, and if the timeout passes first the current task comes back with timed_out: true (call task_wait again to keep waiting). The MCP host may end a long call before the timeout. Takes the task UUID that document_upload, document_bulk_edit and task_run return, or the integer id from task_list. For a bulk edit, finished means the bulk task: PDF operations then run consume_file (or reprocess_document) tasks of their own."),
+		mcp.WithAny("id", mcp.Description("Task UUID or integer task id"), mcp.Required(), func(schema map[string]any) {
+			schema["type"] = []string{"string", "integer"}
+		}),
+		withNumber("timeout", mcp.Description(fmt.Sprintf("Seconds to wait, 1 to %d (default: %d)", int(maxTaskWaitTimeout.Seconds()), int(defaultTaskWaitTimeout.Seconds())))),
+	), handleTaskWait(client))
 
 	// Logs
 	srv.AddTool(mcp.NewTool("log_list",
@@ -242,56 +250,18 @@ func truncateTracebacks(items any) {
 // goes through the task_id filter, whose paginated envelope is unwrapped.
 func handleTaskGet(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		var id string
-		switch v := request.GetArguments()["id"].(type) {
-		case string:
-			id = v
-		case float64:
-			if v >= 0 && v == float64(int64(v)) {
-				id = strconv.FormatInt(int64(v), 10)
-			}
+		id, errRes := taskIDArg(request, "id")
+		if errRes != nil {
+			return errRes, nil
 		}
-		if id == "" {
-			return errResult("id is required: a task UUID or an integer task id"), nil
+		_, raw, found, errRes := fetchTask(ctx, client, id)
+		if errRes != nil {
+			return errRes, nil
 		}
-
-		if integerIDPattern.MatchString(id) {
-			path := "/api/tasks/" + id + "/"
-			resp, err := client.Get(ctx, path, nil)
-			return doRequest(resp, err, "GET", path)
+		if !found {
+			return errResult("no task with task_id " + strings.ToLower(id)), nil
 		}
-		if !uuidPattern.MatchString(id) {
-			return errResult("id must be a task UUID or an integer task id"), nil
-		}
-		// Celery task ids are lower case and the task_id filter is an exact,
-		// case-sensitive match.
-		id = strings.ToLower(id)
-
-		path := "/api/tasks/"
-		params := url.Values{"task_id": {id}}
-		resp, err := client.Get(ctx, path, params)
-		if err != nil {
-			return errResult(fmt.Sprintf("request failed: %s", err)), nil
-		}
-		defer resp.Body.Close()
-		body, readErr := io.ReadAll(resp.Body)
-		if readErr != nil {
-			return errResult(fmt.Sprintf("read response: %s", readErr)), nil
-		}
-		endpoint := path + "?" + params.Encode()
-		if resp.StatusCode >= 400 {
-			return apiErrorResult(resp.StatusCode, body, "GET", endpoint), nil
-		}
-		var envelope struct {
-			Results []json.RawMessage `json:"results"`
-		}
-		if err := json.Unmarshal(body, &envelope); err != nil {
-			return errResult(fmt.Sprintf("unexpected response from GET %s: %s", endpoint, err)), nil
-		}
-		if len(envelope.Results) == 0 {
-			return errResult("no task with task_id " + id), nil
-		}
-		return rawJSONResult(envelope.Results[0])
+		return rawJSONResult(raw)
 	}
 }
 
@@ -391,10 +361,15 @@ func handleTaskRun(client *Client) server.ToolHandlerFunc {
 			return errResult(fmt.Sprintf("task_type must be one of: %s", strings.Join(runnableTaskTypes, ", "))), nil
 		}
 
+		wait, timeout, errRes := getWaitOptions(request)
+		if errRes != nil {
+			return errRes, nil
+		}
+
 		body := map[string]any{"task_type": taskType}
 		path := "/api/tasks/run/"
 		resp, err := client.Post(ctx, path, body)
-		return doRequest(resp, err, "POST", path)
+		return respondWithWait(ctx, client, request, wait, timeout, resp, err, "POST", path, nil)
 	}
 }
 

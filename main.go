@@ -14,6 +14,9 @@ import (
 
 var version = "dev"
 
+// stdioWorkers is how many tool calls the stdio server runs at once.
+const stdioWorkers = 20
+
 func main() {
 	if err := rootCmd().Execute(); err != nil {
 		os.Exit(1)
@@ -78,7 +81,13 @@ func mcpCmd() *cobra.Command {
 
 			client := NewClient(baseURL, token)
 			srv := NewServer(client, dl)
-			err = server.NewStdioServer(srv).Listen(ctx, os.Stdin, os.Stdout)
+			// Tool calls that wait for a task hold a worker for up to the wait
+			// timeout; mcp-go's default of 5 workers would let a few waits stall
+			// every other call. Past 20 running and 100 queued calls, mcp-go runs
+			// a call on its read loop, which would block reading stdin.
+			stdio := server.NewStdioServer(srv)
+			server.WithWorkerPoolSize(stdioWorkers)(stdio)
+			err = stdio.Listen(ctx, os.Stdin, os.Stdout)
 			if errors.Is(err, context.Canceled) && ctx.Err() != nil {
 				// Listen returns ctx's error once a signal cancels it. Shutting
 				// down on request is a success, and there is nothing to report.
