@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -13,10 +14,10 @@ func registerBulkTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_bulk_edit",
 			append([]mcp.ToolOption{
-				mcp.WithDescription("Bulk edit documents. Methods: set_correspondent, set_document_type, set_storage_path, add_tag, remove_tag, modify_tags, modify_custom_fields, set_permissions, run_workflow, delete, reprocess, rotate, delete_pages, split, merge, edit_pdf, remove_password. The server queues a bulk task and returns its task_id at once, before anything changes; errors such as missing permissions on a document or a wrong PDF password show up only in that task. Pass wait: true to wait for the bulk task and get its outcome. For the metadata methods, the bulk task finishing means the change is done. rotate, merge, split, delete_pages, edit_pdf and remove_password then run consume_file tasks of their own, reprocess runs reprocess_document tasks, and merge or split with delete_originals, or edit_pdf or remove_password with delete_original (and no update_document), also run a bulk_delete task once those finish; with wait, follow_on says how to find them."),
+				mcp.WithDescription("Bulk edit document metadata. parameters by method: set_correspondent {correspondent: id or null}; set_document_type {document_type: id or null}; set_storage_path {storage_path: id or null}; add_tag / remove_tag {tag: id}; modify_tags {add_tags: [id], remove_tags: [id]} (both required, may be empty); modify_custom_fields {add_custom_fields: [id] or {id: value}, remove_custom_fields: [id]} (both required); set_permissions {set_permissions: {view?: {users?: [id], groups?: [id]}, change?: {...}} or null, owner?: id or null, merge?: bool} (needs ownership; without merge, leaving out owner clears it); run_workflow {workflow: id, filter_documents?: bool, default true} (needs view_workflow permission, an enabled workflow with a manual trigger, and ownership). Every method needs change permission on every document. The server queues a bulk task and returns its task_id at once; errors show up in that task. Pass wait: true to wait for it; for these methods the bulk task finishing means the change is done. File operations have their own tools: rotate -> document_rotate, merge -> document_merge, edit_pdf / split / delete_pages -> document_edit_pdf, remove_password -> document_remove_password, reprocess -> document_reprocess, delete -> document_bulk_delete."),
 				withJSONArray("documents", mcp.Description("Array of document IDs"), mcp.Required()),
-				mcp.WithString("method", mcp.Description("Operation to perform"), mcp.Required()),
-				withJSONObject("parameters", mcp.Description("Object with method-specific parameters"), mcp.Required()),
+				mcp.WithString("method", mcp.Description("Operation to perform"), mcp.Required(), mcp.Enum(bulkEditMethods...)),
+				withJSONObject("parameters", mcp.Description("Object with method-specific parameters, see the description"), mcp.Required()),
 			}, waitToolOptions()...)...,
 		),
 		handleDocumentBulkEdit(client),
@@ -57,6 +58,12 @@ func handleDocumentBulkEdit(client *Client) server.ToolHandlerFunc {
 		if errRes != nil {
 			return errRes, nil
 		}
+		if tool, moved := bulkEditMovedMethods[method]; moved {
+			return errResult(fmt.Sprintf("document_bulk_edit no longer runs %s; use %s", method, tool)), nil
+		}
+		if !slices.Contains(bulkEditMethods, method) {
+			return errResult("method must be one of: " + strings.Join(bulkEditMethods, ", ")), nil
+		}
 		body["method"] = method
 
 		if err := setJSONField(body, request, "parameters"); err != nil {
@@ -71,12 +78,10 @@ func handleDocumentBulkEdit(client *Client) server.ToolHandlerFunc {
 			return errRes, nil
 		}
 
-		params, _ := body["parameters"].(map[string]any)
 		path := "/api/documents/bulk_edit/"
 		resp, err := client.Post(ctx, path, body)
-		return respondWithWait(ctx, client, request, wait, timeout, resp, err, "POST", path, func(task map[string]any) map[string]any {
-			return bulkEditFollowOn(method, params, task)
-		})
+		// Metadata methods finish inside the bulk task: nothing follows on.
+		return respondWithWait(ctx, client, request, wait, timeout, resp, err, "POST", path, nil)
 	}
 }
 
@@ -165,32 +170,22 @@ func handleBulkEditObjects(client *Client) server.ToolHandlerFunc {
 	}
 }
 
-// bulkEditPDFMethods are the bulk_edit methods whose work continues in
-// consume_file tasks scheduled by the bulk task (paperless-ngx bulk_edit.py).
-var bulkEditPDFMethods = []string{"rotate", "merge", "split", "delete_pages", "edit_pdf", "remove_password"}
+// bulkEditMethods are the document_bulk_edit methods: metadata changes and
+// run_workflow. File operations moved to the document action tools.
+var bulkEditMethods = []string{
+	"set_correspondent", "set_document_type", "set_storage_path", "add_tag", "remove_tag",
+	"modify_tags", "modify_custom_fields", "set_permissions", "run_workflow",
+}
 
-// bulkEditFollowOn describes the tasks a finished (or still running) bulk task
-// schedules, which the bulk task record doesn't link to. It returns nil for
-// methods that complete inside the bulk task.
-func bulkEditFollowOn(method string, params map[string]any, task map[string]any) map[string]any {
-	var types []string
-	switch {
-	case slices.Contains(bulkEditPDFMethods, method):
-		types = append(types, "consume_file")
-	case method == "reprocess":
-		types = append(types, "reprocess_document")
-	default:
-		return nil
-	}
-	switch {
-	case (method == "merge" || method == "split") && params["delete_originals"] == true,
-		(method == "edit_pdf" || method == "remove_password") && params["delete_original"] == true && params["update_document"] != true:
-		types = append(types, "bulk_delete")
-	}
-	created, _ := task["date_created"].(string)
-	return map[string]any{
-		"task_types": types,
-		"note":       "The bulk task may schedule these tasks separately and doesn't link to them: none are scheduled for documents an operation skips (rotate skips non-PDFs, remove_password skips unencrypted PDFs), and bulk_delete is queued only after the consume tasks finish. Find them with task_list, filtering task_type and date_created_after; other tasks created since may match too, so check input_data (filename, overrides). Wait on each with task_wait.",
-		"task_list":  map[string]any{"task_type": types, "date_created_after": created},
-	}
+// bulkEditMovedMethods maps the bulk_edit file methods paperless-ngx still
+// accepts (deprecated, until API v9 is dropped) to the tool that replaces them.
+var bulkEditMovedMethods = map[string]string{
+	"rotate":          "document_rotate",
+	"merge":           "document_merge",
+	"edit_pdf":        "document_edit_pdf",
+	"split":           "document_edit_pdf",
+	"delete_pages":    "document_edit_pdf",
+	"remove_password": "document_remove_password",
+	"reprocess":       "document_reprocess",
+	"delete":          "document_bulk_delete",
 }

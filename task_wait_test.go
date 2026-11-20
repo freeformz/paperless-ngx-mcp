@@ -246,72 +246,10 @@ func bulkWaitServer(t *testing.T, statuses ...string) (*Client, *taskSequence) {
 	return testClientAndServer(t, rh), seq
 }
 
-func TestDocumentBulkEditWait(t *testing.T) {
-	fastPolling(t)
-	tests := []struct {
-		method string
-		params map[string]any
-		want   []any // follow_on task types; nil means no follow_on
-	}{
-		{"add_tag", map[string]any{"tag": float64(1)}, nil},
-		{"rotate", map[string]any{"degrees": float64(90)}, []any{"consume_file"}},
-		{"reprocess", map[string]any{}, []any{"reprocess_document"}},
-		{"merge", map[string]any{"delete_originals": true}, []any{"consume_file", "bulk_delete"}},
-		{"split", map[string]any{"pages": "1,2"}, []any{"consume_file"}},
-		{"edit_pdf", map[string]any{"operations": []any{}, "delete_original": true}, []any{"consume_file", "bulk_delete"}},
-		{"edit_pdf", map[string]any{"operations": []any{}, "delete_original": true, "update_document": true}, []any{"consume_file"}},
-		{"remove_password", map[string]any{"password": "x", "delete_original": true}, []any{"consume_file", "bulk_delete"}},
-	}
-	for _, tt := range tests {
-		name := tt.method
-		if b, _ := json.Marshal(tt.params); len(tt.params) > 0 {
-			name += string(b)
-		}
-		t.Run(name, func(t *testing.T) {
-			client, _ := bulkWaitServer(t, "pending", "success")
-			result := callTool(t, handleDocumentBulkEdit(client), map[string]any{
-				"documents": []any{float64(1)}, "method": tt.method, "parameters": tt.params, "wait": true,
-			})
-			assertNotError(t, result)
-			m := resultJSON(t, result)
-			if m["response"].(map[string]any)["task_id"] != testTaskUUID {
-				t.Errorf("response = %v, want the original bulk_edit response", m["response"])
-			}
-			fo, has := m["follow_on"].(map[string]any)
-			if tt.want == nil {
-				if has {
-					t.Errorf("follow_on = %v, want none for %s", fo, tt.method)
-				}
-				return
-			}
-			if !has || !equalAny(fo["task_types"], tt.want) {
-				t.Fatalf("follow_on = %v, want task_types %v", m["follow_on"], tt.want)
-			}
-			if fo["task_list"].(map[string]any)["date_created_after"] != "2026-11-19T10:00:00-08:00" {
-				t.Errorf("follow_on should point at the bulk task's date_created: %v", fo)
-			}
-		})
-	}
-}
-
 func equalAny(got any, want []any) bool {
 	b1, _ := json.Marshal(got)
 	b2, _ := json.Marshal(want)
 	return string(b1) == string(b2)
-}
-
-func TestDocumentBulkEditWaitTimeoutKeepsFollowOn(t *testing.T) {
-	fastPolling(t)
-	client, _ := bulkWaitServer(t, "pending")
-	result := callTool(t, handleDocumentBulkEdit(client), map[string]any{
-		"documents": []any{float64(1)}, "method": "rotate", "parameters": map[string]any{"degrees": float64(90)},
-		"wait": true, "timeout": float64(1),
-	})
-	assertNotError(t, result)
-	m := resultJSON(t, result)
-	if m["timed_out"] != true || m["follow_on"] == nil {
-		t.Errorf("result = %v, want timed_out with follow_on", m)
-	}
 }
 
 func TestDocumentBulkEditWithoutWaitIsUnchanged(t *testing.T) {

@@ -87,7 +87,7 @@ Generate an API token in Paperless-ngx under **Settings > Administration > Auth 
 
 Array and object parameters accept a native JSON value or the same value as a JSON-encoded string.
 
-`document_upload`, `document_bulk_edit` and `task_run` start background tasks and return at once; pass `wait: true` (optional `timeout`, default 60 s, at most 600 s) to get the task's outcome in the same call, or use `task_wait` later. A failed or revoked task comes back as a tool error.
+`document_upload`, `document_bulk_edit`, the document editing tools and `task_run` start background tasks and return at once; pass `wait: true` (optional `timeout`, default 60 s, at most 600 s) to get the task's outcome in the same call, or use `task_wait` later. A failed or revoked task comes back as a tool error.
 
 Responses are shaped to stay compact for MCP clients: document `content` in `document_list` results is truncated to a snippet — default 500 bytes, adjustable per call with `content_snippet_bytes` (0 disables); `full_content: true` opts out and `document_get` returns full text — document `notes` in `document_list` results are replaced with a `notes_count` field (`include_notes: true` keeps them; `document_note_list` returns full notes), the unbounded `all` ID array is stripped from paginated lists (`include_all_ids: true` on `document_list` re-includes it), `task_list` trims each task's `result_data.traceback` to its last 500 bytes (`include_traceback: true` keeps it; `task_get` returns it in full), `log_get` returns only the last `tail` lines (default 100), `document_selection_data` omits zero-count objects, `user_list` omits `inherited_permissions` unless `include_permissions: true`, and `profile_get` redacts the API auth token.
 
@@ -121,7 +121,12 @@ PDF rendering happens in-process via [go-pdfium](https://github.com/klippa-app/g
 `search_autocomplete`, `search_global`, `statistics`
 
 ### Bulk Operations
-`document_bulk_edit`, `document_selection_data`, `bulk_edit_objects`
+`document_bulk_edit` (metadata methods and `run_workflow`), `document_selection_data`, `bulk_edit_objects`
+
+### Editing Documents
+`document_rotate`, `document_merge`, `document_edit_pdf` (split, drop, reorder or rotate pages), `document_remove_password`, `document_reprocess`, `document_bulk_delete`
+
+Since v0.4.0 these file operations are their own tools with typed parameters; `document_bulk_edit` no longer accepts `rotate`, `merge`, `split`, `delete_pages`, `edit_pdf`, `remove_password`, `reprocess` or `delete`, and names the replacement tool if asked.
 
 ### Saved Views
 `saved_view_list`, `saved_view_get`, `saved_view_create`, `saved_view_update`, `saved_view_delete`, `saved_view_rule_types`

@@ -23,6 +23,7 @@ func NewServer(client *Client, dl *Downloader) *server.MCPServer {
 	registerCustomFieldTools(srv, client)
 	registerSearchTools(srv, client)
 	registerBulkTools(srv, client)
+	registerDocumentActionTools(srv, client)
 	registerSavedViewTools(srv, client)
 	registerShareLinkTools(srv, client)
 	registerUserTools(srv, client)
@@ -39,7 +40,8 @@ const serverInstructions = `Paperless-ngx MCP server — manage documents and me
 - **Documents**: document_list (search/filter), document_get, document_update, document_delete, document_upload, document_download, document_metadata, document_suggestions, document_next_asn, document_share_links, document_history, document_email
 - **Document Notes**: document_note_list, document_note_add, document_note_delete
 - **Downloads**: document_download (fetch files, inline or disk), cleanup_downloads (remove downloaded files), document_page_image (render a page as a viewable image)
-- **Bulk Operations**: document_bulk_edit, document_selection_data, bulk_edit_objects
+- **Bulk Operations**: document_bulk_edit (metadata), document_selection_data, bulk_edit_objects
+- **Editing Documents**: document_rotate, document_merge, document_edit_pdf, document_remove_password, document_reprocess, document_bulk_delete
 - **Tags**: tag_list, tag_get, tag_create, tag_update, tag_delete
 - **Correspondents**: correspondent_list, correspondent_get, correspondent_create, correspondent_update, correspondent_delete
 - **Document Types**: document_type_list, document_type_get, document_type_create, document_type_update, document_type_delete
@@ -79,7 +81,10 @@ Use custom_field_query parameter with a JSON filter expression on document_list.
 4. For clearing a field, pass null (e.g., correspondent: null removes the correspondent)
 
 ## Bulk Operations
-Use document_bulk_edit for batch operations across multiple documents. Methods: set_correspondent, set_document_type, set_storage_path, add_tag, remove_tag, modify_tags, delete, reprocess, set_permissions, modify_custom_fields, rotate, delete_pages, split, merge, edit_pdf.
+Use document_bulk_edit for metadata changes across multiple documents. Methods: set_correspondent, set_document_type, set_storage_path, add_tag, remove_tag, modify_tags, modify_custom_fields, set_permissions, run_workflow; its description lists each method's parameters.
+
+## Editing Documents
+File operations have their own tools: document_rotate (adds a version), document_merge (a new document from several), document_edit_pdf (split, drop, reorder or rotate pages of one document: operations lists the output pages, and pages left out are dropped), document_remove_password, document_reprocess (re-run OCR) and document_bulk_delete (to the trash; trash_action restore undoes it). Each queues a task, like document_bulk_edit; use wait. edit_pdf and remove_password create new documents unless update_document is set, which adds a version instead. Every one needs change permission on each document; rotate, edit_pdf, remove_password, delete and merge with delete_originals also need ownership (or no owner); creating documents needs add permission and deleting needs delete permission. A 403 says only "Insufficient permissions".
 
 ## Document Downloads
 Use document_download to fetch document files. By default, files are saved to local temp storage and file paths are returned — use cleanup_downloads to remove when done. Set content=true to return file content inline instead (no cleanup needed): image files come back as viewable MCP image content, other types as base64 JSON. Specify variant: archived (default, OCR'd PDF/A), original (as uploaded), or thumbnail. If the server is configured with PAPERLESS_MCP_DOWNLOAD_DIR, disk downloads go there (optionally into a dest_dir subdirectory) with their real filenames, and cleanup_downloads leaves them alone.
@@ -91,8 +96,8 @@ A saved view is a named document filter: filter_rules is a list of {rule_type, v
 Array and object parameters accept a native JSON value or the same value as a JSON-encoded string.
 
 ## Tasks
-Background work (consuming uploads, mail fetch, bulk edits, scheduled jobs) runs as tasks. status is pending, started, success, failure or revoked. task_get takes either the task UUID that document_upload, document_bulk_edit and task_run return, or the integer id from task_list; task_acknowledge takes integer ids (or all: true). task_list filters by status, task_type and trigger_source (arrays: any of the values), and trims result_data.traceback to its last 500 bytes unless include_traceback is set. task_stats gives per-type summaries, status counts, or the currently active tasks.
-document_upload, document_bulk_edit and task_run queue a task and return its id at once, before anything has happened; errors such as missing permissions or a wrong PDF password show up only in the task. Pass wait: true (timeout in seconds, default 60, at most 600) to wait for the task and get its outcome, or call task_wait with the id later. A finished wait returns {task, waited_seconds}; a failed or revoked task is a tool error carrying the task, while a problem with waiting itself comes back as wait_error next to the queued response (don't resend it); if time runs out the task comes back with timed_out: true, and task_wait continues. The MCP host may end a long call before the timeout; task_wait picks it up again. An upload's task is the whole consume. For a bulk edit, metadata methods are done when the bulk task is, while rotate, merge, split, delete_pages, edit_pdf and remove_password run consume_file tasks of their own, reprocess runs reprocess_document tasks, and merge or split with delete_originals, or edit_pdf or remove_password with delete_original (and no update_document), also run bulk_delete once those finish; follow_on in the wait result says how to find them.
+Background work (consuming uploads, mail fetch, bulk edits, scheduled jobs) runs as tasks. status is pending, started, success, failure or revoked. task_get takes either the task UUID that document_upload, document_bulk_edit, the document editing tools and task_run return, or the integer id from task_list; task_acknowledge takes integer ids (or all: true). task_list filters by status, task_type and trigger_source (arrays: any of the values), and trims result_data.traceback to its last 500 bytes unless include_traceback is set. task_stats gives per-type summaries, status counts, or the currently active tasks.
+document_upload, document_bulk_edit, the document editing tools and task_run queue a task and return its id at once, before anything has happened; errors such as missing permissions or a wrong PDF password show up only in the task. Pass wait: true (timeout in seconds, default 60, at most 600) to wait for the task and get its outcome, or call task_wait with the id later. A finished wait returns {task, waited_seconds}; a failed or revoked task is a tool error carrying the task, while a problem with waiting itself comes back as wait_error next to the queued response (don't resend it); if time runs out the task comes back with timed_out: true, and task_wait continues. The MCP host may end a long call before the timeout; task_wait picks it up again. An upload's task is the whole consume. document_bulk_edit's metadata methods and document_bulk_delete are done when their task is, while document_rotate, document_merge, document_edit_pdf and document_remove_password run consume_file tasks of their own, document_reprocess runs reprocess_document tasks, and merge with delete_originals, or edit_pdf or remove_password with delete_original (and no update_document), also run bulk_delete once those succeed; follow_on in the wait result says how to find them.
 
 ## Viewing Documents
 Use document_page_image to actually see a document page — essential when OCR content is missing or garbled (handwriting, bad scans, stamps, diagrams). Render the full page first; if fine detail is illegible, call it again with region=[x0,y0,x1,y1] (fractions of page width/height, 0-1 — NOT pixels; e.g. [0,0,0.5,0.5] is the top-left quarter) to re-render that area at high resolution.
