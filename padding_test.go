@@ -41,7 +41,9 @@ func TestUpdatePaddingAndBadValues(t *testing.T) {
 			}
 		}, "is_superuser must be true or false"},
 		{"tag_get id", func(c *Client) func() *mcp.CallToolResult {
-			return func() *mcp.CallToolResult { return callTool(t, handleGetByID(c, "/api/tags/%d/"), map[string]any{"id": "abc"}) }
+			return func() *mcp.CallToolResult {
+				return callTool(t, handleGetByID(c, "/api/tags/%d/"), map[string]any{"id": "abc"})
+			}
 		}, "id must be a whole number"},
 	} {
 		result := tc.handler(none)()
