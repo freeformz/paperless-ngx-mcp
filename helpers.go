@@ -353,13 +353,21 @@ func setOptionalInt(body map[string]any, args map[string]any, name string) *mcp.
 	if !argIsSet(val) {
 		return nil
 	}
-	n, whole := wholeNumber(val)
+	limit, ok := intParamLimits[name]
+	if !ok {
+		limit = maxWholeNumber
+	}
+	n, whole := wholeNumberUpTo(val, limit)
 	if !whole {
 		return errResult(name + " must be a whole number")
 	}
 	body[name] = n
 	return nil
 }
+
+// intParamLimits holds the fields whose range is wider than maxWholeNumber:
+// paperless-ngx allows archive serial numbers up to 0xFFFFFFFF.
+var intParamLimits = map[string]float64{"archive_serial_number": 0xFFFFFFFF}
 
 // getJSONArg reads a structured (array or object) parameter. Agents may send
 // the value natively or as a JSON-encoded string; both give the same result.

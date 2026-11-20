@@ -124,7 +124,7 @@ func TestDocumentActionValidation(t *testing.T) {
 		{"merge", map[string]any{"documents": []any{float64(1), float64(2)}, "metadata_document_id": "abc"}, "must be a document ID"},
 		{"merge", map[string]any{"documents": []any{float64(1), float64(2)}, "metadata_document_id": 1.5}, "must be a document ID"},
 		{"merge", map[string]any{"documents": []any{float64(1), float64(2)}, "delete_originals": "yes"}, "true or false"},
-		{"reprocess", map[string]any{"documents": []any{float64(1)}, "remote_ocr": float64(1)}, "true or false"},
+		{"reprocess", map[string]any{"documents": []any{float64(1)}, "remote_ocr": float64(2)}, "true or false"},
 		{"edit_pdf", map[string]any{"documents": []any{float64(1)}, "operations": op(map[string]any{"page": "1"})}, "whole number"},
 		{"rotate", map[string]any{"documents": []any{float64(1)}, "degrees": float64(90), "source_mode": "newest"}, "source_mode"},
 		{"merge", map[string]any{"documents": []any{float64(1)}}, "at least 2"},

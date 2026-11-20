@@ -52,7 +52,8 @@ func dropNullArgs(srv *server.MCPServer) server.ToolHandlerMiddleware {
 var freeTextParams = map[string]bool{
 	"body": true, "content": true, "first_name": true, "last_name": true,
 	"match": true, "name": true, "note": true, "password": true, "path": true,
-	"query": true, "subject": true, "term": true, "title": true, "username": true,
+	"query": true, "result": true, "subject": true, "term": true, "title": true,
+	"username": true,
 }
 
 // freeTextParam reports whether a parameter keeps the string "null": it is a
@@ -99,7 +100,7 @@ func argIsSet(v any) bool {
 		return false
 	case string:
 		t := strings.TrimSpace(x)
-		return t != "" && t != "null" && t != "[]" && strings.Trim(t, "{} \t\r\n") != ""
+		return t != "" && t != "null" && t != "[]" && strings.Join(strings.Fields(t), "") != "{}"
 	case []any:
 		return len(x) > 0
 	case map[string]any:
