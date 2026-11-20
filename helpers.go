@@ -293,29 +293,46 @@ func addStringParam(params url.Values, request mcp.CallToolRequest, mcpName, api
 }
 
 // addIntParam adds an integer query parameter if explicitly provided in the
-// request. null (and "null" or "") means not given.
-func addIntParam(params url.Values, request mcp.CallToolRequest, mcpName, apiName string) {
-	if argIsSet(request.GetArguments()[mcpName]) {
-		params.Set(apiName, strconv.Itoa(int(request.GetFloat(mcpName, 0))))
+// request. null (and "null" or "") means not given; a value that isn't a
+// whole number is an error, not a silent 0.
+func addIntParam(params url.Values, request mcp.CallToolRequest, mcpName, apiName string) *mcp.CallToolResult {
+	v := map[string]any{}
+	if errRes := setOptionalInt(v, request.GetArguments(), mcpName); errRes != nil {
+		return errRes
 	}
+	if n, ok := v[mcpName].(int); ok {
+		params.Set(apiName, strconv.Itoa(n))
+	}
+	return nil
 }
 
 // addBoolParam adds a boolean query parameter if explicitly provided in the
-// request. null (and "null" or "") means not given.
-func addBoolParam(params url.Values, request mcp.CallToolRequest, mcpName, apiName string) {
-	if argIsSet(request.GetArguments()[mcpName]) {
-		params.Set(apiName, strconv.FormatBool(request.GetBool(mcpName, false)))
+// request. null (and "null" or "") means not given; a value that isn't a
+// boolean is an error, not a silent false.
+func addBoolParam(params url.Values, request mcp.CallToolRequest, mcpName, apiName string) *mcp.CallToolResult {
+	v := map[string]any{}
+	if errRes := setOptionalBool(v, request, mcpName); errRes != nil {
+		return errRes
 	}
+	if b, ok := v[mcpName].(bool); ok {
+		params.Set(apiName, strconv.FormatBool(b))
+	}
+	return nil
 }
 
 // getRequiredInt extracts a required integer parameter from the request.
 // Returns the value and nil on success, or 0 and an error result if missing.
 func getRequiredInt(request mcp.CallToolRequest, name string) (int, *mcp.CallToolResult) {
 	args := request.GetArguments()
-	if _, ok := args[name]; !ok {
+	v, ok := args[name]
+	if !ok || !argIsSet(v) {
 		return 0, errResult(name + " is required")
 	}
-	return int(request.GetFloat(name, 0)), nil
+	n, whole := wholeNumber(v)
+	if !whole {
+		return 0, errResult(name + " must be a whole number")
+	}
+	return n, nil
 }
 
 // getRequiredString extracts a required string parameter from the request.
@@ -336,13 +353,21 @@ func setOptionalInt(body map[string]any, args map[string]any, name string) *mcp.
 	if !argIsSet(val) {
 		return nil
 	}
-	n, whole := wholeNumber(val)
+	limit, ok := intParamLimits[name]
+	if !ok {
+		limit = maxWholeNumber
+	}
+	n, whole := wholeNumberUpTo(val, limit)
 	if !whole {
 		return errResult(name + " must be a whole number")
 	}
 	body[name] = n
 	return nil
 }
+
+// intParamLimits holds the fields whose range is wider than maxWholeNumber:
+// paperless-ngx allows archive serial numbers up to 0xFFFFFFFF.
+var intParamLimits = map[string]float64{"archive_serial_number": 0xFFFFFFFF}
 
 // getJSONArg reads a structured (array or object) parameter. Agents may send
 // the value natively or as a JSON-encoded string; both give the same result.

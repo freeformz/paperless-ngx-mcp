@@ -87,11 +87,11 @@ func handleDocumentTypeCreate(client *Client) server.ToolHandlerFunc {
 		if v := request.GetString("match", ""); v != "" {
 			body["match"] = v
 		}
-		if _, ok := args["matching_algorithm"]; ok {
-			body["matching_algorithm"] = int(request.GetFloat("matching_algorithm", 0))
+		if errRes := setOptionalInt(body, args, "matching_algorithm"); errRes != nil {
+			return errRes, nil
 		}
-		if _, ok := args["is_insensitive"]; ok {
-			body["is_insensitive"] = request.GetBool("is_insensitive", false)
+		if errRes := setOptionalBool(body, request, "is_insensitive"); errRes != nil {
+			return errRes, nil
 		}
 
 		path := "/api/document_types/"
@@ -116,11 +116,11 @@ func handleDocumentTypeUpdate(client *Client) server.ToolHandlerFunc {
 		if v := request.GetString("match", ""); v != "" {
 			body["match"] = v
 		}
-		if _, ok := args["matching_algorithm"]; ok {
-			body["matching_algorithm"] = int(request.GetFloat("matching_algorithm", 0))
+		if errRes := setOptionalInt(body, args, "matching_algorithm"); errRes != nil {
+			return errRes, nil
 		}
-		if _, ok := args["is_insensitive"]; ok {
-			body["is_insensitive"] = request.GetBool("is_insensitive", false)
+		if errRes := setOptionalBool(body, request, "is_insensitive"); errRes != nil {
+			return errRes, nil
 		}
 
 		if len(body) == 0 {

@@ -76,8 +76,12 @@ func addTaskFilters(params url.Values, request mcp.CallToolRequest, withStatus b
 	if errRes := addMultiParam(params, request, "trigger_source", taskTriggerSources); errRes != nil {
 		return errRes
 	}
-	addBoolParam(params, request, "acknowledged", "acknowledged")
-	addIntParam(params, request, "owner", "owner")
+	if errRes := addBoolParam(params, request, "acknowledged", "acknowledged"); errRes != nil {
+		return errRes
+	}
+	if errRes := addIntParam(params, request, "owner", "owner"); errRes != nil {
+		return errRes
+	}
 	for _, name := range []string{"name", "result", "date_created_after", "date_created_before"} {
 		addStringParam(params, request, name, name)
 	}
@@ -85,7 +89,9 @@ func addTaskFilters(params url.Values, request mcp.CallToolRequest, withStatus b
 		if errRes := addMultiParam(params, request, "status", taskStatuses); errRes != nil {
 			return errRes
 		}
-		addBoolParam(params, request, "is_complete", "is_complete")
+		if errRes := addBoolParam(params, request, "is_complete", "is_complete"); errRes != nil {
+			return errRes
+		}
 	}
 	return nil
 }

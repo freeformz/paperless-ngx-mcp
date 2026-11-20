@@ -471,10 +471,10 @@ func TestMiddlewareSelectionAndEnums(t *testing.T) {
 	if want := map[string]any{"all": true, "filters": map[string]any{}}; !reflect.DeepEqual(*got, want) {
 		t.Errorf("body = %v, want %v", *got, want)
 	}
-	// "null" for an enum string param is kept as text, then rejected.
+	// "null" for an enum string param means not given.
 	result := callThroughMiddleware(t, testClientAndServer(t, newRouteHandler(t)), "trash_action", map[string]any{"action": "null", "documents": []any{float64(1)}})
 	assertIsError(t, result)
-	if !strings.Contains(resultText(t, result), "action must be one of") {
+	if !strings.Contains(resultText(t, result), "action is required") {
 		t.Errorf("error = %s", resultText(t, result))
 	}
 	// clear given as null or "null" is a no-op.

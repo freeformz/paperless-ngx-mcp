@@ -289,6 +289,13 @@ func setOptionalBool(body map[string]any, request mcp.CallToolRequest, name stri
 	case nil:
 	case bool:
 		body[name] = v
+	case float64, int, int64:
+		// 1 and 0, as some clients send booleans that way.
+		n, whole := wholeNumber(v)
+		if !whole || (n != 0 && n != 1) {
+			return errResult(name + " must be true or false")
+		}
+		body[name] = n == 1
 	case string:
 		if v == "" || v == "null" {
 			return nil
@@ -333,10 +340,20 @@ const maxWholeNumber = 1 << 31
 // wholeNumber reports whether v is a JSON number with no fractional part,
 // within ±maxWholeNumber. A numeric string such as "90" is accepted too.
 func wholeNumber(v any) (int, bool) {
+	return wholeNumberUpTo(v, maxWholeNumber)
+}
+
+// wholeNumberUpTo is wholeNumber with its own bound, for fields whose range
+// is wider than maxWholeNumber.
+func wholeNumberUpTo(v any, limit float64) (int, bool) {
 	var f float64
 	switch x := v.(type) {
 	case float64:
 		f = x
+	case int:
+		f = float64(x)
+	case int64:
+		f = float64(x)
 	case string:
 		p, err := strconv.ParseFloat(x, 64)
 		if err != nil {
@@ -346,7 +363,7 @@ func wholeNumber(v any) (int, bool) {
 	default:
 		return 0, false
 	}
-	if f != math.Trunc(f) || math.Abs(f) > maxWholeNumber {
+	if f != math.Trunc(f) || math.Abs(f) > limit {
 		return 0, false
 	}
 	return int(f), true

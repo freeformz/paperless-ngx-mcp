@@ -74,14 +74,17 @@ func handleShareLinkCreate(client *Client) server.ToolHandlerFunc {
 		}
 
 		body := map[string]any{"document": docID}
-		args := request.GetArguments()
 
 		if v := request.GetString("expiration", ""); v != "" {
 			body["expiration"] = v
 		}
-		if _, ok := args["file_version_archive"]; ok {
+		archive := map[string]any{}
+		if errRes := setOptionalBool(archive, request, "file_version_archive"); errRes != nil {
+			return errRes, nil
+		}
+		if v, ok := archive["file_version_archive"].(bool); ok {
 			body["file_version"] = "archive"
-			if !request.GetBool("file_version_archive", true) {
+			if !v {
 				body["file_version"] = "original"
 			}
 		}
