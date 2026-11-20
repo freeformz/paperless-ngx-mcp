@@ -182,7 +182,7 @@ func setObjectSelection(body map[string]any, request mcp.CallToolRequest, object
 		return errRes
 	}
 	if !all {
-		if present {
+		if present && len(filters) > 0 {
 			return errResult("filters needs all: true; to act on specific objects, list them in objects")
 		}
 		if len(objects) == 0 {

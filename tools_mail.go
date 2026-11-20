@@ -38,7 +38,7 @@ func registerMailTools(srv *server.MCPServer, client *Client) {
 	), handleMailAccountCreate(client))
 
 	srv.AddTool(mcp.NewTool("mail_account_update",
-		mcp.WithDescription("Update a mail account.; only the fields given change, and "+nullsIgnoredHint+"."),
+		mcp.WithDescription("Update a mail account; only the fields given change, and "+nullsIgnoredHint+"."),
 		withNumber("id", mcp.Description("Mail account ID"), mcp.Required()),
 		mcp.WithString("name", mcp.Description("Account name")),
 		mcp.WithString("imap_server", mcp.Description("IMAP server hostname")),

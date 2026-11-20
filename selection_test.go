@@ -84,6 +84,7 @@ func TestSelectionRejectsWideningInput(t *testing.T) {
 		"separator-only title":   {"all": true, "filters": map[string]any{"title": "\x1f"}},
 		"NUL in content":         {"all": true, "filters": map[string]any{"content": "a\x00b"}},
 		"star query":             {"all": true, "filters": map[string]any{"query": " * "}},
+		"wildcards query":        {"all": true, "filters": map[string]any{"query": "** ?"}},
 		"long query":             {"all": true, "filters": map[string]any{"query": strings.Repeat("a", maxQueryLen+1)}},
 		"query and more_like_id": {"all": true, "filters": map[string]any{"query": "x", "more_like_id": float64(3)}},
 		"null filter value":      {"all": true, "filters": map[string]any{"query": nil}},
@@ -437,5 +438,55 @@ func TestMiddlewareIsWiredIn(t *testing.T) {
 	}
 	if want := map[string]any{"title": "T"}; !reflect.DeepEqual(*got, want) {
 		t.Errorf("body = %v, want %v (content: null must not wipe the content)", *got, want)
+	}
+}
+
+func TestSelectionEdgeCases(t *testing.T) {
+	// A long non-ASCII query is measured in characters, like the server does.
+	client, got := captureJSONBody(t, "POST", "/api/documents/selection_data/")
+	q := strings.Repeat("é", 2100)
+	assertNotError(t, callTool(t, handleDocumentSelectionData(client), map[string]any{"all": true, "filters": map[string]any{"query": q}}))
+	if (*got)["filters"].(map[string]any)["query"] != q {
+		t.Errorf("query not sent")
+	}
+	// An empty filters object padding an explicit selection is not an error.
+	client, got = captureJSONBody(t, "POST", "/api/documents/selection_data/")
+	assertNotError(t, callTool(t, handleDocumentSelectionData(client), map[string]any{"documents": []any{float64(1)}, "filters": "{}", "excluded_documents": []any{}}))
+	if want := map[string]any{"documents": []any{float64(1)}}; !reflect.DeepEqual(*got, want) {
+		t.Errorf("body = %v, want %v", *got, want)
+	}
+	client, got = captureJSONBody(t, "POST", "/api/bulk_edit_objects/")
+	assertNotError(t, callTool(t, handleBulkEditObjects(client), map[string]any{"object_type": "tags", "operation": "delete", "objects": []any{float64(1)}, "filters": map[string]any{}}))
+	if _, ok := (*got)["filters"]; ok {
+		t.Errorf("body = %v, want no filters", *got)
+	}
+}
+
+func TestMiddlewareSelectionAndEnums(t *testing.T) {
+	// all: true with every other selection param padded with null.
+	client, got := captureJSONBody(t, "POST", "/api/documents/delete/")
+	srv := NewServer(client, nil)
+	msg := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"document_bulk_delete","arguments":{"all":true,"documents":null,"filters":null,"excluded_documents":"null","wait":null,"timeout":null}}}`
+	srv.HandleMessage(context.Background(), json.RawMessage(msg))
+	if want := map[string]any{"all": true, "filters": map[string]any{}}; !reflect.DeepEqual(*got, want) {
+		t.Errorf("body = %v, want %v", *got, want)
+	}
+	// "null" for an enum string param is kept as text, then rejected.
+	result := callThroughMiddleware(t, testClientAndServer(t, newRouteHandler(t)), "trash_action", map[string]any{"action": "null", "documents": []any{float64(1)}})
+	assertIsError(t, result)
+	if !strings.Contains(resultText(t, result), "action must be one of") {
+		t.Errorf("error = %s", resultText(t, result))
+	}
+	// clear given as null or "null" is a no-op.
+	for _, c := range []any{nil, "null"} {
+		client, got := captureJSONBody(t, "PATCH", "/api/tags/1/")
+		assertNotError(t, callThroughMiddleware(t, client, "tag_update", map[string]any{"id": float64(1), "name": "n", "clear": c}))
+		if want := map[string]any{"name": "n"}; !reflect.DeepEqual(*got, want) {
+			t.Errorf("clear %v: body = %v, want %v", c, *got, want)
+		}
+	}
+	// document_list lenient mode still rejects a bad date and a fractional id.
+	for _, args := range []map[string]any{{"created_after": "2024-02-30"}, {"correspondent_id": 1.5}} {
+		assertIsError(t, callThroughMiddleware(t, testClientAndServer(t, newRouteHandler(t)), "document_list", args))
 	}
 }

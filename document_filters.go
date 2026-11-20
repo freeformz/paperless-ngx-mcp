@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -176,9 +177,9 @@ func filterValueText(p filterParam, v any, strict bool) (text string, ok bool, e
 			return bad("non-blank text (blank text is ignored upstream, which would select everything)")
 		case strings.ContainsRune(s, 0):
 			return bad("text without NUL characters")
-		case p.name == "query" && trimmed == "*":
-			return bad("a real search query; \"*\" matches everything, so leave query out to mean every document")
-		case p.name == "query" && len(s) > maxQueryLen:
+		case p.name == "query" && strings.Trim(trimmed, "*? \t") == "":
+			return bad("a real search query; wildcards alone match everything, so leave query out to mean every document")
+		case p.name == "query" && utf8.RuneCountInString(s) > maxQueryLen:
 			return bad(fmt.Sprintf("at most %d characters", maxQueryLen))
 		}
 		return s, true, nil

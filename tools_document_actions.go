@@ -78,7 +78,8 @@ func getDocumentSelection(request mcp.CallToolRequest) (map[string]any, []int, *
 		return nil, nil, errRes
 	}
 	if !all {
-		if _, present, errRes := parseSelectionFilters(request, documentFilterParams, "document"); errRes != nil || present {
+		// An empty filters object (as some clients pad unused params) is not a selection.
+		if raw, present, errRes := parseSelectionFilters(request, documentFilterParams, "document"); errRes != nil || (present && len(raw) > 0) {
 			if errRes == nil {
 				errRes = errResult("filters needs all: true; to act on specific documents, list them in documents")
 			}

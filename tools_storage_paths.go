@@ -44,7 +44,7 @@ func registerStoragePathTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("storage_path_update",
-			mcp.WithDescription("Update a storage path.; only the fields given change, and "+nullsIgnoredHint+"."),
+			mcp.WithDescription("Update a storage path; only the fields given change, and "+nullsIgnoredHint+"."),
 			withNumber("id", mcp.Description("Storage path ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Storage path name")),
 			mcp.WithString("path", mcp.Description("Path template")),

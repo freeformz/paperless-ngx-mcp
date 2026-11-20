@@ -294,7 +294,7 @@ Both take a selection: `documents`, or `all: true` with `filters` and `excluded_
 
 #### Editing Documents
 
-Dedicated endpoints for operations that change a document's file (paperless-ngx 3.0+). Each queues a bulk task and returns `{result, task_id}`; the work runs, and permissions are checked again, inside that task. All take `documents` (a non-empty array of distinct ids) plus `wait` / `timeout`; `document_rotate`, `document_reprocess` and `document_bulk_delete` also take an `all: true` selection (see Selecting Documents by Filter), while merge, edit_pdf and remove_password refuse `all`, `filters` and `excluded_documents`. All and never send `from_webui`. `source_mode` is `latest_version` (default: a root id resolves to its latest version) or `explicit_selection`.
+Dedicated endpoints for operations that change a document's file (paperless-ngx 3.0+). Each queues a bulk task and returns `{result, task_id}`; the work runs, and permissions are checked again, inside that task. They take `documents` (a non-empty array of distinct ids) plus `wait` / `timeout`, and never send `from_webui`; `document_rotate`, `document_reprocess` and `document_bulk_delete` can take an `all: true` selection instead (see Selecting Documents by Filter), while merge, edit_pdf and remove_password refuse `all`, `filters` and `excluded_documents`. `source_mode` is `latest_version` (default: a root id resolves to its latest version) or `explicit_selection`.
 
 | Tool | Endpoint | Parameters | Notes |
 |------|----------|------------|-------|
@@ -627,7 +627,7 @@ Since paperless-ngx 3.5.0 the document bulk and action endpoints queue a task an
 `document_bulk_edit`, `document_selection_data`, `document_rotate`, `document_reprocess` and `document_bulk_delete` take either `documents` (explicit ids) or `all: true` with an optional `filters` object and `excluded_documents`. Upstream, `all: true` selects every root document the user can view that matches the filters (resolved when the request arrives; versions never included). paperless-ngx ignores unknown filter keys and any value it can't parse, so a typo would select every document; the MCP therefore:
 
 - takes `document_list`'s filter names (one shared table maps them to the raw query names) and rejects unknown names;
-- rejects values upstream would drop: blank text (after Python-style stripping), text with NUL, impossible dates (`2024-02-30`, year 0), tag lists with empty items or non-integers, booleans other than `true`/`false`, `null` values inside `filters`, `query` `*` or over 4096 characters, and `query` with `more_like_id`;
+- rejects values upstream would drop: blank text (after Python-style stripping), text with NUL, impossible dates (`2024-02-30`, year 0), tag lists with empty items or non-integers, booleans other than `true`/`false`, `null` values inside `filters`, a `query` of only wildcards (`*`, `?`) or over 4096 characters, and `query` with `more_like_id`;
 - sends every value as a string (ints in decimal, booleans as `"true"`/`"false"`, tag lists as `"1,2"`, `custom_field_query` as JSON text), since the server's filters only match strings (a JSON `true` for `is_in_inbox` is ignored);
 - rejects `all: true` with `documents`, and `filters` or `excluded_documents` without `all: true`. `all` must be a boolean (`1` or `"t"` are errors).
 
@@ -643,7 +643,7 @@ Clearing a field takes an explicit `clear` array naming it: `document_update` (`
 
 ## Response Shaping
 
-Paperless-ngx API responses can be far too large for MCP clients (full OCR text per list result, unbounded ID arrays, long task tracebacks). The server reshapes responses to keep tool output compact:
+Paperless-ngx API responses can be far too large for MCP clients (full OCR text per list result, long task tracebacks). The server reshapes responses to keep tool output compact:
 
 - **Content truncation**: `document_list` truncates each document's `content` to a snippet (default 500 bytes, adjustable per call with `content_snippet_bytes`; `0` disables truncation), marking truncated entries with `content_truncated: true`. Opt out per-call with `full_content: true`, or use `document_get` for one document's full text.
 - **Notes stripped**: `document_list` replaces each document's unbounded `notes` array with a `notes_count` field (omitted when zero). Opt out per-call with `include_notes: true`, or use `document_note_list`/`document_get` for one document's full notes.
