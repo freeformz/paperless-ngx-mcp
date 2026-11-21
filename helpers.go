@@ -240,8 +240,8 @@ func stripNotesFields(items any) {
 // value must be in allowed; otherwise an error result is returned and no
 // parameter is added.
 func addMultiParam(params url.Values, request mcp.CallToolRequest, name string, allowed []string) *mcp.CallToolResult {
-	raw, ok := request.GetArguments()[name]
-	if !ok || raw == nil {
+	raw := request.GetArguments()[name]
+	if !argIsSet(raw) {
 		return nil
 	}
 	var vals []string
@@ -288,10 +288,11 @@ func addPaginationParams(params url.Values, request mcp.CallToolRequest) *mcp.Ca
 		if errRes != nil {
 			return errRes
 		}
-		if !given {
+		// 0 is not given, as some clients pad numbers with it.
+		if !given || n == 0 {
 			continue
 		}
-		if n < 1 {
+		if n < 0 {
 			return errResult(name + " must be at least 1")
 		}
 		params.Set(name, strconv.Itoa(n))

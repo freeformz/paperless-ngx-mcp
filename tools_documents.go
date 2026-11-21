@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -220,7 +221,7 @@ func handleDocumentUpdate(client *Client) server.ToolHandlerFunc {
 			body["title"] = v
 		}
 		// "" is not given (some clients pad with it); clear: ["content"] empties it.
-		if v := request.GetString("content", ""); v != "" {
+		if v := request.GetString("content", ""); strings.TrimSpace(v) != "" {
 			body["content"] = v
 		}
 		if v := request.GetString("created", ""); v != "" {

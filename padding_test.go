@@ -209,7 +209,7 @@ func TestOptionalIntsInBodies(t *testing.T) {
 	if (*got)["archive_serial_number"] != float64(3000000000) {
 		t.Errorf("archive_serial_number = %v", (*got)["archive_serial_number"])
 	}
-	assertErrorContains(t, callTool(t, handleDocumentUpdate(client), map[string]any{"id": float64(1), "title": "t", "archive_serial_number": float64(0x100000000)}), "archive_serial_number must be from -4294967295 to 4294967295")
+	assertErrorContains(t, callTool(t, handleDocumentUpdate(client), map[string]any{"id": float64(1), "title": "t", "archive_serial_number": float64(0x100000000)}), "archive_serial_number must be at most 4294967295")
 	assertErrorContains(t, callTool(t, handleDocumentUpdate(client), map[string]any{"id": float64(1), "title": "t", "archive_serial_number": 1.5}), "archive_serial_number must be a whole number")
 }
 
@@ -324,7 +324,12 @@ func TestPaddedListFilters(t *testing.T) {
 		}
 	}
 	assertErrorContains(t, callTool(t, handleTagList(client), map[string]any{"page": "abc"}), "page must be a whole number")
-	assertErrorContains(t, callTool(t, handleTagList(client), map[string]any{"page_size": float64(0)}), "page_size must be at least 1")
+	assertErrorContains(t, callTool(t, handleTagList(client), map[string]any{"page_size": float64(-1)}), "page_size must be at least 1")
+	// 0 is padding.
+	assertNotError(t, callTool(t, handleTagList(client), map[string]any{"page": float64(0), "page_size": float64(0)}))
+	if len(*got) != 0 {
+		t.Errorf("page 0: query = %v", *got)
+	}
 
 	tc, tq := captureQuery(t, "/api/tasks/", `{"count":0,"results":[]}`)
 	assertNotError(t, callTool(t, handleTaskList(tc), map[string]any{"owner": map[string]any{}, "acknowledged": map[string]any{}, "is_complete": "[]"}))
@@ -365,4 +370,72 @@ func TestOptionalObjectPadding(t *testing.T) {
 	if v, ok := (*got)["display_fields"]; !ok || v != nil {
 		t.Errorf("body = %v, want display_fields: null", *got)
 	}
+}
+
+// all ignores padding but stays strict about real values.
+func TestStrictAllPadding(t *testing.T) {
+	client := testClientAndServer(t, newRouteHandler(t))
+	for _, v := range []any{map[string]any{}, []any{}, "  ", " null "} {
+		assertErrorContains(t, callTool(t, handleDocumentSelectionData(client), map[string]any{"all": v}), "documents is required")
+		assertErrorContains(t, callTool(t, handleTaskAcknowledge(client), map[string]any{"all": v}), "Either all must be true or tasks must be provided")
+	}
+	for _, v := range []any{float64(0), float64(1), "1", "t"} {
+		assertErrorContains(t, callTool(t, handleTaskAcknowledge(client), map[string]any{"all": v}), "all must be true or false")
+	}
+	ac, got := captureJSONBody(t, "POST", "/api/tasks/acknowledge/")
+	assertNotError(t, callTool(t, handleTaskAcknowledge(ac), map[string]any{"all": "True"}))
+	if want := map[string]any{"all": true}; !reflect.DeepEqual(*got, want) {
+		t.Errorf("body = %v, want %v", *got, want)
+	}
+}
+
+func TestEnumArrayFilterPadding(t *testing.T) {
+	client, got := captureQuery(t, "/api/tasks/", `{"count":0,"results":[]}`)
+	for _, v := range []any{"  ", " null ", map[string]any{}, "[]", []any{}} {
+		assertNotError(t, callTool(t, handleTaskList(client), map[string]any{"status": v, "task_type": v, "trigger_source": v}))
+		if len(*got) != 0 {
+			t.Errorf("status %q: query = %v", v, *got)
+		}
+	}
+}
+
+// Search text keeps "null" through the middleware; a padded " null " elsewhere is dropped.
+func TestSearchTextKeepsNull(t *testing.T) {
+	for _, tc := range []struct {
+		tool, path, param, query string
+		args                     map[string]any
+	}{
+		{"search_global", "/api/search/", "query", "query", map[string]any{"query": "null"}},
+		{"search_autocomplete", "/api/search/autocomplete/", "term", "term", map[string]any{"term": "null"}},
+		{"document_list", "/api/documents/", "title", "title__icontains", map[string]any{"title": "null"}},
+		{"document_list", "/api/documents/", "content", "content__icontains", map[string]any{"content": "null"}},
+		{"task_stats", "/api/tasks/status_counts/", "name", "name", map[string]any{"mode": "status_counts", "name": "null"}},
+	} {
+		client, got := captureQuery(t, tc.path, `{"count":0,"results":[]}`)
+		assertNotError(t, callThroughMiddleware(t, client, tc.tool, tc.args))
+		if got.Get(tc.query) != "null" {
+			t.Errorf("%s %s: query = %v, want %s=null", tc.tool, tc.param, *got, tc.query)
+		}
+	}
+	client, got := captureJSONBody(t, "PATCH", "/api/documents/1/")
+	assertNotError(t, callThroughMiddleware(t, client, "document_update", map[string]any{"id": float64(1), "title": " null ", "correspondent": float64(2)}))
+	if want := map[string]any{"correspondent": float64(2)}; !reflect.DeepEqual(*got, want) {
+		t.Errorf("body = %v, want %v", *got, want)
+	}
+}
+
+func TestDocumentUpdateListsAndContent(t *testing.T) {
+	// tags: [] is a real empty list: it removes every tag.
+	client, got := captureJSONBody(t, "PATCH", "/api/documents/1/")
+	assertNotError(t, callTool(t, handleDocumentUpdate(client), map[string]any{"id": float64(1), "tags": []any{}}))
+	if want := map[string]any{"tags": []any{}}; !reflect.DeepEqual(*got, want) {
+		t.Errorf("body = %v, want %v", *got, want)
+	}
+	// Whitespace content is not given, so it doesn't conflict with clear.
+	client, got = captureJSONBody(t, "PATCH", "/api/documents/1/")
+	assertNotError(t, callTool(t, handleDocumentUpdate(client), map[string]any{"id": float64(1), "content": "  ", "clear": []any{"content"}}))
+	if want := map[string]any{"content": ""}; !reflect.DeepEqual(*got, want) {
+		t.Errorf("body = %v, want %v", *got, want)
+	}
+	assertErrorContains(t, callTool(t, handleDocumentUpdate(client), map[string]any{"id": float64(1), "content": "  "}), "no fields to update")
 }

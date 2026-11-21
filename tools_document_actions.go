@@ -51,19 +51,18 @@ func documentSelectionOptions() []mcp.ToolOption {
 // getStrictBool reads an optional boolean: true, false, or the strings "true"
 // and "false". Anything else is an error, not a guess.
 func getStrictBool(request mcp.CallToolRequest, name string) (value, present bool, errRes *mcp.CallToolResult) {
-	switch v := request.GetArguments()[name].(type) {
-	case nil:
+	if !argIsSet(request.GetArguments()[name]) {
 		return false, false, nil
+	}
+	switch v := request.GetArguments()[name].(type) {
 	case bool:
 		return v, true, nil
 	case string:
-		switch v {
+		switch strings.ToLower(strings.TrimSpace(v)) {
 		case "true":
 			return true, true, nil
 		case "false":
 			return false, true, nil
-		case "", "null":
-			return false, false, nil
 		}
 	}
 	return false, true, errResult(name + " must be true or false")
@@ -346,8 +345,11 @@ func wholeNumber(v any) (int, bool) {
 // wholeNumberError is the error text for a value wholeNumberUpTo rejected:
 // it names the limit when the value is a whole number that is only too big.
 func wholeNumberError(name string, v any, limit float64) string {
-	if _, whole := wholeNumberUpTo(v, math.MaxFloat64); whole {
-		return fmt.Sprintf("%s must be from -%d to %d", name, int64(limit), int64(limit))
+	if n, whole := wholeNumberUpTo(v, math.MaxFloat64); whole {
+		if n < 0 {
+			return fmt.Sprintf("%s must be at least -%d", name, int64(limit))
+		}
+		return fmt.Sprintf("%s must be at most %d", name, int64(limit))
 	}
 	return name + " must be a whole number"
 }

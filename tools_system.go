@@ -396,11 +396,8 @@ func handleLogGet(client *Client) server.ToolHandlerFunc {
 		if errRes != nil {
 			return errRes, nil
 		}
-		if !given {
+		if !given || tail < 1 {
 			tail = 100
-		}
-		if tail < 1 {
-			return errResult("tail must be at least 1"), nil
 		}
 		path := fmt.Sprintf("/api/logs/%s/", id)
 		resp, err := client.Get(ctx, path, nil)

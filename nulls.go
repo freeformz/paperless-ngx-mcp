@@ -34,7 +34,7 @@ func dropNullArgs(srv *server.MCPServer) server.ToolHandlerMiddleware {
 			}
 			clean := make(map[string]any, len(args))
 			for k, v := range args {
-				if v == nil || (v == "null" && !keepNullText(request.Params.Name, k, props[k], required)) {
+				if v == nil || (isNullText(v) && !keepNullText(request.Params.Name, k, props[k], required)) {
 					continue
 				}
 				clean[k] = v
@@ -46,6 +46,12 @@ func dropNullArgs(srv *server.MCPServer) server.ToolHandlerMiddleware {
 			return next(ctx, request)
 		}
 	}
+}
+
+// isNullText reports whether v is the string "null", whitespace aside.
+func isNullText(v any) bool {
+	s, ok := v.(string)
+	return ok && strings.TrimSpace(s) == "null"
 }
 
 // freeTextParams names the string parameters that hold free text: a title, a
