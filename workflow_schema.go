@@ -740,12 +740,11 @@ func (ws *workflowSchemas) normalizeValue(key string, v any, schema map[string]a
 func (ws *workflowSchemas) normalizeNamed(kind string, v any) any {
 	switch x := v.(type) {
 	case string:
-		key := strings.ToLower(strings.TrimSpace(x))
-		key = strings.NewReplacer(" ", "_", "-", "_").Replace(key)
-		if n, ok := ws.names[kind][key]; ok {
+		// A numeric string is a number, so "-1" isn't read as the name "_1".
+		if n, err := strconv.Atoi(strings.TrimSpace(x)); err == nil {
 			return n
 		}
-		if n, err := strconv.Atoi(key); err == nil {
+		if n, ok := ws.names[kind][choiceKey(x)]; ok {
 			return n
 		}
 	case float64:
