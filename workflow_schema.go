@@ -408,7 +408,6 @@ func workflowToolSchema(def string) mcp.ToolInputSchema {
 				// The item schema is advertised once, on workflow_create; the
 				// description points there and CUE still checks every field.
 				m["items"] = map[string]any{"type": "object"}
-				continue
 			}
 			trimNestedDescriptions(m)
 		}
@@ -450,8 +449,7 @@ func trimNestedDescriptions(node map[string]any) {
 		}
 	}
 	if items, ok := node["items"].(map[string]any); ok {
-		// items carry no description of their own; recurse into them.
-		trimNestedDescriptions(items)
+		visit(items)
 	}
 }
 

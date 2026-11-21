@@ -52,7 +52,7 @@ clearable: {
 #TriggerFields: {
 	// Trigger type: 1 consumption (needs filter_filename, filter_path or filter_mailrule in every call), 2 document_added, 3 document_updated, 4 scheduled, 5 manual (run with workflow_run)
 	type?: #TriggerType
-	// Array of document sources (types 1-3): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui. [] means any; a new trigger without sources gets 1, 2 and 3
+	// Array of document sources (consumption, added and updated triggers): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui. [] means any; a new trigger without sources gets 1, 2 and 3
 	sources?: [...#Source]
 	// Path filter (wildcards *, case-insensitive)
 	filter_path?: #Text256 | null
@@ -66,25 +66,25 @@ clearable: {
 	matching_algorithm?: #Matching
 	// Case-insensitive matching (default true)
 	is_insensitive?: bool
-	// Array of tag IDs: any of them
+	// Array of tag IDs: the document has any
 	filter_has_tags?: [...#ID]
-	// Array of tag IDs: all of them
+	// Array of tag IDs: the document has all
 	filter_has_all_tags?: [...#ID]
-	// Array of tag IDs: none of them
+	// Array of tag IDs: the document has none
 	filter_has_not_tags?: [...#ID]
 	// Array of custom field query terms, e.g. ["field_name", "exact", "value"] (custom_field_query syntax)
 	filter_custom_field_query?: string | null
-	// Array of correspondent IDs: any of them
+	// Array of correspondent IDs: the document has one
 	filter_has_any_correspondents?: [...#ID]
-	// Array of correspondent IDs: none of them
+	// Array of correspondent IDs: the document has none
 	filter_has_not_correspondents?: [...#ID]
-	// Array of document type IDs: any of them
+	// Array of document type IDs: the document has one
 	filter_has_any_document_types?: [...#ID]
-	// Array of document type IDs: none of them
+	// Array of document type IDs: the document has none
 	filter_has_not_document_types?: [...#ID]
-	// Array of storage path IDs: any of them
+	// Array of storage path IDs: the document has one
 	filter_has_any_storage_paths?: [...#ID]
-	// Array of storage path IDs: none of them
+	// Array of storage path IDs: the document has none
 	filter_has_not_storage_paths?: [...#ID]
 	// Correspondent ID the document must have
 	filter_has_correspondent?: #ID | null
@@ -166,18 +166,22 @@ clearable: {
 	remove_all_tags?: bool
 	// Array of tag IDs to remove
 	remove_tags?: [...#ID]
+	// Remove the correspondent
 	remove_all_correspondents?: bool
 	// Array of correspondent IDs to remove
 	remove_correspondents?: [...#ID]
+	// Remove the document type
 	remove_all_document_types?: bool
 	// Array of document type IDs to remove
 	remove_document_types?: [...#ID]
+	// Remove the storage path
 	remove_all_storage_paths?: bool
 	// Array of storage path IDs to remove
 	remove_storage_paths?: [...#ID]
 	// Array of custom field IDs to remove
 	remove_custom_fields?: [...#ID]
 	remove_all_custom_fields?: bool
+	// Remove the owner
 	remove_all_owners?: bool
 	// Array of user IDs to remove as owner
 	remove_owners?: [...#ID]

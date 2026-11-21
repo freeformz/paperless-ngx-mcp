@@ -104,10 +104,24 @@ func TestWorkflowToolSchemasShape(t *testing.T) {
 			t.Errorf("workflow_update %s description doesn't point to workflow_create", p)
 		}
 	}
-	// Below the top level, descriptions drop the "Array of" prefix.
-	nested, _ := json.Marshal(create["items"])
-	if strings.Contains(string(nested), "Array of") || strings.Contains(string(nested), "Object with") {
-		t.Errorf("nested descriptions keep the Array of/Object with prefix")
+	// Below the top level, descriptions drop the "Array of"/"Object with"
+	// prefix; top-level arrays and objects keep it, since it tells clients
+	// they also take JSON text.
+	for _, name := range typedWorkflowTools {
+		for prop, raw := range srv.GetTool(name).Tool.InputSchema.Properties {
+			m := raw.(map[string]any)
+			desc, _ := m["description"].(string)
+			types, _ := m["type"].([]string)
+			if (slices.Contains(types, "array") && !strings.HasPrefix(desc, "Array of")) || (slices.Contains(types, "object") && !strings.HasPrefix(desc, "Object with")) {
+				t.Errorf("%s.%s: top-level description %q lacks its Array of/Object with prefix", name, prop, desc)
+			}
+			for _, child := range []any{m["items"], m["properties"]} {
+				nested, _ := json.Marshal(child)
+				if strings.Contains(string(nested), "Array of") || strings.Contains(string(nested), "Object with") {
+					t.Errorf("%s.%s: nested descriptions keep the Array of/Object with prefix", name, prop)
+				}
+			}
+		}
 	}
 	trigType, _ := json.Marshal(trig)
 	if !strings.Contains(string(trigType), "needs filter_filename, filter_path or filter_mailrule") {

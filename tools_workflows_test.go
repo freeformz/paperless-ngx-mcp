@@ -112,6 +112,30 @@ func TestWorkflowCreateRefusesBadInput(t *testing.T) {
 	assertNotError(t, callThroughMiddleware(t, pc, "workflow_create", ok(map[string]any{"body": map[string]any{}})))
 }
 
+// workflow_update advertises its items as plain objects; CUE still checks
+// every field in them before anything is sent.
+func TestWorkflowUpdateItemsStillValidated(t *testing.T) {
+	client := testClientAndServer(t, newRouteHandler(t)) // any request fails the test
+	for _, tc := range []struct {
+		name string
+		args map[string]any
+		want string
+	}{
+		{"unknown trigger field", map[string]any{"triggers": []any{map[string]any{"type": 5, "filter_has_tag": []any{1}}}}, "triggers[0].filter_has_tag: unknown field"},
+		{"unknown action field", map[string]any{"actions": []any{map[string]any{"type": "assignment", "assign_tag": []any{1}}}}, "actions[0].assign_tag: unknown field"},
+		{"unknown email field", map[string]any{"actions": []any{map[string]any{"type": "email", "email": map[string]any{"subjet": "s", "body": "b", "to": "t"}}}}, "actions[0].email.subjet: unknown field"},
+		{"bad clear field", map[string]any{"actions": []any{map[string]any{"type": 1, "clear": []any{"assign_tags"}}}}, "actions[0].clear: \"assign_tags\" can't be cleared"},
+		{"type missing", map[string]any{"actions": []any{map[string]any{"id": 21}}}, "actions[0].type: is required"},
+	} {
+		tc.args["id"] = float64(7)
+		result := callThroughMiddleware(t, client, "workflow_update", tc.args)
+		assertIsError(t, result)
+		if text := resultText(t, result); !strings.Contains(text, tc.want) {
+			t.Errorf("%s: error =\n%s\nwant it to contain %q", tc.name, text, tc.want)
+		}
+	}
+}
+
 func workflowGETHandler(t *testing.T, rh *routeHandler) {
 	rh.Handle("GET", "/api/workflows/7/", jsonHandler(t, 200, map[string]any{
 		"id":       7,
