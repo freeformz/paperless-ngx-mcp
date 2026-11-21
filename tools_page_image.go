@@ -31,12 +31,24 @@ func handleDocumentPageImage(client *Client) server.ToolHandlerFunc {
 			return errRes, nil
 		}
 
-		page := int(request.GetFloat("page", 1))
+		page, given, errRes := optionalInt(request, "page")
+		if errRes != nil {
+			return errRes, nil
+		}
+		if !given {
+			page = 1
+		}
 		if page < 1 {
 			return errResult(fmt.Sprintf("page must be >= 1, got %d", page)), nil
 		}
 
-		maxWidth := int(request.GetFloat("max_width", 1500))
+		maxWidth, given, errRes := optionalInt(request, "max_width")
+		if errRes != nil {
+			return errRes, nil
+		}
+		if !given {
+			maxWidth = 1500
+		}
 		maxWidth = min(max(maxWidth, minPageImageWidth), maxPageImageWidth)
 
 		var region *[4]float64
@@ -52,7 +64,10 @@ func handleDocumentPageImage(client *Client) server.ToolHandlerFunc {
 			region = &r
 		}
 
-		grayscale := request.GetBool("grayscale", true)
+		grayscale, errRes := optionalBool(request, "grayscale", true)
+		if errRes != nil {
+			return errRes, nil
+		}
 
 		format := request.GetString("format", "jpeg")
 		switch format {

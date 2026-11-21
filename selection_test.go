@@ -299,7 +299,6 @@ func TestBulkEditObjectsRejects(t *testing.T) {
 		"nothing to set":          base(map[string]any{"owner": nil}),
 		"owner and clear owner":   base(map[string]any{"clear": []any{"owner"}}),
 		"clear owner with merge":  base(map[string]any{"owner": nil, "clear": []any{"owner"}, "merge": true}),
-		"empty permissions":       base(map[string]any{"permissions": map[string]any{}}),
 		"empty action":            base(map[string]any{"permissions": map[string]any{"view": map[string]any{}}}),
 		"unknown action":          base(map[string]any{"permissions": map[string]any{"edit": map[string]any{"users": []any{}}}}),
 		"unknown permissions key": base(map[string]any{"permissions": map[string]any{"view": map[string]any{"user": []any{}}}}),
@@ -421,10 +420,10 @@ func TestNullPaddingInListFilters(t *testing.T) {
 	}
 }
 
-func TestPlainStringKeepsNullText(t *testing.T) {
+func TestOptionalTextDropsNullText(t *testing.T) {
 	client, got := captureJSONBody(t, "PATCH", "/api/documents/1/")
-	assertNotError(t, callThroughMiddleware(t, client, "document_update", map[string]any{"id": float64(1), "title": "null"}))
-	if want := map[string]any{"title": "null"}; !reflect.DeepEqual(*got, want) {
+	assertNotError(t, callThroughMiddleware(t, client, "document_update", map[string]any{"id": float64(1), "title": "null", "content": "null", "correspondent": float64(3)}))
+	if want := map[string]any{"correspondent": float64(3)}; !reflect.DeepEqual(*got, want) {
 		t.Errorf("body = %v, want %v", *got, want)
 	}
 }

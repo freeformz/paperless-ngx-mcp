@@ -285,6 +285,9 @@ func getDocumentIDs(request mcp.CallToolRequest) ([]int, *mcp.CallToolResult) {
 // so the server's default applies otherwise. A value that isn't a boolean (or
 // a string such as "true") is an error rather than a silent false.
 func setOptionalBool(body map[string]any, request mcp.CallToolRequest, name string) *mcp.CallToolResult {
+	if !argIsSet(request.GetArguments()[name]) {
+		return nil
+	}
 	switch v := request.GetArguments()[name].(type) {
 	case nil:
 	case bool:
@@ -297,10 +300,7 @@ func setOptionalBool(body map[string]any, request mcp.CallToolRequest, name stri
 		}
 		body[name] = n == 1
 	case string:
-		if v == "" || v == "null" {
-			return nil
-		}
-		b, err := strconv.ParseBool(v)
+		b, err := strconv.ParseBool(strings.TrimSpace(v))
 		if err != nil {
 			return errResult(name + " must be true or false")
 		}
@@ -341,6 +341,15 @@ const maxWholeNumber = 1 << 31
 // within ±maxWholeNumber. A numeric string such as "90" is accepted too.
 func wholeNumber(v any) (int, bool) {
 	return wholeNumberUpTo(v, maxWholeNumber)
+}
+
+// wholeNumberError is the error text for a value wholeNumberUpTo rejected:
+// it names the limit when the value is a whole number that is only too big.
+func wholeNumberError(name string, v any, limit float64) string {
+	if _, whole := wholeNumberUpTo(v, math.MaxFloat64); whole {
+		return fmt.Sprintf("%s must be from -%d to %d", name, int64(limit), int64(limit))
+	}
+	return name + " must be a whole number"
 }
 
 // wholeNumberUpTo is wholeNumber with its own bound, for fields whose range

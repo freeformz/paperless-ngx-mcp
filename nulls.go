@@ -16,8 +16,9 @@ import (
 // field is cleared only when it is named in the tool's clear parameter.
 
 // dropNullArgs is tool middleware that removes top-level null arguments
-// before any handler runs. The string "null" is removed too, except for
-// free-text parameters (see freeTextParams), where it is real text.
+// before any handler runs. The string "null" is removed too, except where it
+// is real text and can't be padding: search text and required free-text
+// parameters (see keepNullText).
 func dropNullArgs(srv *server.MCPServer) server.ToolHandlerMiddleware {
 	return func(next server.ToolHandlerFunc) server.ToolHandlerFunc {
 		return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -26,12 +27,14 @@ func dropNullArgs(srv *server.MCPServer) server.ToolHandlerMiddleware {
 				return next(ctx, request)
 			}
 			var props map[string]any
+			var required []string
 			if tool := srv.GetTool(request.Params.Name); tool != nil {
 				props = tool.Tool.InputSchema.Properties
+				required = tool.Tool.InputSchema.Required
 			}
 			clean := make(map[string]any, len(args))
 			for k, v := range args {
-				if v == nil || (v == "null" && !freeTextParam(k, props[k])) {
+				if v == nil || (v == "null" && !keepNullText(request.Params.Name, k, props[k], required)) {
 					continue
 				}
 				clean[k] = v
@@ -45,10 +48,8 @@ func dropNullArgs(srv *server.MCPServer) server.ToolHandlerMiddleware {
 	}
 }
 
-// freeTextParams names the string parameters that hold free text, where
-// "null" can be a real value: a title, a note, a search query, a name. Every
-// other parameter (numbers, booleans, JSON values, and strings such as dates,
-// colours, orderings and enums) treats "null" as not given.
+// freeTextParams names the string parameters that hold free text: a title, a
+// note, a search query, a name.
 var freeTextParams = map[string]bool{
 	"body": true, "content": true, "first_name": true, "last_name": true,
 	"match": true, "name": true, "note": true, "password": true, "path": true,
@@ -56,11 +57,30 @@ var freeTextParams = map[string]bool{
 	"username": true,
 }
 
-// freeTextParam reports whether a parameter keeps the string "null": it is a
-// plain string parameter listed in freeTextParams.
-func freeTextParam(name string, schema any) bool {
+// searchTextParams are free-text parameters that only search, so "null" there
+// is harmless: at worst a search for the word.
+var searchTextParams = map[string]bool{"query": true, "term": true, "result": true}
+
+// listTextFilters are the free-text filters of the list tools.
+var listTextFilters = map[string]bool{"name": true, "title": true, "content": true, "path": true}
+
+// keepNullText reports whether the string "null" is kept as text: for search
+// text (search_* params and the list tools' text filters), and for required
+// free-text parameters, which a client never fills in as padding. Everywhere
+// else, including optional fields that a write would overwrite (a password, a
+// title, OCR text), "null" means not given.
+func keepNullText(tool, name string, schema any, required []string) bool {
 	m, ok := schema.(map[string]any)
-	return ok && m["type"] == "string" && freeTextParams[name]
+	if !ok || m["type"] != "string" || !freeTextParams[name] {
+		return false
+	}
+	switch {
+	case searchTextParams[name]:
+		return true
+	case (strings.HasSuffix(tool, "_list") || tool == "task_stats") && listTextFilters[name]:
+		return true
+	}
+	return slices.Contains(required, name)
 }
 
 // clearHint is the guidance for tools that have a clear parameter.
@@ -71,7 +91,7 @@ const nullsIgnoredHint = "null values are ignored"
 
 // withClear declares a tool's clear parameter: the fields it may set to null.
 func withClear(fields ...string) mcp.ToolOption {
-	return withEnumArray("clear", fields, mcp.Description("Array of fields to clear (sent as null): "+strings.Join(fields, ", ")+". A null value elsewhere in the call is ignored, not cleared."))
+	return withEnumArray("clear", fields, mcp.Description("Array of fields to clear (remove the value): "+strings.Join(fields, ", ")+". A null value elsewhere in the call is ignored, not cleared."))
 }
 
 // applyClear reads clear and sets each named field to null in body. A field
@@ -99,8 +119,8 @@ func argIsSet(v any) bool {
 	case nil:
 		return false
 	case string:
-		t := strings.TrimSpace(x)
-		return t != "" && t != "null" && t != "[]" && strings.Join(strings.Fields(t), "") != "{}"
+		c := strings.Join(strings.Fields(x), "")
+		return c != "" && c != "null" && c != "[]" && c != "{}"
 	case []any:
 		return len(x) > 0
 	case map[string]any:
@@ -112,8 +132,8 @@ func argIsSet(v any) bool {
 // getClearFields reads clear: an array of field names, a JSON-encoded array,
 // or a single name. Every name must be in allowed.
 func getClearFields(request mcp.CallToolRequest, allowed []string) ([]string, *mcp.CallToolResult) {
-	raw, ok := request.GetArguments()["clear"]
-	if !ok || raw == nil {
+	raw := request.GetArguments()["clear"]
+	if !argIsSet(raw) {
 		return nil, nil
 	}
 	var names []string

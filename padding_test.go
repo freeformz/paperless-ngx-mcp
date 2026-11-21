@@ -66,10 +66,22 @@ func TestNullStringOnlyKeptForFreeText(t *testing.T) {
 		t.Errorf("share_link_create body = %v, want %v", *got, want)
 	}
 
+	// Optional fields a write would overwrite drop "null" too.
 	client, got = captureJSONBody(t, "PATCH", "/api/tags/1/")
-	assertNotError(t, callThroughMiddleware(t, client, "tag_update", map[string]any{"id": float64(1), "name": "null", "color": "null"}))
-	if want := map[string]any{"name": "null"}; !reflect.DeepEqual(*got, want) {
+	assertNotError(t, callThroughMiddleware(t, client, "tag_update", map[string]any{"id": float64(1), "name": "null", "color": "null", "match": "x"}))
+	if want := map[string]any{"match": "x"}; !reflect.DeepEqual(*got, want) {
 		t.Errorf("tag_update body = %v, want %v", *got, want)
+	}
+	client, got = captureJSONBody(t, "PATCH", "/api/users/5/")
+	assertNotError(t, callThroughMiddleware(t, client, "user_update", map[string]any{"id": float64(5), "first_name": "A", "password": "null", "username": "null"}))
+	if want := map[string]any{"first_name": "A"}; !reflect.DeepEqual(*got, want) {
+		t.Errorf("user_update body = %v, want %v", *got, want)
+	}
+	// A required free-text param can't be padding, so "null" is its text.
+	client, got = captureJSONBody(t, "POST", "/api/tags/")
+	assertNotError(t, callThroughMiddleware(t, client, "tag_create", map[string]any{"name": "null"}))
+	if (*got)["name"] != "null" {
+		t.Errorf("tag_create body = %v, want name \"null\"", *got)
 	}
 }
 
@@ -116,11 +128,19 @@ func TestNumericBooleans(t *testing.T) {
 		t.Errorf("body = %v, want %v", *got, want)
 	}
 	for _, v := range []any{float64(2), 0.5, float64(-1)} {
-		assertIsError(t, callTool(t, handleTagUpdate(client), map[string]any{"id": float64(1), "is_inbox_tag": v}))
+		assertErrorContains(t, callTool(t, handleTagUpdate(client), map[string]any{"id": float64(1), "name": "n", "is_inbox_tag": v}), "is_inbox_tag must be true or false")
 	}
 	// all stays strict: a number is not true.
-	result := callTool(t, handleDocumentSelectionData(client), map[string]any{"all": float64(1)})
-	assertIsError(t, result)
+	assertErrorContains(t, callTool(t, handleDocumentSelectionData(client), map[string]any{"all": float64(1)}), "all must be true or false")
+	// task_acknowledge all is strict too: it can't be undone.
+	assertErrorContains(t, callTool(t, handleTaskAcknowledge(client), map[string]any{"all": float64(2)}), "all must be true or false")
+	// document_list takes 1 and 0; selection filters don't.
+	dc, dq := captureQuery(t, "/api/documents/", `{"count":0,"results":[]}`)
+	assertNotError(t, callTool(t, handleDocumentList(dc), map[string]any{"is_in_inbox": float64(1), "is_tagged": float64(0)}))
+	if dq.Get("is_in_inbox") != "true" || dq.Get("is_tagged") != "false" {
+		t.Errorf("query = %v", *dq)
+	}
+	assertIsError(t, callTool(t, handleDocumentSelectionData(client), map[string]any{"all": true, "filters": map[string]any{"is_in_inbox": float64(1)}}))
 }
 
 func TestListFilterParsing(t *testing.T) {
@@ -162,7 +182,13 @@ func TestOptionalIntsInBodies(t *testing.T) {
 	if (*got)["imap_port"] != float64(143) {
 		t.Errorf("imap_port = %v", (*got)["imap_port"])
 	}
-	assertIsError(t, callTool(t, handleMailAccountUpdate(client), map[string]any{"id": float64(1), "imap_port": "imap"}))
+	assertErrorContains(t, callTool(t, handleMailAccountUpdate(client), map[string]any{"id": float64(1), "name": "x", "imap_port": "imap"}), "imap_port must be a whole number")
+	// imap_security: "" is not given.
+	client, got = captureJSONBody(t, "PATCH", "/api/mail_accounts/1/")
+	assertNotError(t, callTool(t, handleMailAccountUpdate(client), map[string]any{"id": float64(1), "name": "x", "imap_port": "", "imap_security": ""}))
+	if want := map[string]any{"name": "x"}; !reflect.DeepEqual(*got, want) {
+		t.Errorf("body = %v, want %v", *got, want)
+	}
 
 	for in, want := range map[any]string{true: "archive", false: "original", "false": "original", float64(0): "original"} {
 		client, got := captureJSONBody(t, "POST", "/api/share_links/")
@@ -183,7 +209,8 @@ func TestOptionalIntsInBodies(t *testing.T) {
 	if (*got)["archive_serial_number"] != float64(3000000000) {
 		t.Errorf("archive_serial_number = %v", (*got)["archive_serial_number"])
 	}
-	assertIsError(t, callTool(t, handleDocumentUpdate(client), map[string]any{"id": float64(1), "archive_serial_number": float64(0x100000000)}))
+	assertErrorContains(t, callTool(t, handleDocumentUpdate(client), map[string]any{"id": float64(1), "title": "t", "archive_serial_number": float64(0x100000000)}), "archive_serial_number must be from -4294967295 to 4294967295")
+	assertErrorContains(t, callTool(t, handleDocumentUpdate(client), map[string]any{"id": float64(1), "title": "t", "archive_serial_number": 1.5}), "archive_serial_number must be a whole number")
 }
 
 func TestUploadNumericFields(t *testing.T) {
@@ -195,7 +222,9 @@ func TestUploadNumericFields(t *testing.T) {
 	rh := newRouteHandler(t)
 	rh.Handle("POST", "/api/documents/post_document/", func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
-			t.Fatalf("parse multipart form: %v", err)
+			t.Errorf("parse multipart form: %v", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 		form = r.MultipartForm.Value
 		w.Header().Set("Content-Type", "application/json")
@@ -208,7 +237,10 @@ func TestUploadNumericFields(t *testing.T) {
 	if form.Get("correspondent") != "4" || form.Get("archive_serial_number") != "3000000000" || form.Has("document_type") {
 		t.Errorf("form = %v", form)
 	}
-	assertIsError(t, callTool(t, handleDocumentUpload(client), map[string]any{"file_path": filePath, "storage_path": "abc"}))
+	assertErrorContains(t, callTool(t, handleDocumentUpload(client), map[string]any{"file_path": filePath, "storage_path": "abc"}), "storage_path must be a whole number")
+	// wait and timeout padded with "" are not given.
+	assertNotError(t, callTool(t, handleDocumentUpload(client), map[string]any{"file_path": filePath, "wait": "", "timeout": ""}))
+	assertErrorContains(t, callTool(t, handleDocumentUpload(client), map[string]any{"file_path": filePath, "wait": "yes"}), "wait must be true or false")
 }
 
 func TestRequiredIntValues(t *testing.T) {
@@ -237,10 +269,26 @@ func TestArgIsSetEmptyObject(t *testing.T) {
 	if want := map[string]any{"parent": nil}; !reflect.DeepEqual(*got, want) {
 		t.Errorf("body = %v, want %v", *got, want)
 	}
+	// parameters: {} is padding, not the removed parameters field.
 	client, got = captureJSONBody(t, "POST", "/api/bulk_edit_objects/")
-	assertNotError(t, callTool(t, handleBulkEditObjects(client), map[string]any{"object_type": "tags", "operation": "delete", "objects": []any{float64(1)}, "parameters": map[string]any{}}))
-	if _, ok := (*got)["parameters"]; ok {
-		t.Errorf("body = %v", *got)
+	assertNotError(t, callTool(t, handleBulkEditObjects(client), map[string]any{"object_type": "tags", "operation": "delete", "objects": []any{float64(1)}, "parameters": map[string]any{}, "merge": float64(0)}))
+	if want := map[string]any{"object_type": "tags", "operation": "delete", "objects": []any{float64(1)}}; !reflect.DeepEqual(*got, want) {
+		t.Errorf("delete body = %v, want %v", *got, want)
+	}
+	result := callTool(t, handleBulkEditObjects(client), map[string]any{"object_type": "tags", "operation": "delete", "objects": []any{float64(1)}, "merge": true})
+	assertIsError(t, result)
+	if !strings.Contains(resultText(t, result), "delete takes no merge") {
+		t.Errorf("error = %s", resultText(t, result))
+	}
+	// permissions: {} with owner sets only the owner.
+	client, got = captureJSONBody(t, "POST", "/api/bulk_edit_objects/")
+	assertNotError(t, callTool(t, handleBulkEditObjects(client), map[string]any{"object_type": "tags", "operation": "set_permissions", "objects": []any{float64(1)}, "owner": float64(3), "permissions": map[string]any{}, "clear": map[string]any{}}))
+	if _, ok := (*got)["permissions"]; ok || (*got)["owner"] != float64(3) {
+		t.Errorf("set_permissions body = %v", *got)
+	}
+	// "[ ]" is an empty array like "[]".
+	if argIsSet("[ ]") || argIsSet("[\n]") {
+		t.Error("argIsSet(\"[ ]\") = true")
 	}
 }
 
@@ -255,5 +303,66 @@ func TestNullStringForOtherStrings(t *testing.T) {
 	assertNotError(t, callThroughMiddleware(t, client, "tag_list", map[string]any{"ordering": "null", "name": "null"}))
 	if got.Has("ordering") || got.Get("name__icontains") != "null" {
 		t.Errorf("query = %v", *got)
+	}
+}
+
+func assertErrorContains(t *testing.T, result *mcp.CallToolResult, want string) {
+	t.Helper()
+	assertIsError(t, result)
+	if got := resultText(t, result); !strings.Contains(got, want) {
+		t.Errorf("error = %s, want it to contain %q", got, want)
+	}
+}
+
+// Padded boolean and number filters ([], "[]", whitespace, " null ", {}) are not given.
+func TestPaddedListFilters(t *testing.T) {
+	client, got := captureQuery(t, "/api/tags/", `{"count":0,"results":[]}`)
+	for _, v := range []any{[]any{}, "[]", "  ", " null ", map[string]any{}, "{ }"} {
+		assertNotError(t, callTool(t, handleTagList(client), map[string]any{"is_root": v, "page": v, "page_size": v}))
+		if len(*got) != 0 {
+			t.Errorf("is_root %q: query = %v", v, *got)
+		}
+	}
+	assertErrorContains(t, callTool(t, handleTagList(client), map[string]any{"page": "abc"}), "page must be a whole number")
+	assertErrorContains(t, callTool(t, handleTagList(client), map[string]any{"page_size": float64(0)}), "page_size must be at least 1")
+
+	tc, tq := captureQuery(t, "/api/tasks/", `{"count":0,"results":[]}`)
+	assertNotError(t, callTool(t, handleTaskList(tc), map[string]any{"owner": map[string]any{}, "acknowledged": map[string]any{}, "is_complete": "[]"}))
+	if len(*tq) != 0 {
+		t.Errorf("task_list query = %v", *tq)
+	}
+}
+
+func TestTaskStatsPadding(t *testing.T) {
+	for mode, args := range map[string]map[string]any{
+		"summary":       {"owner": "", "days": "", "name": "", "result": ""},
+		"status_counts": {"days": ""},
+		"active":        {"days": "", "owner": " "},
+	} {
+		client, _ := captureQuery(t, "/api/tasks/"+mode+"/", `{}`)
+		args["mode"] = mode
+		assertNotError(t, callTool(t, handleTaskStats(client), args))
+	}
+	client, _ := captureQuery(t, "/api/tasks/summary/", `{}`)
+	assertErrorContains(t, callTool(t, handleTaskStats(client), map[string]any{"mode": "summary", "days": "week"}), "days must be an integer from 1 to 365")
+}
+
+func TestOptionalObjectPadding(t *testing.T) {
+	client, got := captureJSONBody(t, "PATCH", "/api/custom_fields/5/")
+	assertNotError(t, callTool(t, handleCustomFieldUpdate(client), map[string]any{"id": float64(5), "name": "Price", "extra_data": map[string]any{}}))
+	if want := map[string]any{"name": "Price"}; !reflect.DeepEqual(*got, want) {
+		t.Errorf("body = %v, want %v", *got, want)
+	}
+	// clear: {} is no clear at all.
+	client, got = captureJSONBody(t, "PATCH", "/api/tags/1/")
+	assertNotError(t, callTool(t, handleTagUpdate(client), map[string]any{"id": float64(1), "name": "n", "clear": map[string]any{}}))
+	if want := map[string]any{"name": "n"}; !reflect.DeepEqual(*got, want) {
+		t.Errorf("body = %v, want %v", *got, want)
+	}
+	// display_fields "[ ]" with clear is not a conflict.
+	client, got = captureJSONBody(t, "PATCH", "/api/saved_views/1/")
+	assertNotError(t, callTool(t, handleSavedViewUpdate(client), map[string]any{"id": float64(1), "display_fields": "[ ]", "clear": []any{"display_fields"}}))
+	if v, ok := (*got)["display_fields"]; !ok || v != nil {
+		t.Errorf("body = %v, want display_fields: null", *got)
 	}
 }

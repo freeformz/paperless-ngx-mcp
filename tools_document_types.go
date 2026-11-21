@@ -64,7 +64,9 @@ func registerDocumentTypeTools(srv *server.MCPServer, client *Client) {
 func handleDocumentTypeList(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		params := url.Values{}
-		addPaginationParams(params, request)
+		if errRes := addPaginationParams(params, request); errRes != nil {
+			return errRes, nil
+		}
 		addStringParam(params, request, "name", "name__icontains")
 		addStringParam(params, request, "ordering", "ordering")
 

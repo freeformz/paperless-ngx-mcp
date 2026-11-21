@@ -108,12 +108,11 @@ func fetchTaskRetryable(ctx context.Context, client *Client, id string) (task ma
 
 // getWaitTimeout reads the timeout argument in seconds.
 func getWaitTimeout(request mcp.CallToolRequest) (time.Duration, *mcp.CallToolResult) {
-	v, ok := request.GetArguments()["timeout"]
-	if !ok || v == nil {
+	secs, given, errRes := optionalInt(request, "timeout")
+	if !given && errRes == nil {
 		return defaultTaskWaitTimeout, nil
 	}
-	secs := request.GetFloat("timeout", 0)
-	if secs < 1 || secs > maxTaskWaitTimeout.Seconds() || secs != math.Trunc(secs) {
+	if errRes != nil || secs < 1 || secs > int(maxTaskWaitTimeout.Seconds()) {
 		return 0, errResult(fmt.Sprintf("timeout must be a whole number of seconds from 1 to %d", int(maxTaskWaitTimeout.Seconds())))
 	}
 	return time.Duration(secs) * time.Second, nil
@@ -122,8 +121,11 @@ func getWaitTimeout(request mcp.CallToolRequest) (time.Duration, *mcp.CallToolRe
 // getWaitOptions reads wait and timeout for tools that start a task. A timeout
 // without wait is an error, so it isn't silently ignored.
 func getWaitOptions(request mcp.CallToolRequest) (wait bool, timeout time.Duration, errRes *mcp.CallToolResult) {
-	wait = request.GetBool("wait", false)
-	if v, ok := request.GetArguments()["timeout"]; ok && v != nil && !wait {
+	wait, errRes = optionalBool(request, "wait", false)
+	if errRes != nil {
+		return false, 0, errRes
+	}
+	if argIsSet(request.GetArguments()["timeout"]) && !wait {
 		return false, 0, errResult("timeout only applies with wait: true")
 	}
 	if !wait {

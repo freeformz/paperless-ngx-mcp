@@ -148,7 +148,13 @@ const defaultContentSnippetLen = 500
 // getContentSnippetLen extracts the content_snippet_bytes parameter.
 // Returns the default when absent; 0 disables truncation.
 func getContentSnippetLen(request mcp.CallToolRequest) (int, *mcp.CallToolResult) {
-	n := int(request.GetFloat("content_snippet_bytes", defaultContentSnippetLen))
+	n, given, errRes := optionalInt(request, "content_snippet_bytes")
+	if errRes != nil {
+		return 0, errRes
+	}
+	if !given {
+		n = defaultContentSnippetLen
+	}
 	if n < 0 {
 		return 0, errResult("content_snippet_bytes must be a non-negative integer")
 	}
@@ -276,13 +282,58 @@ func addMultiParam(params url.Values, request mcp.CallToolRequest, name string, 
 }
 
 // addPaginationParams adds page and page_size query parameters if provided in the request.
-func addPaginationParams(params url.Values, request mcp.CallToolRequest) {
-	if page := request.GetFloat("page", 0); page > 0 {
-		params.Set("page", strconv.Itoa(int(page)))
+func addPaginationParams(params url.Values, request mcp.CallToolRequest) *mcp.CallToolResult {
+	for _, name := range []string{"page", "page_size"} {
+		n, given, errRes := optionalInt(request, name)
+		if errRes != nil {
+			return errRes
+		}
+		if !given {
+			continue
+		}
+		if n < 1 {
+			return errResult(name + " must be at least 1")
+		}
+		params.Set(name, strconv.Itoa(n))
 	}
-	if pageSize := request.GetFloat("page_size", 0); pageSize > 0 {
-		params.Set("page_size", strconv.Itoa(int(pageSize)))
+	return nil
+}
+
+// optionalInt reads an optional whole-number argument (see setOptionalInt).
+func optionalInt(request mcp.CallToolRequest, name string) (n int, given bool, errRes *mcp.CallToolResult) {
+	v := map[string]any{}
+	if errRes := setOptionalInt(v, request.GetArguments(), name); errRes != nil {
+		return 0, false, errRes
 	}
+	n, given = v[name].(int)
+	return n, given, nil
+}
+
+// optionalBool reads an optional boolean argument (see setOptionalBool),
+// returning def when it isn't given.
+func optionalBool(request mcp.CallToolRequest, name string, def bool) (bool, *mcp.CallToolResult) {
+	v := map[string]any{}
+	if errRes := setOptionalBool(v, request, name); errRes != nil {
+		return def, errRes
+	}
+	if b, ok := v[name].(bool); ok {
+		return b, nil
+	}
+	return def, nil
+}
+
+// setOptionalJSONObject is setJSONField for an optional object parameter: an
+// empty object ({}, as some clients pad unused params) is not given.
+func setOptionalJSONObject(body map[string]any, request mcp.CallToolRequest, name string) error {
+	v, present, err := getJSONArg(request, name)
+	if err != nil || !present {
+		return err
+	}
+	if m, ok := v.(map[string]any); ok && len(m) == 0 {
+		return nil
+	}
+	body[name] = v
+	return nil
 }
 
 // addStringParam adds a string query parameter if the value is non-empty.
@@ -330,7 +381,7 @@ func getRequiredInt(request mcp.CallToolRequest, name string) (int, *mcp.CallToo
 	}
 	n, whole := wholeNumber(v)
 	if !whole {
-		return 0, errResult(name + " must be a whole number")
+		return 0, errResult(wholeNumberError(name, v, maxWholeNumber))
 	}
 	return n, nil
 }
@@ -359,7 +410,7 @@ func setOptionalInt(body map[string]any, args map[string]any, name string) *mcp.
 	}
 	n, whole := wholeNumberUpTo(val, limit)
 	if !whole {
-		return errResult(name + " must be a whole number")
+		return errResult(wholeNumberError(name, val, limit))
 	}
 	body[name] = n
 	return nil
@@ -491,7 +542,9 @@ func handleSimpleGet(client *Client, path string) server.ToolHandlerFunc {
 func handlePaginatedList(client *Client, path string) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		params := url.Values{}
-		addPaginationParams(params, request)
+		if errRes := addPaginationParams(params, request); errRes != nil {
+			return errRes, nil
+		}
 		resp, err := client.Get(ctx, path, params)
 		return doRequest(resp, err, "GET", path)
 	}
