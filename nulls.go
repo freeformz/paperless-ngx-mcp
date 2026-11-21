@@ -59,13 +59,13 @@ func isNullText(v any) bool {
 var freeTextParams = map[string]bool{
 	"body": true, "content": true, "first_name": true, "last_name": true,
 	"match": true, "name": true, "note": true, "password": true, "path": true,
-	"query": true, "result": true, "subject": true, "term": true, "title": true,
-	"username": true,
+	"query": true, "result": true, "subject": true, "term": true, "text": true,
+	"title": true, "title_search": true, "username": true,
 }
 
 // searchTextParams are free-text parameters that only search, so "null" there
 // is harmless: at worst a search for the word.
-var searchTextParams = map[string]bool{"query": true, "term": true, "result": true}
+var searchTextParams = map[string]bool{"query": true, "text": true, "title_search": true, "term": true, "result": true}
 
 // listTextFilters are the free-text filters of the list tools.
 var listTextFilters = map[string]bool{"name": true, "title": true, "content": true, "path": true}

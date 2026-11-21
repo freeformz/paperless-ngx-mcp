@@ -17,9 +17,9 @@ import (
 func registerDocumentTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_list", append(append([]mcp.ToolOption{
-			mcp.WithDescription("List/search documents with filtering and full-text search. Returns paginated results; count is the number of matching documents (pass page_size: 1 to preview a selection's size before an all: true bulk call with the same filters). Document content is truncated to a snippet; use document_get or full_content for the complete text. null values are ignored."),
+			mcp.WithDescription("List/search documents with filtering and full-text search. Search with text (title and content), title_search (titles) or query (advanced field syntax); use only one of them, or query together with text or title_search as an extra filter; more_like_id combines with none. Search results carry __search_hit__ (score, highlights, note_highlights, rank). Returns paginated results; count is the number of matching documents (pass page_size: 1 to preview a selection's size before an all: true bulk call with the same filters). Document content is truncated to a snippet; use document_get or full_content for the complete text. null values are ignored."),
 		}, documentListFilterOptions()...),
-			mcp.WithString("ordering", mcp.Description("Sort field (prefix - for descending)")),
+			mcp.WithString("ordering", mcp.Description("Sort field, prefix - for descending. With a search (text, title_search, query): -score best match first (the default), score worst first, or created, added, modified, archive_serial_number, page_count, num_notes; other fields replace relevance with database order. Not allowed with more_like_id")),
 			withNumber("page", mcp.Description("Page number (default: 1)")),
 			withNumber("page_size", mcp.Description("Results per page (default: 25, max: 100000)")),
 			mcp.WithBoolean("full_content", mcp.Description("Include full document content in results instead of a truncated snippet (default: false)")),
@@ -31,7 +31,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_get",
-			mcp.WithDescription("Get full document details including tags, correspondent, document type, custom fields, notes, and permissions."),
+			mcp.WithDescription("Get full document details including tags, correspondent, document type, custom fields, notes, and permissions. duplicate_documents lists other documents you can see with the same file (it is always [] in document_list results)."),
 			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/documents/%d/"),
@@ -66,7 +66,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_upload",
-			append([]mcp.ToolOption{mcp.WithDescription("Upload a new document. Returns the consume task's UUID at once; pass wait: true to wait for consumption and get its outcome (result_data.document_id on success; a duplicate is reported as status failure with result_data.duplicate_of), or follow the id with task_wait or task_get. This task is the whole consume, so finished means the document exists."),
+			append([]mcp.ToolOption{mcp.WithDescription("Upload a new document. Returns the consume task's UUID at once; pass wait: true to wait for consumption and get its outcome (result_data.document_id on success), or follow the id with task_wait or task_get. This task is the whole consume, so finished means the document exists. A file that duplicates an existing document is consumed as a new document, unless the server sets PAPERLESS_CONSUMER_DELETE_DUPLICATES; then the task fails with result_data.duplicate_of and duplicate_in_trash (documents in the trash count). Find duplicates with document_list has_duplicates: true."),
 				mcp.WithString("file_path", mcp.Description("Local path to the file to upload"), mcp.Required()),
 				mcp.WithString("title", mcp.Description("Document title")),
 				mcp.WithString("created", mcp.Description("Created date")),
@@ -82,7 +82,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_metadata",
-			mcp.WithDescription("Get file metadata (checksums, sizes, MIME type) for a document."),
+			mcp.WithDescription("Get file metadata (checksums, sizes, MIME type) for a document. barcodes lists the barcodes found (page, value, format); it is empty unless the server stores barcode values (config_get barcode_store_values, or when that is null the PAPERLESS_CONSUMER_STORE_BARCODE_VALUES setting, off by default), and only for documents consumed or reprocessed since."),
 			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/documents/%d/metadata/"),
@@ -167,7 +167,9 @@ func handleDocumentList(client *Client) server.ToolHandlerFunc {
 		if errRes := addDocumentListFilters(params, request); errRes != nil {
 			return errRes, nil
 		}
-		addStringParam(params, request, "ordering", "ordering")
+		if errRes := addDocumentOrdering(params, request); errRes != nil {
+			return errRes, nil
+		}
 
 		snippetLen, errRes := getContentSnippetLen(request)
 		if errRes != nil {
@@ -198,6 +200,33 @@ func handleDocumentList(client *Client) server.ToolHandlerFunc {
 			return v
 		})
 	}
+}
+
+// addDocumentOrdering adds document_list's ordering, refusing what
+// paperless-ngx would silently ignore: score without a search or beside
+// other fields, and any ordering with more_like_id (similarity order).
+func addDocumentOrdering(params url.Values, request mcp.CallToolRequest) *mcp.CallToolResult {
+	ordering := strings.TrimSpace(request.GetString("ordering", ""))
+	if ordering == "" || ordering == "null" {
+		return nil
+	}
+	if params.Has("more_like_id") {
+		return errResult("ordering is ignored with more_like_id (results come most similar first); leave it out")
+	}
+	fields := strings.Split(ordering, ",")
+	for _, f := range fields {
+		if strings.TrimLeft(strings.TrimSpace(f), "-") != "score" {
+			continue
+		}
+		if !params.Has("text") && !params.Has("title_search") && !params.Has("query") {
+			return errResult("ordering by score needs a search: text, title_search or query")
+		}
+		if len(fields) > 1 {
+			return errResult("score can't be combined with other ordering fields (paperless-ngx would drop it); use -score or score alone")
+		}
+	}
+	params.Set("ordering", ordering)
+	return nil
 }
 
 // documentUpdateIDFields are document_update's id fields.

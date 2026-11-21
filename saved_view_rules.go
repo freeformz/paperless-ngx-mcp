@@ -66,8 +66,8 @@ var savedViewRuleTypes = []savedViewRuleType{
 	{ID: 45, Label: "added to", Value: "date YYYY-MM-DD", Multi: false, APIFilter: "added__date__lte", Notes: "On or before the date."},
 	{ID: 46, Label: "added from", Value: "date YYYY-MM-DD", Multi: false, APIFilter: "added__date__gte", Notes: "On or after the date."},
 	{ID: 47, Label: "mime type is", Value: "MIME type, e.g. application/pdf", Multi: false, APIFilter: "mime_type", Notes: "Case-insensitive substring match, so \"pdf\" matches application/pdf."},
-	{ID: 48, Label: "simple title search", Value: "text", Multi: false, APIFilter: "title_search", Notes: "Search in titles. A view may use at most one of 48, 49, 20 and 21, except that 20 can be combined with 48 or 49 (0 and 19 count as 48 and 49); other combinations make document listing fail with a 400."},
-	{ID: 49, Label: "simple text search", Value: "text", Multi: false, APIFilter: "text", Notes: "Search in title and content. A view may use at most one of 48, 49, 20 and 21, except that 20 can be combined with 48 or 49 (0 and 19 count as 48 and 49); other combinations make document listing fail with a 400."},
+	{ID: 48, Label: "simple title search", Value: "text", Multi: false, APIFilter: "title_search", Notes: "Search in titles (document_list title_search). A view may use at most one of 48, 49, 20 and 21, except that 20 can be combined with 48 or 49 (0 and 19 count as 48 and 49); other combinations make document listing fail with a 400."},
+	{ID: 49, Label: "simple text search", Value: "text", Multi: false, APIFilter: "text", Notes: "Search in title and content (document_list text). A view may use at most one of 48, 49, 20 and 21, except that 20 can be combined with 48 or 49 (0 and 19 count as 48 and 49); other combinations make document listing fail with a 400."},
 	{ID: 50, Label: "has duplicates", Value: "true or false", Multi: false, APIFilter: "has_duplicates"},
 }
 

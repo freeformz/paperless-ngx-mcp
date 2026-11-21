@@ -409,6 +409,8 @@ func TestSearchTextKeepsNull(t *testing.T) {
 		{"search_autocomplete", "/api/search/autocomplete/", "term", "term", map[string]any{"term": "null"}},
 		{"document_list", "/api/documents/", "title", "title__icontains", map[string]any{"title": "null"}},
 		{"document_list", "/api/documents/", "content", "content__icontains", map[string]any{"content": "null"}},
+		{"document_list", "/api/documents/", "text", "text", map[string]any{"text": "null"}},
+		{"document_list", "/api/documents/", "title_search", "title_search", map[string]any{"title_search": "null"}},
 		{"task_stats", "/api/tasks/status_counts/", "name", "name", map[string]any{"mode": "status_counts", "name": "null"}},
 	} {
 		client, got := captureQuery(t, tc.path, `{"count":0,"results":[]}`)
