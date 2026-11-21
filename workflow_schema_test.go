@@ -78,9 +78,49 @@ func TestWorkflowToolSchemasShape(t *testing.T) {
 	// stripped from the advertised schema.
 	create := srv.GetTool("workflow_create").Tool.InputSchema.Properties["actions"].(map[string]any)
 	actionType, _ := json.Marshal(create["items"].(map[string]any)["properties"].(map[string]any)["type"])
-	for _, want := range []string{"needs email", "needs webhook", "needs passwords", "needs ai_suggestion_fields", "needs a consumption trigger", "non-consumption trigger"} {
+	for _, want := range []string{"needs email", "needs webhook", "needs passwords", "needs ai_suggestion_fields"} {
 		if !strings.Contains(string(actionType), want) {
 			t.Errorf("action type description lacks %q", want)
+		}
+	}
+	// The workflow-level rules are in the tool descriptions.
+	for _, tool := range []string{"workflow_create", "workflow_update"} {
+		desc := srv.GetTool(tool).Tool.Description
+		for _, want := range []string{"remote_ocr (7) action needs a consumption trigger", "apply_ai_suggestions (8) action needs a trigger"} {
+			if !strings.Contains(desc, want) {
+				t.Errorf("%s description lacks %q", tool, want)
+			}
+		}
+	}
+	// workflow_update's items point to workflow_create's schema instead of
+	// repeating it; CUE still validates them.
+	upd := srv.GetTool("workflow_update").Tool.InputSchema.Properties
+	for _, p := range []string{"triggers", "actions"} {
+		m := upd[p].(map[string]any)
+		if items, _ := m["items"].(map[string]any); len(items) != 1 || items["type"] != "object" {
+			t.Errorf("workflow_update %s items = %v, want a plain object", p, items)
+		}
+		if !strings.Contains(m["description"].(string), "workflow_create's "+p) {
+			t.Errorf("workflow_update %s description doesn't point to workflow_create", p)
+		}
+	}
+	// Below the top level, descriptions drop the "Array of"/"Object with"
+	// prefix; top-level arrays and objects keep it, since it tells clients
+	// they also take JSON text.
+	for _, name := range typedWorkflowTools {
+		for prop, raw := range srv.GetTool(name).Tool.InputSchema.Properties {
+			m := raw.(map[string]any)
+			desc, _ := m["description"].(string)
+			types, _ := m["type"].([]string)
+			if (slices.Contains(types, "array") && !strings.HasPrefix(desc, "Array of")) || (slices.Contains(types, "object") && !strings.HasPrefix(desc, "Object with")) {
+				t.Errorf("%s.%s: top-level description %q lacks its Array of/Object with prefix", name, prop, desc)
+			}
+			for _, child := range []any{m["items"], m["properties"]} {
+				nested, _ := json.Marshal(child)
+				if strings.Contains(string(nested), "Array of") || strings.Contains(string(nested), "Object with") {
+					t.Errorf("%s.%s: nested descriptions keep the Array of/Object with prefix", name, prop)
+				}
+			}
 		}
 	}
 	trigType, _ := json.Marshal(trig)

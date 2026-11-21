@@ -41,7 +41,7 @@ func registerWorkflowTools(srv *server.MCPServer, client *Client) {
 	), handleWorkflowWrite(client, defWorkflowCreate, "POST", "/api/workflows/", false))
 
 	srv.AddTool(typedWorkflowTool("workflow_update",
-		"Update a workflow; only the fields given change. triggers and actions, when given, replace the workflow's whole set: an item with id updates that trigger or action (only the fields it gives; type is always required, so an existing action of type 3, 4, 5 or 8 must repeat its email, webhook, passwords or ai_suggestion_fields), an item without id adds a new one, and every trigger or action left out is deleted. Ids must belong to this workflow. Email or webhook settings given with their id update those settings; without an id they replace them. A consumption (type 1) trigger must repeat filter_filename, filter_path or filter_mailrule in every update. New triggers that leave out sources get consume_folder, api_upload and mail_fetch; sources: [] means any source. "+workflowNestedNote,
+		"Update a workflow; only the fields given change. triggers and actions, when given, replace the workflow's whole set: an item with id updates that trigger or action (only the fields it gives; type is always required, so an existing action of type 3, 4, 5 or 8 must repeat its email, webhook, passwords or ai_suggestion_fields), an item without id adds a new one, and every trigger or action left out is deleted. Ids must belong to this workflow. Email or webhook settings given with their id update those settings; without an id they replace them. A consumption (type 1) trigger must repeat filter_filename, filter_path or filter_mailrule in every update. A remote_ocr (7) action needs a consumption trigger; an apply_ai_suggestions (8) action needs a trigger of another type. New triggers that leave out sources get consume_folder, api_upload and mail_fetch; sources: [] means any source. "+strings.Replace(workflowNestedNote, "(see the parameter schema)", "(fields as in workflow_create's triggers and actions)", 1),
 		defWorkflowUpdate, "Workflow ID",
 	), handleWorkflowWrite(client, defWorkflowUpdate, "PATCH", "/api/workflows/%d/", true))
 
@@ -74,7 +74,7 @@ func registerWorkflowTools(srv *server.MCPServer, client *Client) {
 	), handleGetByID(client, "/api/workflow_triggers/%d/"))
 
 	srv.AddTool(typedWorkflowTool("workflow_trigger_update",
-		"Update one workflow trigger; only the fields given change. A consumption (type 1) trigger must include filter_filename, filter_path or filter_mailrule in every update. Changing a trigger's type here skips the checks paperless-ngx makes on a whole workflow (remote OCR needs a consumption trigger, AI suggestions need another type); prefer workflow_update for that. To add a trigger, use workflow_update. Unknown or misspelled fields are refused. A null value is ignored; to clear a field, name it in clear.",
+		"Update one workflow trigger; only the fields given change. A consumption (type 1) trigger must include filter_filename, filter_path or filter_mailrule in every update. Changing a trigger's type here skips the checks paperless-ngx makes on a whole workflow (remote OCR needs a consumption trigger, AI suggestions need another type); prefer workflow_update for that. To add a trigger, use workflow_update. Type and choice values take a name or a number. Unknown or misspelled fields are refused. A null value is ignored; to clear a field, name it in clear.",
 		defTriggerPatch, "Trigger ID",
 	), handleWorkflowWrite(client, defTriggerPatch, "PATCH", "/api/workflow_triggers/%d/", false))
 
@@ -95,7 +95,7 @@ func registerWorkflowTools(srv *server.MCPServer, client *Client) {
 	), handleGetByID(client, "/api/workflow_actions/%d/"))
 
 	srv.AddTool(typedWorkflowTool("workflow_action_update",
-		"Update one workflow action; only the fields given change. Types 3 (email), 4 (webhook), 7 (remote_ocr) and 8 (apply_ai_suggestions), and email or webhook settings, can only be set through workflow_update. To add an action, use workflow_update. Unknown or misspelled fields are refused. A null value is ignored; to clear a field, name it in clear.",
+		"Update one workflow action; only the fields given change. Types 3 (email), 4 (webhook), 7 (remote_ocr) and 8 (apply_ai_suggestions), and email or webhook settings, can only be set through workflow_update. To add an action, use workflow_update. Type and choice values take a name or a number. Unknown or misspelled fields are refused. A null value is ignored; to clear a field, name it in clear.",
 		defActionPatch, "Action ID",
 	), handleWorkflowWrite(client, defActionPatch, "PATCH", "/api/workflow_actions/%d/", false))
 

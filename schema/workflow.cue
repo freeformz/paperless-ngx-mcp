@@ -50,41 +50,41 @@ clearable: {
 #NonBlank: string & =~"\\S"
 
 #TriggerFields: {
-	// Trigger type: 1 consumption (needs filter_filename, filter_path or filter_mailrule in every call), 2 document_added, 3 document_updated, 4 scheduled, 5 manual (run with workflow_run); name or number
+	// Trigger type: 1 consumption (needs filter_filename, filter_path or filter_mailrule in every call), 2 document_added, 3 document_updated, 4 scheduled, 5 manual (run with workflow_run)
 	type?: #TriggerType
-	// Array of document sources (consumption, added and updated triggers): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui; names or numbers. [] means any source; new triggers that leave sources out get 1, 2 and 3
+	// Array of document sources (consumption, added and updated triggers): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui. [] means any; a new trigger without sources gets 1, 2 and 3
 	sources?: [...#Source]
-	// Path filter, wildcards * allowed, case-insensitive
+	// Path filter (wildcards *, case-insensitive)
 	filter_path?: #Text256 | null
-	// Filename filter, wildcards such as *.pdf allowed, case-insensitive
+	// Filename filter (wildcards such as *.pdf, case-insensitive)
 	filter_filename?: #Text256 | null
 	// Mail rule ID (documents fetched by that rule)
 	filter_mailrule?: #ID | null
 	// Content match pattern, used with matching_algorithm
 	match?: #Text256
-	// Matching algorithm: 0 none, 1 any, 2 all, 3 literal, 4 regex, 5 fuzzy; name or number
+	// Matching algorithm: 0 none, 1 any, 2 all, 3 literal, 4 regex, 5 fuzzy
 	matching_algorithm?: #Matching
 	// Case-insensitive matching (default true)
 	is_insensitive?: bool
-	// Array of tag IDs: the document has any of these
+	// Array of tag IDs: the document has any
 	filter_has_tags?: [...#ID]
-	// Array of tag IDs: the document has all of these
+	// Array of tag IDs: the document has all
 	filter_has_all_tags?: [...#ID]
-	// Array of tag IDs: the document has none of these
+	// Array of tag IDs: the document has none
 	filter_has_not_tags?: [...#ID]
 	// Array of custom field query terms, e.g. ["field_name", "exact", "value"] (custom_field_query syntax)
 	filter_custom_field_query?: string | null
-	// Array of correspondent IDs: the document has one of these
+	// Array of correspondent IDs: the document has one
 	filter_has_any_correspondents?: [...#ID]
-	// Array of correspondent IDs: the document has none of these
+	// Array of correspondent IDs: the document has none
 	filter_has_not_correspondents?: [...#ID]
-	// Array of document type IDs: the document has one of these
+	// Array of document type IDs: the document has one
 	filter_has_any_document_types?: [...#ID]
-	// Array of document type IDs: the document has none of these
+	// Array of document type IDs: the document has none
 	filter_has_not_document_types?: [...#ID]
-	// Array of storage path IDs: the document has one of these
+	// Array of storage path IDs: the document has one
 	filter_has_any_storage_paths?: [...#ID]
-	// Array of storage path IDs: the document has none of these
+	// Array of storage path IDs: the document has none
 	filter_has_not_storage_paths?: [...#ID]
 	// Correspondent ID the document must have
 	filter_has_correspondent?: #ID | null
@@ -92,31 +92,29 @@ clearable: {
 	filter_has_document_type?: #ID | null
 	// Storage path ID the document must have
 	filter_has_storage_path?: #ID | null
-	// Scheduled triggers: days to offset the schedule by
+	// Type 4: days to offset the schedule by
 	schedule_offset_days?: int
-	// Scheduled triggers: repeat the schedule
+	// Type 4: repeat the schedule
 	schedule_is_recurring?: bool
-	// Scheduled triggers: days between recurring runs (at least 1)
+	// Type 4: days between recurring runs
 	schedule_recurring_interval_days?: int & >=1
-	// Scheduled triggers: the date field to check: added, created, modified or custom_field
+	// Type 4: the date field to schedule from
 	schedule_date_field?: #ScheduleDateField
-	// Scheduled triggers: custom field ID when schedule_date_field is custom_field
+	// Type 4: custom field ID when schedule_date_field is custom_field
 	schedule_date_custom_field?: #ID | null
 }
 
 #TriggerClear: {
-	// Array of fields to clear (remove the value)
+	// Array of fields to clear
 	clear?: [...or(clearable.trigger)]
 }
 
 #Email: {
 	// Email subject (at most 256 characters)
 	subject!: #Text256
-	// Email body
 	body!: string
 	// Recipients, comma-separated
 	to!: string
-	// Attach the document
 	include_document?: bool
 }
 
@@ -133,14 +131,13 @@ clearable: {
 	body?: string | null
 	// Object with request headers
 	headers?: {[string]: string} | null
-	// Attach the document
 	include_document?: bool
-	// Array of fields to clear (remove the value)
+	// Array of fields to clear
 	clear?: [...or(clearable.webhook)]
 }
 
 #ActionFields: {
-	// Action type: 1 assignment, 2 removal, 3 email (needs email), 4 webhook (needs webhook), 5 password_removal (needs passwords), 6 move_to_trash, 7 remote_ocr (needs a consumption trigger), 8 apply_ai_suggestions (needs ai_suggestion_fields and a non-consumption trigger); name or number
+	// Action type: 1 assignment, 2 removal, 3 email (needs email), 4 webhook (needs webhook), 5 password_removal (needs passwords), 6 move_to_trash, 7 remote_ocr, 8 apply_ai_suggestions (needs ai_suggestion_fields)
 	type?: #ActionType
 	// Title to assign: a Jinja2 template, may use custom fields (e.g. {{ custom_fields['Name'].value }})
 	assign_title?: string | null
@@ -166,7 +163,6 @@ clearable: {
 	assign_custom_fields?: [...#ID]
 	// Object with custom field values to assign, keyed by custom field ID
 	assign_custom_fields_values?: {[=~"^[0-9]+$"]: _} | null
-	// Remove all tags
 	remove_all_tags?: bool
 	// Array of tag IDs to remove
 	remove_tags?: [...#ID]
@@ -184,13 +180,11 @@ clearable: {
 	remove_storage_paths?: [...#ID]
 	// Array of custom field IDs to remove
 	remove_custom_fields?: [...#ID]
-	// Remove all custom fields
 	remove_all_custom_fields?: bool
 	// Remove the owner
 	remove_all_owners?: bool
 	// Array of user IDs to remove as owner
 	remove_owners?: [...#ID]
-	// Remove all permissions
 	remove_all_permissions?: bool
 	// Array of user IDs to remove view permission from
 	remove_view_users?: [...#ID]
@@ -200,9 +194,9 @@ clearable: {
 	remove_change_users?: [...#ID]
 	// Array of group IDs to remove change permission from
 	remove_change_groups?: [...#ID]
-	// Array of passwords to try (type 5 password_removal; non-empty)
+	// Array of passwords to try (type 5; non-empty)
 	passwords?: [...#NonBlank] | null
-	// Array of fields to fill from AI suggestions (type 8; non-empty): title, tags, correspondent, document_type, storage_path, created
+	// Array of fields to fill from AI suggestions (type 8; non-empty)
 	ai_suggestion_fields?: [...#AIField] | null
 	// Type 8: create suggested objects that don't exist yet
 	ai_create_missing?: bool
@@ -219,7 +213,7 @@ clearable: {
 }
 
 #ActionClear: {
-	// Array of fields to clear (remove the value)
+	// Array of fields to clear
 	clear?: [...or(clearable.action)]
 }
 
@@ -299,7 +293,7 @@ clearable: {
 #ActionPatch: {
 	#ActionFields
 	#ActionClear
-	// Action type: 1 assignment, 2 removal, 5 password_removal (needs passwords), 6 move_to_trash; name or number. Types 3, 4, 7 and 8 can only be set through workflow_update
+	// Action type: 1 assignment, 2 removal, 5 password_removal (needs passwords), 6 move_to_trash. Types 3, 4, 7 and 8 can only be set through workflow_update
 	type?: 1 | 2 | 5 | 6
 }
 
@@ -323,8 +317,8 @@ clearable: {
 	order?: int
 	// Enabled
 	enabled?: bool
-	// Array of trigger objects replacing the workflow's triggers (at least one): give id to keep and update an existing trigger, leave id out to add one; triggers left out are deleted
+	// Array of trigger objects replacing the workflow's triggers (at least one), each with the fields of workflow_create's triggers plus id to update an existing trigger; without id one is added, and triggers left out are deleted
 	triggers?: [#TriggerItem, ...#TriggerItem]
-	// Array of action objects replacing the workflow's actions (at least one): give id to keep and update an existing action, leave id out to add one; actions left out are deleted
+	// Array of action objects replacing the workflow's actions (at least one), each with the fields of workflow_create's actions plus id to update an existing action (email and webhook may carry their id too); without id one is added, and actions left out are deleted
 	actions?: [#ActionItem, ...#ActionItem]
 }
