@@ -1,0 +1,183 @@
+{
+  "choices": {
+    "action_type": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "ai_suggestion_field": [
+      "title",
+      "tags",
+      "correspondent",
+      "document_type",
+      "storage_path",
+      "created"
+    ],
+    "matching_algorithm": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "schedule_date_field": [
+      "added",
+      "created",
+      "modified",
+      "custom_field"
+    ],
+    "source": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "trigger_type": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ]
+  },
+  "serializers": {
+    "WorkflowActionEmailSerializer": {
+      "fields": [
+        "id",
+        "subject",
+        "body",
+        "to",
+        "include_document"
+      ],
+      "nullable": []
+    },
+    "WorkflowActionSerializer": {
+      "fields": [
+        "id",
+        "type",
+        "assign_title",
+        "assign_tags",
+        "assign_correspondent",
+        "assign_document_type",
+        "assign_storage_path",
+        "assign_owner",
+        "assign_view_users",
+        "assign_view_groups",
+        "assign_change_users",
+        "assign_change_groups",
+        "assign_custom_fields",
+        "assign_custom_fields_values",
+        "remove_all_tags",
+        "remove_tags",
+        "remove_all_correspondents",
+        "remove_correspondents",
+        "remove_all_document_types",
+        "remove_document_types",
+        "remove_all_storage_paths",
+        "remove_storage_paths",
+        "remove_custom_fields",
+        "remove_all_custom_fields",
+        "remove_all_owners",
+        "remove_owners",
+        "remove_all_permissions",
+        "remove_view_users",
+        "remove_view_groups",
+        "remove_change_users",
+        "remove_change_groups",
+        "email",
+        "webhook",
+        "passwords",
+        "ai_suggestion_fields",
+        "ai_create_missing",
+        "ai_overwrite_existing"
+      ],
+      "nullable": [
+        "ai_suggestion_fields",
+        "assign_correspondent",
+        "assign_custom_fields_values",
+        "assign_document_type",
+        "assign_owner",
+        "assign_storage_path",
+        "assign_title",
+        "email",
+        "passwords",
+        "webhook"
+      ]
+    },
+    "WorkflowActionWebhookSerializer": {
+      "fields": [
+        "id",
+        "url",
+        "use_params",
+        "as_json",
+        "params",
+        "body",
+        "headers",
+        "include_document"
+      ],
+      "nullable": [
+        "body",
+        "headers",
+        "params"
+      ]
+    },
+    "WorkflowSerializer": {
+      "fields": [
+        "id",
+        "name",
+        "order",
+        "enabled",
+        "triggers",
+        "actions"
+      ],
+      "nullable": []
+    },
+    "WorkflowTriggerSerializer": {
+      "fields": [
+        "id",
+        "sources",
+        "type",
+        "filter_path",
+        "filter_filename",
+        "filter_mailrule",
+        "matching_algorithm",
+        "match",
+        "is_insensitive",
+        "filter_has_tags",
+        "filter_has_all_tags",
+        "filter_has_not_tags",
+        "filter_custom_field_query",
+        "filter_has_any_correspondents",
+        "filter_has_not_correspondents",
+        "filter_has_any_document_types",
+        "filter_has_not_document_types",
+        "filter_has_any_storage_paths",
+        "filter_has_not_storage_paths",
+        "filter_has_correspondent",
+        "filter_has_document_type",
+        "filter_has_storage_path",
+        "schedule_offset_days",
+        "schedule_is_recurring",
+        "schedule_recurring_interval_days",
+        "schedule_date_field",
+        "schedule_date_custom_field"
+      ],
+      "nullable": [
+        "filter_custom_field_query",
+        "filter_filename",
+        "filter_has_correspondent",
+        "filter_has_document_type",
+        "filter_has_storage_path",
+        "filter_mailrule",
+        "filter_path",
+        "schedule_date_custom_field"
+      ]
+    }
+  }
+}

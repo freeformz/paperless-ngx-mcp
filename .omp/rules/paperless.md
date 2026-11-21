@@ -31,7 +31,7 @@ You have access to a Paperless-ngx MCP server for managing documents and metadat
 ### Bulk Operations
 
 - Use `document_bulk_edit` for batch metadata changes across multiple documents
-- Available methods: set_correspondent, set_document_type, set_storage_path, add_tag, remove_tag, modify_tags, modify_custom_fields, set_permissions, run_workflow
+- Available methods: set_correspondent, set_document_type, set_storage_path, add_tag, remove_tag, modify_tags, modify_custom_fields, set_permissions (run workflows with workflow_run)
 - File operations have their own tools: document_rotate, document_merge, document_edit_pdf (split, drop, reorder or rotate pages), document_remove_password, document_reprocess, document_bulk_delete
 - Use `document_selection_data` to preview aggregated metadata counts before making bulk changes
 - `document_bulk_edit`, `document_selection_data`, `document_rotate`, `document_reprocess` and `document_bulk_delete` take `documents` or `all: true` with `filters` (document_list's filter names) and `excluded_documents`; preview the match with `document_list` and the same filters (`page_size: 1` gives `count`). Without filters, `all: true` means every document

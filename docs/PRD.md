@@ -274,7 +274,7 @@ Removes downloaded document files. With no arguments, removes all files in the i
 
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
-| `document_bulk_edit` | POST | `/api/documents/bulk_edit/` | Bulk edit document metadata (and run manual workflows) |
+| `document_bulk_edit` | POST | `/api/documents/bulk_edit/` | Bulk edit document metadata |
 | `document_selection_data` | POST | `/api/documents/selection_data/` | Get per-object document counts for a selection (objects with zero matching documents are omitted; no total) |
 
 Both take a selection: `documents`, or `all: true` with `filters` and `excluded_documents` (see Selecting Documents by Filter).
@@ -286,11 +286,11 @@ Both take a selection: `documents`, or `all: true` with `filters` and `excluded_
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | documents / all / filters / excluded_documents | | yes (one form) | The selection, see Selecting Documents by Filter |
-| method | string (enum) | yes | `set_correspondent`, `set_document_type`, `set_storage_path`, `add_tag`, `remove_tag`, `modify_tags`, `modify_custom_fields`, `set_permissions`, `run_workflow` |
-| parameters | object or JSON string | yes | Method-specific: `{correspondent}`, `{document_type}`, `{storage_path}` (id or null); `{tag}`; `{add_tags, remove_tags}`; `{add_custom_fields, remove_custom_fields}`; `{set_permissions, owner?, merge?}` (without `merge`, leaving out `owner` clears it); `{workflow, filter_documents?}` |
+| method | string (enum) | yes | `set_correspondent`, `set_document_type`, `set_storage_path`, `add_tag`, `remove_tag`, `modify_tags`, `modify_custom_fields`, `set_permissions` |
+| parameters | object or JSON string | yes | Method-specific: `{correspondent}`, `{document_type}`, `{storage_path}` (id or null); `{tag}`; `{add_tags, remove_tags}`; `{add_custom_fields, remove_custom_fields}`; `{set_permissions, owner?, merge?}` (without `merge`, leaving out `owner` clears it) |
 | wait, timeout | boolean, integer | no | See Waiting for Tasks |
 
-**Returns:** `{result, task_id}`. The file methods paperless-ngx still accepts as deprecated `bulk_edit` methods (`rotate`, `merge`, `split`, `delete_pages`, `edit_pdf`, `remove_password`, `reprocess`, `delete`) are refused with an error naming the replacement tool below; nothing is sent.
+**Returns:** `{result, task_id}`. The file methods paperless-ngx still accepts as deprecated `bulk_edit` methods (`rotate`, `merge`, `split`, `delete_pages`, `edit_pdf`, `remove_password`, `reprocess`, `delete`), and `run_workflow`, are refused with an error naming the replacement tool (below, or `workflow_run`); nothing is sent.
 
 #### Editing Documents
 
@@ -540,11 +540,14 @@ The share link API has no update: `ShareLinkViewSet` supports create, retrieve, 
 
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
-| `workflow_list` | GET | `/api/workflows/` | List workflows |
+| `workflow_list` | GET | `/api/workflows/` | List workflows. Filters: `trigger_type` (name or number), `enabled`, `id`, `id_in` (sent as `id__in`) |
 | `workflow_get` | GET | `/api/workflows/{id}/` | Get workflow |
-| `workflow_create` | POST | `/api/workflows/` | Create workflow |
-| `workflow_update` | PATCH | `/api/workflows/{id}/` | Update workflow |
-| `workflow_delete` | DELETE | `/api/workflows/{id}/` | Delete workflow |
+| `workflow_create` | POST | `/api/workflows/` | Create a workflow with typed `name`, `order`, `enabled`, `triggers[]` and `actions[]` (both required, non-empty; no ids in nested items) |
+| `workflow_update` | PATCH | `/api/workflows/{id}/` | Update a workflow; `triggers`/`actions` replace the whole set (items with `id` update in place, items without are added, the rest deleted). Every nested item needs `type`; nested ids must belong to the workflow (checked with a GET first) |
+| `workflow_delete` | DELETE | `/api/workflows/{id}/` | Delete workflow (its triggers and actions stay; paperless-ngx prunes unattached ones on the next workflow update) |
+| `workflow_run` | POST | `/api/documents/bulk_edit/` | Run a workflow with a manual trigger: `method: run_workflow`, `parameters: {workflow, filter_documents}` (filter_documents defaults to true and is always sent), the document selection (see Selecting Documents by Filter), `wait`/`timeout` |
+
+The workflow tools' parameters are generated from `schema/workflow.cue` (CUE, evaluated at runtime with `cuelang.org/go`): the same definitions produce each tool's input schema (`jsonschema.Generate`, then `$ref`s inlined, `allOf` merged, `T | null` collapsed, conditionals stripped, enums widened with names) and validate every call. Before validation, arguments are normalised: nulls and padding are dropped at every level (except inside free-form JSON values such as `assign_custom_fields_values`), numbers and booleans may be strings, top-level arrays and objects may be JSON text, names become numbers, `filter_custom_field_query` arrays become JSON text, and each object's `clear` sets the named fields to null. Errors carry paths (`actions[1].passwords`); "field is required" errors that CUE hides behind other errors are recovered by validating again without the unknown fields. `TestWorkflowCUEMatchesUpstream` checks the CUE field lists, nullability and choices against `testdata/upstream/workflow_serializers_3.5.1.json`, produced from the paperless-ngx source by `testdata/upstream/extract_workflow_fields.py`; `testdata/workflow_tool_schemas.golden.json` pins the advertised schemas.
 
 #### Workflow Triggers
 
@@ -552,8 +555,7 @@ The share link API has no update: `ShareLinkViewSet` supports create, retrieve, 
 |------|--------|----------|-------------|
 | `workflow_trigger_list` | GET | `/api/workflow_triggers/` | List triggers |
 | `workflow_trigger_get` | GET | `/api/workflow_triggers/{id}/` | Get trigger |
-| `workflow_trigger_create` | POST | `/api/workflow_triggers/` | Create trigger |
-| `workflow_trigger_update` | PATCH | `/api/workflow_triggers/{id}/` | Update trigger |
+| `workflow_trigger_update` | PATCH | `/api/workflow_triggers/{id}/` | Update one trigger (typed fields, `clear`); a consumption trigger must repeat its filename, path or mail rule filter |
 | `workflow_trigger_delete` | DELETE | `/api/workflow_triggers/{id}/` | Delete trigger |
 
 #### Workflow Actions
@@ -562,8 +564,7 @@ The share link API has no update: `ShareLinkViewSet` supports create, retrieve, 
 |------|--------|----------|-------------|
 | `workflow_action_list` | GET | `/api/workflow_actions/` | List actions |
 | `workflow_action_get` | GET | `/api/workflow_actions/{id}/` | Get action |
-| `workflow_action_create` | POST | `/api/workflow_actions/` | Create action |
-| `workflow_action_update` | PATCH | `/api/workflow_actions/{id}/` | Update action |
+| `workflow_action_update` | PATCH | `/api/workflow_actions/{id}/` | Update one action (typed fields, `clear`); types 3, 4, 7, 8 and email/webhook settings only through `workflow_update` |
 | `workflow_action_delete` | DELETE | `/api/workflow_actions/{id}/` | Delete action |
 
 #### Tasks
@@ -639,7 +640,7 @@ The `all` ID array that list responses carried below API v10 no longer exists, s
 
 Some MCP clients send every declared parameter, filling unused ones with `null`. A top-level `null` therefore always means "not given", in every tool: middleware drops it before any handler runs. The string `"null"` is dropped too, except where it is real text and can't be padding: search text (`query`, `term`, task `result`, and the list tools' `name`/`title`/`content`/`path` filters) and required free-text parameters (a note, a new object's name). Optional fields that a write would overwrite (a password, a username, a title, OCR text) drop it, so a padding client can't set a password to "null". An empty string means "not given" for optional parameters; so do `[]` and `{}` (whitespace aside) for number and true/false parameters, and `{}` for optional object parameters (`extra_data`, `permissions`). An empty list that replaces values is real: `document_update` `tags: []` and `custom_fields: []` remove them all, and `filter_rules: []` replaces every rule. This covers `document_update` `content` (clear it with `clear: ["content"]`). A number or boolean that doesn't parse is an error rather than a silent `0`, `false` or default; booleans accept `1` and `0`, except the `all` selectors and selection filters, which take only true/false. An out-of-range number gets an error naming the range. Before this, a padded `null` became a real value in many tools (`document_update` `content: null` wiped the OCR text; `user_update` `is_superuser: null` sent `false`; list filters became `=0` or `=false`).
 
-Clearing a field takes an explicit `clear` array naming it: `document_update` (`correspondent`, `document_type`, `storage_path`, `archive_serial_number`, `owner`), `tag_update` (`parent`), `saved_view_update` (`page_size`, `display_mode`, `display_fields`) and `bulk_edit_objects` (`owner`). A field both given a value and listed in `clear` is an error. Nulls nested inside JSON objects (such as `document_bulk_edit`'s `parameters`, workflow and mail rule bodies, custom field values) are sent as given.
+Clearing a field takes an explicit `clear` array naming it: `document_update` (`correspondent`, `document_type`, `storage_path`, `archive_serial_number`, `owner`), `tag_update` (`parent`), `saved_view_update` (`page_size`, `display_mode`, `display_fields`), `bulk_edit_objects` (`owner`), `workflow_trigger_update` and `workflow_action_update` (their nullable single-value fields), and each trigger and action object in `workflow_create`/`workflow_update` (nested nulls there are dropped too). A field both given a value and listed in `clear` is an error. Nulls nested inside other JSON objects (such as `document_bulk_edit`'s `parameters`, mail rule bodies, custom field values) are sent as given.
 
 ## Response Shaping
 
@@ -697,6 +698,10 @@ paperless-ngx-mcp/
 ├── tools_search.go         # Search and statistics tool handlers
 ├── tools_bulk.go           # Bulk operation tool handlers
 ├── tools_admin.go          # Tier 2 admin/system tool handlers
+├── tools_workflows.go      # Workflow tools, workflow_run
+├── workflow_schema.go      # CUE loader, schema export, normalisation, validation
+├── schema/workflow.cue     # Workflow request schemas (single source)
+├── testdata/upstream/      # paperless-ngx serializer fixture + extractor
 ├── models.go               # API response/request structs
 ├── Makefile                # Build, test, release targets
 ├── Dockerfile              # Multi-stage build

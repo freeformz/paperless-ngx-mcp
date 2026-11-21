@@ -23,7 +23,9 @@ MCP server for Paperless-ngx document management, built in Go.
 - `tools_share_links.go` — Share link tool handlers
 - `tools_users.go` — User, group, and profile tool handlers
 - `tools_mail.go` — Mail account, mail rule, and processed mail tool handlers
-- `tools_workflows.go` — Workflow, trigger, and action tool handlers
+- `tools_workflows.go` — Workflow, trigger, and action tool handlers, `workflow_run`
+- `workflow_schema.go` — loads `schema/workflow.cue`, derives the workflow tools' input schemas, normalises and validates calls
+- `schema/workflow.cue` — typed workflow, trigger and action request schemas (kept in step with upstream by `TestWorkflowCUEMatchesUpstream` and `testdata/upstream/`)
 - `tools_system.go` — System status, config, tasks, logs, and trash tool handlers
 - `test_helpers_test.go` — Shared test infrastructure (mock server, helpers)
 - `shutdown_test.go` — Subprocess shutdown tests (Unix only); its `TestMain` runs `main()` when `PAPERLESS_MCP_TEST_RUN_MAIN=1`
