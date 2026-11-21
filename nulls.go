@@ -125,8 +125,11 @@ func argIsSet(v any) bool {
 	case nil:
 		return false
 	case string:
-		c := strings.Join(strings.Fields(x), "")
-		return c != "" && c != "null" && c != "[]" && c != "{}"
+		// Only surrounding whitespace is ignored for "null"; an empty array or
+		// object may have whitespace inside ("[ ]").
+		t := strings.TrimSpace(x)
+		c := strings.Join(strings.Fields(t), "")
+		return t != "" && t != "null" && c != "[]" && c != "{}"
 	case []any:
 		return len(x) > 0
 	case map[string]any:

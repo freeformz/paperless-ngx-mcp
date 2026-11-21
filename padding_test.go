@@ -258,7 +258,7 @@ func TestArgIsSetEmptyObject(t *testing.T) {
 			t.Errorf("argIsSet(%q) = true", v)
 		}
 	}
-	for _, v := range []any{"}{", "{{", map[string]any{"a": 1}} {
+	for _, v := range []any{"}{", "{{", "nu ll", map[string]any{"a": 1}} {
 		if !argIsSet(v) {
 			t.Errorf("argIsSet(%q) = false", v)
 		}
