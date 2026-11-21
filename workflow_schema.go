@@ -621,6 +621,10 @@ func (ws *workflowSchemas) normalizeValue(key string, v any, schema map[string]a
 		}
 		return v, true
 	}
+	_, named := schema[namesKey].(string)
+	if key != "" && (named || typ == "integer" || typ == "boolean") && !argIsSet(v) {
+		return nil, false // [], {} and their JSON text are padding for scalars
+	}
 	if kind, ok := schema[namesKey].(string); ok {
 		return ws.normalizeNamed(kind, v), true
 	}

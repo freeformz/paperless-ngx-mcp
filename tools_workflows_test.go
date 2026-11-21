@@ -369,3 +369,26 @@ func TestWorkflowLockHonoursContext(t *testing.T) {
 		t.Error("a second lock with a cancelled context succeeded")
 	}
 }
+
+// [] and {} (and their JSON text) are padding for number, boolean and choice
+// fields, as for every other tool's number and true/false parameters.
+func TestWorkflowScalarPadding(t *testing.T) {
+	client, got := captureJSONBody(t, "PATCH", "/api/workflow_triggers/4/")
+	assertNotError(t, callThroughMiddleware(t, client, "workflow_trigger_update", map[string]any{
+		"id": float64(4), "match": "x", "matching_algorithm": map[string]any{}, "is_insensitive": []any{}, "type": "{}", "schedule_offset_days": "[]",
+	}))
+	if want := map[string]any{"match": "x"}; !reflect.DeepEqual(*got, want) {
+		t.Errorf("body = %v, want %v", *got, want)
+	}
+	rh := newRouteHandler(t)
+	var patched map[string]any
+	rh.Handle("PATCH", "/api/workflows/7/", func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&patched)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id": 7}`))
+	})
+	assertNotError(t, callThroughMiddleware(t, testClientAndServer(t, rh), "workflow_update", map[string]any{"id": float64(7), "enabled": true, "order": map[string]any{}}))
+	if want := map[string]any{"enabled": true}; !reflect.DeepEqual(patched, want) {
+		t.Errorf("body = %v, want %v", patched, want)
+	}
+}
