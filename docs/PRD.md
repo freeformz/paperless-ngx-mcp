@@ -137,8 +137,10 @@ The primary search and filtering tool. Supports the full range of Paperless-ngx 
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| query | string | no | Full-text search query |
-| more_like_id | integer | no | Find documents similar to this document ID |
+| text | string | no | Indexed search: every whitespace-separated word must appear in title or content, matched inside words (numbers from a word start in multi-word searches); not correspondents, tags or notes |
+| title_search | string | no | Indexed search of titles, matched like `text` |
+| query | string | no | Advanced search syntax (see the server instructions' Document Search); may be added to `text` or `title_search` as an extra filter |
+| more_like_id | integer | no | Documents similar to this document ID; combines with no other search |
 | correspondent_id | integer | no | Filter by correspondent ID |
 | document_type_id | integer | no | Filter by document type ID |
 | storage_path_id | integer | no | Filter by storage path ID |
@@ -147,22 +149,25 @@ The primary search and filtering tool. Supports the full range of Paperless-ngx 
 | tags_id_in | string | no | Comma-separated tag IDs — document must have ANY |
 | is_tagged | boolean | no | Filter by whether document has any tags |
 | is_in_inbox | boolean | no | Filter by inbox status |
-| title | string | no | Filter by title (icontains) |
-| content | string | no | Filter by content (icontains) |
+| title | string | no | Title contains (database scan; `title_search` is indexed) |
+| content | string | no | Content contains (slow database scan; prefer `text`) |
 | custom_field_query | array or JSON string | no | Custom field filter expression, e.g. `["AND", [[1, "exists", true]]]` |
 | created_after | string | no | Filter by created date (gte, YYYY-MM-DD) |
 | created_before | string | no | Filter by created date (lte, YYYY-MM-DD) |
 | added_after | string | no | Filter by added date (gte, YYYY-MM-DD) |
 | added_before | string | no | Filter by added date (lte, YYYY-MM-DD) |
 | owner_id | integer | no | Filter by owner |
-| ordering | string | no | Sort field (prefix `-` for descending) |
+| has_duplicates | boolean | no | Documents whose file matches another visible document (trash included) |
+| ordering | string | no | Sort field (prefix `-` for descending); with a search, `-score`/`score` or an indexed field. `score` without a search or beside other fields, and any ordering with `more_like_id`, are refused (upstream ignores them) |
 | page | integer | no | Page number (default: 1) |
 | page_size | integer | no | Results per page (default: 25, max: 100000) |
 | full_content | boolean | no | Include full document content instead of a truncated snippet (default: false) |
 | content_snippet_bytes | integer | no | Max bytes of document content per result (default: 500; 0 disables truncation) |
 | include_notes | boolean | no | Include full note objects in results (default: false — notes are replaced with `notes_count`) |
 
-**Returns:** Paginated document list with count, next/previous page URLs, and document objects. Each document object includes API URLs for download (`/api/documents/{id}/download/`), preview (`/api/documents/{id}/preview/`), and thumbnail (`/api/documents/{id}/thumb/`) — these are unauthenticated URL paths relative to `PAPERLESS_URL` that require a token to fetch. When `query` is used, includes `__search_hit__` with score, highlights, and rank.
+**Returns:** Paginated document list with count, next/previous page URLs, and document objects. Each document object includes API URLs for download (`/api/documents/{id}/download/`), preview (`/api/documents/{id}/preview/`), and thumbnail (`/api/documents/{id}/thumb/`) — these are unauthenticated URL paths relative to `PAPERLESS_URL` that require a token to fetch. With a search (`text`, `title_search`, `query`, `more_like_id`), includes `__search_hit__` with score, highlights, note_highlights and rank.
+
+Only one of `text`, `title_search`, `query` and `more_like_id` may be given, except `query` together with `text` or `title_search` (as an extra filter); other combinations are refused before sending (upstream: a 400). Each search text is at most 4096 characters, and `text`/`title_search` words at most 128 bytes (upstream drops longer words silently). `text`/`title_search` split on whitespace, so punctuation is searchable.
 
 By default each document's `content` (OCR text) is truncated to a snippet (default 500 bytes, adjustable with `content_snippet_bytes`; `content_truncated: true` marks truncated entries) — full OCR content can be huge, making default responses unusable for MCP clients. Use `document_get` for full content of a single document, and `full_content` (or `content_snippet_bytes: 0`) to disable truncation. `count` is the number of matching documents: with `page_size: 1` it previews an `all: true` selection (see Selecting Documents by Filter). Filter values are checked: `null`, `""` and (for non-text filters) `"null"` mean not given, while an id, tag list, boolean or date that doesn't parse is an error rather than a silent `0` or `false`. Each document's `notes` array is likewise replaced with a `notes_count` field (omitted when zero) — notes are unbounded and can dominate response size. Pass `include_notes: true` to keep full note objects, or use `document_note_list`/`document_get` for a single document's notes.
 
@@ -628,17 +633,17 @@ Since paperless-ngx 3.5.0 the document bulk and action endpoints queue a task an
 `document_bulk_edit`, `document_selection_data`, `document_rotate`, `document_reprocess` and `document_bulk_delete` take either `documents` (explicit ids) or `all: true` with an optional `filters` object and `excluded_documents`. Upstream, `all: true` selects every root document the user can view that matches the filters (resolved when the request arrives; versions never included). paperless-ngx ignores unknown filter keys and any value it can't parse, so a typo would select every document; the MCP therefore:
 
 - takes `document_list`'s filter names (one shared table maps them to the raw query names) and rejects unknown names;
-- rejects values upstream would drop: blank text (after Python-style stripping), text with NUL, impossible dates (`2024-02-30`, year 0), tag lists with empty items or non-integers, booleans other than `true`/`false`, `null` values inside `filters`, a `query` of only wildcards (`*`, `?`) or over 4096 characters, and `query` with `more_like_id`;
+- rejects values upstream would drop: blank text (after Python-style stripping), text with NUL, impossible dates (`2024-02-30`, year 0), tag lists with empty items or non-integers, booleans other than `true`/`false`, `null` values inside `filters`, a `query` of only wildcards (`*`, `?`), search text over 4096 characters, `text`/`title_search` blank or with words over 128 bytes, and search combinations upstream refuses;
 - sends every value as a string (ints in decimal, booleans as `"true"`/`"false"`, tag lists as `"1,2"`, `custom_field_query` as JSON text), since the server's filters only match strings (a JSON `true` for `is_in_inbox` is ignored);
 - rejects `all: true` with `documents`, and `filters` or `excluded_documents` without `all: true`. `all` must be a boolean (`1` or `"t"` are errors).
 
-There is no count guard: `all: true` is the explicit request. Without filters it means every document. Preview with `document_list` and the same filters (`page_size: 1` gives `count`). Filters that widen by design: `more_like_id`, `tags_id_none`, `is_in_inbox: false`, `NOT` in `custom_field_query`, and `query`'s search syntax. Permissions are all-or-nothing: one selected document the user can't change (or doesn't own, where ownership is needed) fails the whole call with a 403. `bulk_download` also accepts `all` upstream but isn't exposed.
+There is no count guard: `all: true` is the explicit request. Without filters it means every document. Preview with `document_list` and the same filters (`page_size: 1` gives `count`). Filters that widen by design: `more_like_id`, short `text`/`title_search` words (matched inside words), `query`'s fuzzy matching when the server enables it, `tags_id_none`, `is_in_inbox: false`, `NOT` in `custom_field_query`, and `query`'s search syntax. Permissions are all-or-nothing: one selected document the user can't change (or doesn't own, where ownership is needed) fails the whole call with a 403. `bulk_download` also accepts `all` upstream but isn't exposed.
 
 The `all` ID array that list responses carried below API v10 no longer exists, so `include_all_ids` is gone.
 
 ## Null Values
 
-Some MCP clients send every declared parameter, filling unused ones with `null`. A top-level `null` therefore always means "not given", in every tool: middleware drops it before any handler runs. The string `"null"` is dropped too, except where it is real text and can't be padding: search text (`query`, `term`, task `result`, and the list tools' `name`/`title`/`content`/`path` filters) and required free-text parameters (a note, a new object's name). Optional fields that a write would overwrite (a password, a username, a title, OCR text) drop it, so a padding client can't set a password to "null". An empty string means "not given" for optional parameters; so do `[]` and `{}` (whitespace aside) for number and true/false parameters, and `{}` for optional object parameters (`extra_data`, `permissions`). An empty list that replaces values is real: `document_update` `tags: []` and `custom_fields: []` remove them all, and `filter_rules: []` replaces every rule. This covers `document_update` `content` (clear it with `clear: ["content"]`). A number or boolean that doesn't parse is an error rather than a silent `0`, `false` or default; booleans accept `1` and `0`, except the `all` selectors and selection filters, which take only true/false. An out-of-range number gets an error naming the range. Before this, a padded `null` became a real value in many tools (`document_update` `content: null` wiped the OCR text; `user_update` `is_superuser: null` sent `false`; list filters became `=0` or `=false`).
+Some MCP clients send every declared parameter, filling unused ones with `null`. A top-level `null` therefore always means "not given", in every tool: middleware drops it before any handler runs. The string `"null"` is dropped too, except where it is real text and can't be padding: search text (`query`, `text`, `title_search`, `term`, task `result`, and the list tools' `name`/`title`/`content`/`path` filters) and required free-text parameters (a note, a new object's name). Optional fields that a write would overwrite (a password, a username, a title, OCR text) drop it, so a padding client can't set a password to "null". An empty string means "not given" for optional parameters; so do `[]` and `{}` (whitespace aside) for number and true/false parameters, and `{}` for optional object parameters (`extra_data`, `permissions`). An empty list that replaces values is real: `document_update` `tags: []` and `custom_fields: []` remove them all, and `filter_rules: []` replaces every rule. This covers `document_update` `content` (clear it with `clear: ["content"]`). A number or boolean that doesn't parse is an error rather than a silent `0`, `false` or default; booleans accept `1` and `0`, except the `all` selectors and selection filters, which take only true/false. An out-of-range number gets an error naming the range. Before this, a padded `null` became a real value in many tools (`document_update` `content: null` wiped the OCR text; `user_update` `is_superuser: null` sent `false`; list filters became `=0` or `=false`).
 
 Clearing a field takes an explicit `clear` array naming it: `document_update` (`correspondent`, `document_type`, `storage_path`, `archive_serial_number`, `owner`), `tag_update` (`parent`), `saved_view_update` (`page_size`, `display_mode`, `display_fields`), `bulk_edit_objects` (`owner`), `workflow_trigger_update` and `workflow_action_update` (their nullable single-value fields), and each trigger and action object in `workflow_create`/`workflow_update` (nested nulls there are dropped too). A field both given a value and listed in `clear` is an error. Nulls nested inside other JSON objects (such as `document_bulk_edit`'s `parameters`, mail rule bodies, custom field values) are sent as given.
 

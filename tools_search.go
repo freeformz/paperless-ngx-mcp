@@ -13,7 +13,7 @@ import (
 func registerSearchTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("search_autocomplete",
-			mcp.WithDescription("Autocomplete search terms. Returns suggested completions for partial queries."),
+			mcp.WithDescription("Autocomplete search terms. Returns suggested completions for partial queries, ordered by how many of your documents contain the word."),
 			mcp.WithString("term", mcp.Description("Partial search term to autocomplete"), mcp.Required()),
 			withNumber("limit", mcp.Description("Maximum number of suggestions")),
 		),
@@ -22,7 +22,7 @@ func registerSearchTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("search_global",
-			mcp.WithDescription("Quick lookup across object types (documents, saved views, tags, correspondents, document types, storage paths, users, groups, mail rules, mail accounts, workflows, custom fields). Returns at most 3 results per type and is not paginated. Documents carry only id, title and created; use document_get for a document's details, and document_list with query for real document search."),
+			mcp.WithDescription("Quick lookup across object types (documents, saved views, tags, correspondents, document types, storage paths, users, groups, mail rules, mail accounts, workflows, custom fields). Returns at most 3 results per type and is not paginated. Documents carry only id, title and created; use document_get for a document's details, and document_list with text or query for real document search."),
 			mcp.WithString("query", mcp.Description("Search query, 3 to 4096 characters"), mcp.Required()),
 		),
 		handleSearchGlobal(client),

@@ -15,7 +15,7 @@ You have access to a Paperless-ngx MCP server for managing documents and metadat
 
 ### Searching Documents
 
-- **Full-text search**: Use `document_list` with the `query` parameter for full-text search across document content and metadata
+- **Search**: Use `document_list` with `text` (title and content) or `title_search` (titles) for normal search, and `query` for the advanced syntax (field prefixes, `NOT`, date ranges; see the server instructions). Only `query` may be combined with `text` or `title_search`
 - **Tag filtering**: Use `tags_id_all` (must have ALL), `tags_id_none` (must have NONE), or `tags_id_in` (must have ANY) with comma-separated tag IDs
 - **Date filtering**: Use `created_after`/`created_before` and `added_after`/`added_before` for date range queries
 - **Custom field queries**: Use `custom_field_query` with a JSON filter expression
