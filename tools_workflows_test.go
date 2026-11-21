@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"reflect"
@@ -306,4 +307,65 @@ func TestWorkflowValidationConcurrent(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestWorkflowEmptyingAndPadding(t *testing.T) {
+	// sources: [] means any source upstream: kept, not replaced by the defaults.
+	client, got := captureJSONBody(t, "POST", "/api/workflows/")
+	assertNotError(t, callThroughMiddleware(t, client, "workflow_create", map[string]any{
+		"name": "w", "triggers": []any{map[string]any{"type": 1, "filter_filename": "*.pdf", "sources": []any{}}},
+		"actions": []any{map[string]any{"type": 1, "assign_title": "null", "assign_custom_fields_values": map[string]any{}}, map[string]any{"type": 3, "email": map[string]any{"subject": "null", "body": "b", "to": "t"}}},
+	}))
+	want := map[string]any{
+		"name":     "w",
+		"triggers": []any{map[string]any{"type": float64(1), "filter_filename": "*.pdf", "sources": []any{}}},
+		"actions":  []any{map[string]any{"type": float64(1)}, map[string]any{"type": float64(3), "email": map[string]any{"subject": "null", "body": "b", "to": "t"}}},
+	}
+	if !reflect.DeepEqual(*got, want) {
+		gb, _ := json.Marshal(*got)
+		t.Errorf("body = %s", gb)
+	}
+
+	// clear: match (not nullable) is sent as "", webhook fields as null.
+	client, got = captureJSONBody(t, "PATCH", "/api/workflow_triggers/4/")
+	assertNotError(t, callThroughMiddleware(t, client, "workflow_trigger_update", map[string]any{"id": float64(4), "clear": []any{"match"}, "sources": []any{}}))
+	if want := map[string]any{"match": "", "sources": []any{}}; !reflect.DeepEqual(*got, want) {
+		t.Errorf("trigger body = %v, want %v", *got, want)
+	}
+	rh := newRouteHandler(t)
+	workflowGETHandler(t, rh)
+	var patched map[string]any
+	rh.Handle("PATCH", "/api/workflows/7/", func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&patched)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id": 7}`))
+	})
+	assertNotError(t, callThroughMiddleware(t, testClientAndServer(t, rh), "workflow_update", map[string]any{"id": float64(7), "actions": []any{
+		map[string]any{"type": 4, "webhook": map[string]any{"url": "https://example.com", "params": map[string]any{"q": "1"}, "clear": []any{"headers", "body"}}},
+	}}))
+	wantWebhook := map[string]any{"url": "https://example.com", "params": map[string]any{"q": "1"}, "headers": nil, "body": nil}
+	if got := patched["actions"].([]any)[0].(map[string]any)["webhook"]; !reflect.DeepEqual(got, wantWebhook) {
+		t.Errorf("webhook = %v, want %v", got, wantWebhook)
+	}
+
+	none := testClientAndServer(t, newRouteHandler(t))
+	assertErrorContains(t, callThroughMiddleware(t, none, "workflow_create", map[string]any{
+		"name": "w", "triggers": []any{map[string]any{"type": 5, "filter_custom_field_query": "[oops"}}, "actions": []any{map[string]any{"type": 1}},
+	}), "triggers[0].filter_custom_field_query: must be a custom field query")
+	assertErrorContains(t, callThroughMiddleware(t, none, "workflow_create", map[string]any{
+		"name": "w", "triggers": []any{map[string]any{"type": 5}}, "actions": []any{map[string]any{"type": 4, "webhook": map[string]any{"url": "u", "headers": map[string]any{"a": 1}}}},
+	}), "actions[0].webhook.headers: values must be strings")
+}
+
+func TestWorkflowLockHonoursContext(t *testing.T) {
+	unlock, err := lockWorkflow(t.Context(), 12345)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := lockWorkflow(ctx, 12345); err == nil {
+		t.Error("a second lock with a cancelled context succeeded")
+	}
 }

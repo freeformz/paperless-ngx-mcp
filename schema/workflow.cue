@@ -30,9 +30,11 @@ aliases: {
 }
 
 // clearable lists the single-value fields that clear may set to null.
+// match can't be null upstream; clearing it sends "" instead.
 clearable: {
-	trigger: ["filter_path", "filter_filename", "filter_mailrule", "filter_custom_field_query", "filter_has_correspondent", "filter_has_document_type", "filter_has_storage_path", "schedule_date_custom_field"]
-	action: ["assign_title", "assign_correspondent", "assign_document_type", "assign_storage_path", "assign_owner"]
+	trigger: ["filter_path", "filter_filename", "filter_mailrule", "filter_custom_field_query", "filter_has_correspondent", "filter_has_document_type", "filter_has_storage_path", "schedule_date_custom_field", "match"]
+	action: ["assign_title", "assign_correspondent", "assign_document_type", "assign_storage_path", "assign_owner", "assign_custom_fields_values"]
+	webhook: ["params", "body", "headers"]
 }
 
 #ID: int & >=1
@@ -50,7 +52,7 @@ clearable: {
 #TriggerFields: {
 	// Trigger type: 1 consumption (needs filter_filename, filter_path or filter_mailrule in every call), 2 document_added, 3 document_updated, 4 scheduled, 5 manual (run with workflow_run); name or number
 	type?: #TriggerType
-	// Array of document sources (consumption, added and updated triggers): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui; names or numbers
+	// Array of document sources (consumption, added and updated triggers): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui; names or numbers. [] means any source; new triggers that leave sources out get 1, 2 and 3
 	sources?: [...#Source]
 	// Path filter, wildcards * allowed, case-insensitive
 	filter_path?: #Text256 | null
@@ -126,13 +128,15 @@ clearable: {
 	// Send the body as JSON (default false)
 	as_json?: bool
 	// Object with request parameters
-	params?: {...} | null
+	params?: {[string]: _} | null
 	// Request body
 	body?: string | null
 	// Object with request headers
 	headers?: {[string]: string} | null
 	// Attach the document
 	include_document?: bool
+	// Array of fields to clear (remove the value)
+	clear?: [...or(clearable.webhook)]
 }
 
 #ActionFields: {
@@ -295,6 +299,7 @@ clearable: {
 #ActionPatch: {
 	#ActionFields
 	#ActionClear
+	// Action type: 1 assignment, 2 removal, 5 password_removal (needs passwords), 6 move_to_trash; name or number. Types 3, 4, 7 and 8 can only be set through workflow_update
 	type?: 1 | 2 | 5 | 6
 }
 

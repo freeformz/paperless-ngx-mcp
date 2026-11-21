@@ -53,7 +53,7 @@ func TestWorkflowToolSchemasShape(t *testing.T) {
 		json.Unmarshal(b, &v)
 		walkSchema(v, func(key string) {
 			switch key {
-			case "$ref", "$defs", "if", "then", "else", "allOf", "anyOf", "oneOf", "not", "prefixItems", "x-names":
+			case "$ref", "$defs", "if", "then", "else", "allOf", "anyOf", "oneOf", "not", "prefixItems", "x-names", "const":
 				t.Errorf("%s: schema has %q, which strict clients reject or which leaks internals", name, key)
 			}
 		})
@@ -222,5 +222,38 @@ func TestWorkflowCUEMatchesUpstream(t *testing.T) {
 	ai := act["ai_suggestion_fields"].(map[string]any)["items"].(map[string]any)["enum"]
 	if !slices.Equal(toStrings(ai), toStrings(fx.Choices["ai_suggestion_field"])) {
 		t.Errorf("ai_suggestion_fields = %v, want %v", ai, fx.Choices["ai_suggestion_field"])
+	}
+}
+
+func TestWorkflowSchemaDetails(t *testing.T) {
+	srv := NewServer(NewClient("http://unused", "unused"), nil)
+	create := srv.GetTool("workflow_create").Tool.InputSchema.Properties
+	action := create["actions"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)
+	params := action["webhook"].(map[string]any)["properties"].(map[string]any)["params"].(map[string]any)
+	if params["type"] != "object" {
+		t.Errorf("webhook params schema = %v, want any object", params)
+	}
+	trig := create["triggers"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)
+	if typ, _ := trig["filter_custom_field_query"].(map[string]any)["type"].([]string); !slices.Contains(typ, "array") {
+		t.Errorf("nested filter_custom_field_query type = %v, want array too", typ)
+	}
+	desc, _ := srv.GetTool("workflow_action_update").Tool.InputSchema.Properties["type"].(map[string]any)["description"].(string)
+	if strings.Contains(desc, "3 email") || !strings.Contains(desc, "can only be set through workflow_update") {
+		t.Errorf("workflow_action_update type description = %q", desc)
+	}
+}
+
+// A long-lived server swaps its CUE context now and then; validation keeps
+// working across the swap.
+func TestWorkflowCUEContextRefresh(t *testing.T) {
+	ws := mustWorkflowSchemas()
+	body := map[string]any{"type": 5}
+	for i := range cueContextUses + 5 {
+		if problems := ws.validateWorkflowInput(defActionPatch, body); len(problems) == 0 {
+			t.Fatalf("call %d: type 5 without passwords accepted", i)
+		}
+	}
+	if problems := ws.validateWorkflowInput(defActionPatch, map[string]any{"type": 5, "passwords": []any{"p"}}); len(problems) > 0 {
+		t.Errorf("after refresh: %v", problems)
 	}
 }

@@ -47,6 +47,31 @@ type workflowSchemas struct {
 	names    map[string]map[string]int // kind -> accepted name (incl. aliases) -> number
 	labels   map[string]map[int]string // kind -> number -> canonical name
 	ctx      *cue.Context
+	uses     int // validations since ctx was made; see refreshContext
+}
+
+// cueContextUses bounds how many calls share one CUE context: a context keeps
+// every field name it has seen, and calls bring arbitrary keys (unknown
+// fields, webhook params, custom field ids).
+const cueContextUses = 500
+
+// refreshContext replaces the CUE context and the definitions compiled in
+// it. The caller holds cueMu.
+func (ws *workflowSchemas) refreshContext() {
+	ctx := cuecontext.New()
+	root := ctx.CompileBytes(workflowCUE, cue.Filename("schema/workflow.cue"))
+	if root.Err() != nil {
+		return // it compiled at startup; keep the old context
+	}
+	defs := map[string]cue.Value{}
+	for _, d := range workflowDefs {
+		def := root.LookupPath(cue.ParsePath(d))
+		if def.Err() != nil {
+			return
+		}
+		defs[d] = def
+	}
+	ws.ctx, ws.defs, ws.uses = ctx, defs, 0
 }
 
 // cueMu serialises every use of the CUE runtime, which isn't safe for
@@ -182,6 +207,13 @@ func resolveSchema(node any, defs map[string]any, depth int) any {
 				out[k] = props
 			case "items":
 				out[k] = resolveSchema(v, defs, depth+1)
+			case "const":
+				// An open struct comes out as const {}; it's any object.
+				if m, ok := v.(map[string]any); ok && len(m) == 0 {
+					out["type"] = "object"
+					continue
+				}
+				out[k] = v
 			case "additionalProperties":
 				if b, ok := v.(bool); ok {
 					out[k] = b
@@ -402,6 +434,10 @@ func advertise(node map[string]any, ws *workflowSchemas) map[string]any {
 		for k, p := range props {
 			if m, ok := p.(map[string]any); ok {
 				props[k] = advertise(m, ws)
+				// JSON text upstream; it also takes an array.
+				if k == "filter_custom_field_query" {
+					props[k].(map[string]any)["type"] = []string{"array", "string"}
+				}
 			}
 		}
 	}
@@ -456,6 +492,7 @@ func (ws *workflowSchemas) normalizeWorkflowInput(def string, args map[string]an
 
 func (ws *workflowSchemas) normalizeObject(in map[string]any, schema map[string]any, path string, top bool, errs *workflowInputError) map[string]any {
 	props, _ := schema["properties"].(map[string]any)
+	required := toStrings(schema["required"])
 	out := map[string]any{}
 	for k, v := range in {
 		if k == "clear" {
@@ -465,6 +502,11 @@ func (ws *workflowSchemas) normalizeObject(in map[string]any, schema map[string]
 		ps, known := props[k].(map[string]any)
 		if !known {
 			out[k] = v // CUE reports it as an unknown field
+			continue
+		}
+		// Below the top level (where the middleware does it), the string
+		// "null" in an optional text field is padding too, as at the top.
+		if s, ok := v.(string); ok && !top && strings.TrimSpace(s) == "null" && !slices.Contains(required, k) {
 			continue
 		}
 		nv, keep := ws.normalizeValue(k, v, ps, p, top, errs)
@@ -523,8 +565,15 @@ func (ws *workflowSchemas) applyObjectClear(raw any, schema map[string]any, out 
 			continue
 		}
 		out[n] = nil
+		if clearToEmpty[n] {
+			out[n] = ""
+		}
 	}
 }
+
+// clearToEmpty are clearable fields that can't be null upstream: clearing
+// sends an empty string.
+var clearToEmpty = map[string]bool{"match": true}
 
 func (ws *workflowSchemas) normalizeValue(key string, v any, schema map[string]any, path string, top bool, errs *workflowInputError) (any, bool) {
 	if v == nil {
@@ -554,6 +603,14 @@ func (ws *workflowSchemas) normalizeValue(key string, v any, schema map[string]a
 		}
 	}
 	if key == "filter_custom_field_query" {
+		if s, ok := v.(string); ok {
+			var decoded []any
+			if err := json.Unmarshal([]byte(strings.TrimSpace(s)), &decoded); err != nil {
+				errs.add(path, "must be a custom field query: an array, or its JSON text")
+				return nil, false
+			}
+			return strings.TrimSpace(s), true
+		}
 		if arr, ok := v.([]any); ok {
 			b, err := json.Marshal(arr)
 			if err != nil {
@@ -590,7 +647,7 @@ func (ws *workflowSchemas) normalizeValue(key string, v any, schema map[string]a
 		if !ok {
 			return v, true
 		}
-		if len(arr) == 0 && (key == "triggers" || key == "actions" || key == "sources") {
+		if len(arr) == 0 && (key == "triggers" || key == "actions") {
 			return nil, false
 		}
 		items, _ := schema["items"].(map[string]any)
@@ -615,8 +672,9 @@ func (ws *workflowSchemas) normalizeValue(key string, v any, schema map[string]a
 			return v, true
 		}
 		if schema["properties"] == nil {
-			// Free-form JSON (params, headers, custom field values): as given.
-			if len(m) == 0 && top {
+			// Free-form JSON (params, headers, custom field values): as given;
+			// {} is padding, and clearing goes through clear.
+			if len(m) == 0 {
 				return nil, false
 			}
 			return m, true
@@ -698,6 +756,9 @@ func (ws *workflowSchemas) validateOnce(def string, body map[string]any) (proble
 	}
 	cueMu.Lock()
 	defer cueMu.Unlock()
+	if ws.uses++; ws.uses > cueContextUses {
+		ws.refreshContext()
+	}
 	data := ws.ctx.CompileBytes(raw, cue.Filename("arguments"))
 	if err := data.Err(); err != nil {
 		return nil, nil, err
@@ -707,6 +768,10 @@ func (ws *workflowSchemas) validateOnce(def string, body map[string]any) (proble
 		return nil, nil, nil
 	}
 	problems, unknown = ws.formatCUEErrors(def, verr)
+	if len(problems) == 0 {
+		// Never hide an error the filters didn't recognise.
+		problems = []string{verr.Error()}
+	}
 	return problems, unknown, nil
 }
 
@@ -797,7 +862,11 @@ func (ws *workflowSchemas) formatCUEErrors(def string, err error) ([]string, [][
 		case strings.Contains(msg, "mismatched types float and int"):
 			add(path, "must be a whole number")
 		case strings.Contains(msg, "mismatched types"):
-			if t, ok := node["type"].(string); ok {
+			t, _ := node["type"].(string)
+			if t == "object" && node["properties"] == nil && strings.Contains(msg, "and string") {
+				// {[string]: string} with a non-string value: CUE reports the map.
+				add(path, "values must be strings")
+			} else if t != "" && t != "object" {
 				add(path, "must be "+article(t)+" "+t)
 			} else {
 				add(path, msg)

@@ -41,7 +41,7 @@ func registerWorkflowTools(srv *server.MCPServer, client *Client) {
 	), handleWorkflowWrite(client, defWorkflowCreate, "POST", "/api/workflows/", false))
 
 	srv.AddTool(typedWorkflowTool("workflow_update",
-		"Update a workflow; only the fields given change. triggers and actions, when given, replace the workflow's whole set: an item with id updates that trigger or action (only the fields it gives; type is always required), an item without id adds a new one, and every trigger or action left out is deleted. Ids must belong to this workflow. A consumption (type 1) trigger must repeat filter_filename, filter_path or filter_mailrule in every update. New triggers that leave out sources get consume_folder, api_upload and mail_fetch. "+workflowNestedNote,
+		"Update a workflow; only the fields given change. triggers and actions, when given, replace the workflow's whole set: an item with id updates that trigger or action (only the fields it gives; type is always required, so an existing action of type 3, 4, 5 or 8 must repeat its email, webhook, passwords or ai_suggestion_fields), an item without id adds a new one, and every trigger or action left out is deleted. Ids must belong to this workflow. Email or webhook settings given with their id update those settings; without an id they replace them. A consumption (type 1) trigger must repeat filter_filename, filter_path or filter_mailrule in every update. New triggers that leave out sources get consume_folder, api_upload and mail_fetch; sources: [] means any source. "+workflowNestedNote,
 		defWorkflowUpdate, "Workflow ID",
 	), handleWorkflowWrite(client, defWorkflowUpdate, "PATCH", "/api/workflows/%d/", true))
 
@@ -139,9 +139,23 @@ func typedWorkflowTool(name, description, def, idDesc string) mcp.Tool {
 	return tool
 }
 
-// workflowLocks serialises updates of one workflow, so the id checks and the
-// write see the same set of triggers and actions.
-var workflowLocks sync.Map // int -> *sync.Mutex
+// workflowLocks serialises this process's updates of one workflow, so its id
+// checks and its write see the same triggers and actions. It can't stop a
+// trigger or action being deleted elsewhere (workflow_trigger_delete, the web
+// UI) between the check and the write. One entry per workflow id updated.
+var workflowLocks sync.Map // int -> chan struct{} (a one-slot semaphore)
+
+// lockWorkflow waits for the workflow's lock, or for ctx to end.
+func lockWorkflow(ctx context.Context, id int) (unlock func(), err error) {
+	v, _ := workflowLocks.LoadOrStore(id, make(chan struct{}, 1))
+	sem := v.(chan struct{})
+	select {
+	case sem <- struct{}{}:
+		return func() { <-sem }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
 
 func handleWorkflowWrite(client *Client, def, method, pathFmt string, isWorkflowUpdate bool) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -179,9 +193,11 @@ func handleWorkflowWrite(client *Client, def, method, pathFmt string, isWorkflow
 		fillDefaultSources(body, def)
 
 		if isWorkflowUpdate {
-			lock, _ := workflowLocks.LoadOrStore(id, &sync.Mutex{})
-			lock.(*sync.Mutex).Lock()
-			defer lock.(*sync.Mutex).Unlock()
+			unlock, err := lockWorkflow(ctx, id)
+			if err != nil {
+				return errResult("waiting for another update of this workflow: " + err.Error()), nil
+			}
+			defer unlock()
 			if errRes := checkNestedIDs(ctx, client, path, body); errRes != nil {
 				return errRes, nil
 			}

@@ -151,7 +151,8 @@
             "assign_correspondent",
             "assign_document_type",
             "assign_storage_path",
-            "assign_owner"
+            "assign_owner",
+            "assign_custom_fields_values"
           ]
         },
         "type": [
@@ -317,7 +318,7 @@
         ]
       },
       "type": {
-        "description": "Action type: 1 assignment, 2 removal, 3 email (needs email), 4 webhook (needs webhook), 5 password_removal (needs passwords), 6 move_to_trash, 7 remote_ocr (needs a consumption trigger), 8 apply_ai_suggestions (needs ai_suggestion_fields and a non-consumption trigger); name or number",
+        "description": "Action type: 1 assignment, 2 removal, 5 password_removal (needs passwords), 6 move_to_trash; name or number. Types 3, 4, 7 and 8 can only be set through workflow_update",
         "enum": [
           1,
           2,
@@ -456,7 +457,8 @@
                   "assign_correspondent",
                   "assign_document_type",
                   "assign_storage_path",
-                  "assign_owner"
+                  "assign_owner",
+                  "assign_custom_fields_values"
                 ]
               },
               "type": "array"
@@ -643,6 +645,17 @@
                   "description": "Request body",
                   "type": "string"
                 },
+                "clear": {
+                  "description": "Array of fields to clear (remove the value)",
+                  "items": {
+                    "enum": [
+                      "params",
+                      "body",
+                      "headers"
+                    ]
+                  },
+                  "type": "array"
+                },
                 "headers": {
                   "additionalProperties": {
                     "type": "string"
@@ -655,8 +668,9 @@
                   "type": "boolean"
                 },
                 "params": {
-                  "const": {},
-                  "description": "Object with request parameters"
+                  "additionalProperties": true,
+                  "description": "Object with request parameters",
+                  "type": "object"
                 },
                 "url": {
                   "description": "Webhook URL (at most 256 characters)",
@@ -716,14 +730,18 @@
                   "filter_has_correspondent",
                   "filter_has_document_type",
                   "filter_has_storage_path",
-                  "schedule_date_custom_field"
+                  "schedule_date_custom_field",
+                  "match"
                 ]
               },
               "type": "array"
             },
             "filter_custom_field_query": {
               "description": "Array of custom field query terms, e.g. [\"field_name\", \"exact\", \"value\"] (custom_field_query syntax)",
-              "type": "string"
+              "type": [
+                "array",
+                "string"
+              ]
             },
             "filter_filename": {
               "description": "Filename filter, wildcards such as *.pdf allowed, case-insensitive",
@@ -885,7 +903,7 @@
               "type": "integer"
             },
             "sources": {
-              "description": "Array of document sources (consumption, added and updated triggers): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui; names or numbers",
+              "description": "Array of document sources (consumption, added and updated triggers): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui; names or numbers. [] means any source; new triggers that leave sources out get 1, 2 and 3",
               "items": {
                 "enum": [
                   1,
@@ -956,7 +974,8 @@
             "filter_has_correspondent",
             "filter_has_document_type",
             "filter_has_storage_path",
-            "schedule_date_custom_field"
+            "schedule_date_custom_field",
+            "match"
           ]
         },
         "type": [
@@ -1194,7 +1213,7 @@
         ]
       },
       "sources": {
-        "description": "Array of document sources (consumption, added and updated triggers): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui; names or numbers",
+        "description": "Array of document sources (consumption, added and updated triggers): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui; names or numbers. [] means any source; new triggers that leave sources out get 1, 2 and 3",
         "items": {
           "enum": [
             1,
@@ -1358,7 +1377,8 @@
                   "assign_correspondent",
                   "assign_document_type",
                   "assign_storage_path",
-                  "assign_owner"
+                  "assign_owner",
+                  "assign_custom_fields_values"
                 ]
               },
               "type": "array"
@@ -1555,6 +1575,17 @@
                   "description": "Request body",
                   "type": "string"
                 },
+                "clear": {
+                  "description": "Array of fields to clear (remove the value)",
+                  "items": {
+                    "enum": [
+                      "params",
+                      "body",
+                      "headers"
+                    ]
+                  },
+                  "type": "array"
+                },
                 "headers": {
                   "additionalProperties": {
                     "type": "string"
@@ -1572,8 +1603,9 @@
                   "type": "boolean"
                 },
                 "params": {
-                  "const": {},
-                  "description": "Object with request parameters"
+                  "additionalProperties": true,
+                  "description": "Object with request parameters",
+                  "type": "object"
                 },
                 "url": {
                   "description": "Webhook URL (at most 256 characters)",
@@ -1644,14 +1676,18 @@
                   "filter_has_correspondent",
                   "filter_has_document_type",
                   "filter_has_storage_path",
-                  "schedule_date_custom_field"
+                  "schedule_date_custom_field",
+                  "match"
                 ]
               },
               "type": "array"
             },
             "filter_custom_field_query": {
               "description": "Array of custom field query terms, e.g. [\"field_name\", \"exact\", \"value\"] (custom_field_query syntax)",
-              "type": "string"
+              "type": [
+                "array",
+                "string"
+              ]
             },
             "filter_filename": {
               "description": "Filename filter, wildcards such as *.pdf allowed, case-insensitive",
@@ -1818,7 +1854,7 @@
               "type": "integer"
             },
             "sources": {
-              "description": "Array of document sources (consumption, added and updated triggers): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui; names or numbers",
+              "description": "Array of document sources (consumption, added and updated triggers): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui; names or numbers. [] means any source; new triggers that leave sources out get 1, 2 and 3",
               "items": {
                 "enum": [
                   1,
