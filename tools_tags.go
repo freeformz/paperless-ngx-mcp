@@ -36,7 +36,7 @@ func registerTagTools(srv *server.MCPServer, client *Client) {
 			mcp.WithString("name", mcp.Description("Tag name"), mcp.Required()),
 			mcp.WithString("color", mcp.Description("Hex color (e.g., #a6cee3)")),
 			mcp.WithBoolean("is_inbox_tag", mcp.Description("Whether this is an inbox tag")),
-			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
+			withMatchingAlgorithm(),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
 			withNumber("parent", mcp.Description("Parent tag ID for hierarchy")),
@@ -51,7 +51,7 @@ func registerTagTools(srv *server.MCPServer, client *Client) {
 			mcp.WithString("name", mcp.Description("Tag name")),
 			mcp.WithString("color", mcp.Description("Hex color")),
 			mcp.WithBoolean("is_inbox_tag", mcp.Description("Whether this is an inbox tag")),
-			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
+			withMatchingAlgorithm(),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
 			withNumber("parent", mcp.Description("Parent tag ID (clear: [\"parent\"] makes it a top-level tag)")),
@@ -106,7 +106,7 @@ func handleTagCreate(client *Client) server.ToolHandlerFunc {
 		if errRes := setOptionalBool(body, request, "is_inbox_tag"); errRes != nil {
 			return errRes, nil
 		}
-		if errRes := setOptionalInt(body, args, "matching_algorithm"); errRes != nil {
+		if errRes := setMatchingAlgorithm(body, args); errRes != nil {
 			return errRes, nil
 		}
 		if errRes := setOptionalBool(body, request, "is_insensitive"); errRes != nil {
@@ -144,7 +144,7 @@ func handleTagUpdate(client *Client) server.ToolHandlerFunc {
 		if errRes := setOptionalBool(body, request, "is_inbox_tag"); errRes != nil {
 			return errRes, nil
 		}
-		if errRes := setOptionalInt(body, args, "matching_algorithm"); errRes != nil {
+		if errRes := setMatchingAlgorithm(body, args); errRes != nil {
 			return errRes, nil
 		}
 		if errRes := setOptionalBool(body, request, "is_insensitive"); errRes != nil {
