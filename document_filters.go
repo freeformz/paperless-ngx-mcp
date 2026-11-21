@@ -132,6 +132,12 @@ func filterValueText(p filterParam, v any, strict bool) (text string, ok bool, e
 				return bad("true or false")
 			}
 			return strconv.FormatBool(parsed), true, nil
+		case float64, int, int64:
+			// document_list (lenient) takes 1 and 0, like the other boolean
+			// params; selection filters stay strict.
+			if n, whole := wholeNumber(b); !strict && whole && (n == 0 || n == 1) {
+				return strconv.FormatBool(n == 1), true, nil
+			}
 		}
 		return bad("true or false")
 	case filterDate:

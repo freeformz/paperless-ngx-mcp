@@ -323,11 +323,18 @@ func TestDocumentUpdateContentEmpty(t *testing.T) {
 	})
 
 	client := testClientAndServer(t, rh)
+	// "" is not given (padding); clear: ["content"] empties the text.
 	result := callTool(t, handleDocumentUpdate(client), map[string]any{
 		"id":      float64(1),
 		"content": "",
 	})
+	assertIsError(t, result)
+	result = callTool(t, handleDocumentUpdate(client), map[string]any{
+		"id":    float64(1),
+		"clear": []any{"content"},
+	})
 	assertNotError(t, result)
+	assertIsError(t, callTool(t, handleDocumentUpdate(client), map[string]any{"id": float64(1), "content": "x", "clear": []any{"content"}}))
 
 	if _, ok := capturedBody["content"]; !ok {
 		t.Error("expected content in body")

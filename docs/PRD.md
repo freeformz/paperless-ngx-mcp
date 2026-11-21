@@ -184,7 +184,7 @@ By default each document's `content` (OCR text) is truncated to a snippet (defau
 |------|------|----------|-------------|
 | id | integer | yes | Document ID |
 | title | string | no | New title |
-| content | string | no | New document content text (OCR text); empty string clears content |
+| content | string | no | New document content text (OCR text); an empty string is ignored, `clear: ["content"]` empties it |
 | created | string | no | New created date (YYYY-MM-DD) |
 | correspondent | integer | no | Correspondent ID |
 | document_type | integer | no | Document type ID |
@@ -637,7 +637,7 @@ The `all` ID array that list responses carried below API v10 no longer exists, s
 
 ## Null Values
 
-Some MCP clients send every declared parameter, filling unused ones with `null`. A top-level `null` therefore always means "not given", in every tool: middleware drops it before any handler runs. The string `"null"` is dropped too, except for free-text parameters (titles, names, notes, passwords, search text), where it is real text; for other string parameters (dates, colours, orderings, enums) it means "not given". An empty string means "not given" for number and boolean parameters, and a value that doesn't parse is an error rather than a silent `0` or `false`. Before this, a padded `null` became a real value in many tools (`document_update` `content: null` wiped the OCR text; `user_update` `is_superuser: null` sent `false`; list filters became `=0` or `=false`).
+Some MCP clients send every declared parameter, filling unused ones with `null`. A top-level `null` therefore always means "not given", in every tool: middleware drops it before any handler runs. The string `"null"` is dropped too, except where it is real text and can't be padding: search text (`query`, `term`, task `result`, and the list tools' `name`/`title`/`content`/`path` filters) and required free-text parameters (a note, a new object's name). Optional fields that a write would overwrite (a password, a username, a title, OCR text) drop it, so a padding client can't set a password to "null". An empty string means "not given" for optional parameters; so do `[]` and `{}` (whitespace aside) for number and true/false parameters, and `{}` for optional object parameters (`extra_data`, `permissions`). An empty list that replaces values is real: `document_update` `tags: []` and `custom_fields: []` remove them all, and `filter_rules: []` replaces every rule. This covers `document_update` `content` (clear it with `clear: ["content"]`). A number or boolean that doesn't parse is an error rather than a silent `0`, `false` or default; booleans accept `1` and `0`, except the `all` selectors and selection filters, which take only true/false. An out-of-range number gets an error naming the range. Before this, a padded `null` became a real value in many tools (`document_update` `content: null` wiped the OCR text; `user_update` `is_superuser: null` sent `false`; list filters became `=0` or `=false`).
 
 Clearing a field takes an explicit `clear` array naming it: `document_update` (`correspondent`, `document_type`, `storage_path`, `archive_serial_number`, `owner`), `tag_update` (`parent`), `saved_view_update` (`page_size`, `display_mode`, `display_fields`) and `bulk_edit_objects` (`owner`). A field both given a value and listed in `clear` is an error. Nulls nested inside JSON objects (such as `document_bulk_edit`'s `parameters`, workflow and mail rule bodies, custom field values) are sent as given.
 

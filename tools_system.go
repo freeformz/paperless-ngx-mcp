@@ -202,7 +202,9 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 func handleTaskList(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		params := url.Values{}
-		addPaginationParams(params, request)
+		if errRes := addPaginationParams(params, request); errRes != nil {
+			return errRes, nil
+		}
 		if errRes := addTaskFilters(params, request, true); errRes != nil {
 			return errRes, nil
 		}
@@ -212,7 +214,10 @@ func handleTaskList(client *Client) server.ToolHandlerFunc {
 			}
 			params.Set("ordering", ordering)
 		}
-		includeTraceback := request.GetBool("include_traceback", false)
+		includeTraceback, errRes := optionalBool(request, "include_traceback", false)
+		if errRes != nil {
+			return errRes, nil
+		}
 
 		path := "/api/tasks/"
 		resp, err := client.Get(ctx, path, params)
@@ -290,7 +295,10 @@ func handleTaskAcknowledge(client *Client) server.ToolHandlerFunc {
 				}
 			}
 		}
-		all := request.GetBool("all", false)
+		all, _, errRes := getStrictBool(request, "all")
+		if errRes != nil {
+			return errRes, nil
+		}
 		switch {
 		case all && hasTasks:
 			return errResult("Set either all or tasks, not both."), nil
@@ -326,7 +334,7 @@ func handleTaskStats(client *Client) server.ToolHandlerFunc {
 		}
 		for name, v := range request.GetArguments() {
 			// Some clients send every optional property, null when unused.
-			if v != nil && name != "mode" && !slices.Contains(allowed, name) {
+			if argIsSet(v) && name != "mode" && !slices.Contains(allowed, name) {
 				return errResult(fmt.Sprintf("%s does not apply to mode %s", name, mode)), nil
 			}
 		}
@@ -334,12 +342,12 @@ func handleTaskStats(client *Client) server.ToolHandlerFunc {
 		params := url.Values{}
 		switch mode {
 		case "summary":
-			if v, ok := request.GetArguments()["days"]; ok && v != nil {
-				days := request.GetFloat("days", 0)
-				if days < 1 || days > 365 || days != float64(int(days)) {
-					return errResult("days must be an integer from 1 to 365"), nil
-				}
-				params.Set("days", strconv.Itoa(int(days)))
+			days, given, errRes := optionalInt(request, "days")
+			if errRes != nil || (given && (days < 1 || days > 365)) {
+				return errResult("days must be an integer from 1 to 365"), nil
+			}
+			if given {
+				params.Set("days", strconv.Itoa(days))
 			}
 		case "status_counts":
 			if errRes := addTaskFilters(params, request, false); errRes != nil {
@@ -384,8 +392,11 @@ func handleLogGet(client *Client) server.ToolHandlerFunc {
 		if !logNamePattern.MatchString(id) {
 			return errResult("id must contain only alphanumeric characters, dots, hyphens, and underscores"), nil
 		}
-		tail := int(request.GetFloat("tail", 100))
-		if tail < 1 {
+		tail, given, errRes := optionalInt(request, "tail")
+		if errRes != nil {
+			return errRes, nil
+		}
+		if !given || tail < 1 {
 			tail = 100
 		}
 		path := fmt.Sprintf("/api/logs/%s/", id)

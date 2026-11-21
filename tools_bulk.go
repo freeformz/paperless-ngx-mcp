@@ -211,10 +211,14 @@ func setObjectPermissions(body map[string]any, request mcp.CallToolRequest, oper
 	args := request.GetArguments()
 	if operation == "delete" {
 		var given []string
-		for _, name := range []string{"owner", "permissions", "merge", "clear"} {
-			if v := args[name]; argIsSet(v) && v != false && v != "false" {
+		for _, name := range []string{"owner", "permissions", "clear"} {
+			if argIsSet(args[name]) {
 				given = append(given, name)
 			}
+		}
+		// merge: false (in any form setOptionalBool reads) is harmless.
+		if merge, errRes := optionalBool(request, "merge", false); errRes != nil || merge {
+			given = append(given, "merge")
 		}
 		if len(given) > 0 {
 			return errResult("delete takes no " + strings.Join(given, ", ") + "; those are for set_permissions")
@@ -227,6 +231,9 @@ func setObjectPermissions(body map[string]any, request mcp.CallToolRequest, oper
 	perms, present, err := getJSONArg(request, "permissions")
 	if err != nil {
 		return errResult(err.Error())
+	}
+	if m, ok := perms.(map[string]any); ok && len(m) == 0 {
+		present = false // {} padding
 	}
 	if present {
 		clean, err := validateObjectPermissions(perms)

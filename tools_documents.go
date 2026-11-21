@@ -6,7 +6,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -40,7 +42,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Update document metadata. Only specified fields are changed. "+clearHint+": clear: [\"correspondent\"] removes the correspondent."),
 			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 			mcp.WithString("title", mcp.Description("New title")),
-			mcp.WithString("content", mcp.Description("New document content text (OCR text). Pass empty string to clear.")),
+			mcp.WithString("content", mcp.Description("New document content text (OCR text); clear: [\"content\"] empties it (an empty string is ignored)")),
 			mcp.WithString("created", mcp.Description("New created date (YYYY-MM-DD)")),
 			withNumber("correspondent", mcp.Description("Correspondent ID (clear: [\"correspondent\"] removes it)")),
 			withNumber("document_type", mcp.Description("Document type ID (clear: [\"document_type\"] removes it)")),
@@ -159,13 +161,23 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 func handleDocumentList(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		params := url.Values{}
-		addPaginationParams(params, request)
+		if errRes := addPaginationParams(params, request); errRes != nil {
+			return errRes, nil
+		}
 		if errRes := addDocumentListFilters(params, request); errRes != nil {
 			return errRes, nil
 		}
 		addStringParam(params, request, "ordering", "ordering")
 
 		snippetLen, errRes := getContentSnippetLen(request)
+		if errRes != nil {
+			return errRes, nil
+		}
+		fullContent, errRes := optionalBool(request, "full_content", false)
+		if errRes != nil {
+			return errRes, nil
+		}
+		includeNotes, errRes := optionalBool(request, "include_notes", false)
 		if errRes != nil {
 			return errRes, nil
 		}
@@ -177,10 +189,10 @@ func handleDocumentList(client *Client) server.ToolHandlerFunc {
 			if !ok {
 				return v
 			}
-			if !request.GetBool("full_content", false) {
+			if !fullContent {
 				truncateContentFields(m["results"], snippetLen)
 			}
-			if !request.GetBool("include_notes", false) {
+			if !includeNotes {
 				stripNotesFields(m["results"])
 			}
 			return v
@@ -188,8 +200,12 @@ func handleDocumentList(client *Client) server.ToolHandlerFunc {
 	}
 }
 
-// documentUpdateClearable are the document fields clear can remove.
-var documentUpdateClearable = []string{"correspondent", "document_type", "storage_path", "archive_serial_number", "owner"}
+// documentUpdateIDFields are document_update's id fields.
+var documentUpdateIDFields = []string{"correspondent", "document_type", "storage_path", "archive_serial_number", "owner"}
+
+// documentUpdateClearable are the document fields clear can remove; content
+// is cleared to "" (it can't be null), the others to null.
+var documentUpdateClearable = append(slices.Clone(documentUpdateIDFields), "content")
 
 func handleDocumentUpdate(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -204,20 +220,24 @@ func handleDocumentUpdate(client *Client) server.ToolHandlerFunc {
 		if v := request.GetString("title", ""); v != "" {
 			body["title"] = v
 		}
-		if v, ok := args["content"].(string); ok {
+		// "" is not given (some clients pad with it); clear: ["content"] empties it.
+		if v := request.GetString("content", ""); strings.TrimSpace(v) != "" {
 			body["content"] = v
 		}
 		if v := request.GetString("created", ""); v != "" {
 			body["created"] = v
 		}
 
-		for _, name := range documentUpdateClearable {
+		for _, name := range documentUpdateIDFields {
 			if errRes := setOptionalInt(body, args, name); errRes != nil {
 				return errRes, nil
 			}
 		}
 		if errRes := applyClear(body, request, documentUpdateClearable); errRes != nil {
 			return errRes, nil
+		}
+		if c, ok := body["content"]; ok && c == nil {
+			body["content"] = ""
 		}
 
 		if err := setJSONField(body, request, "tags"); err != nil {

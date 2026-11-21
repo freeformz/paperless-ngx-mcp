@@ -53,7 +53,9 @@ func registerShareLinkTools(srv *server.MCPServer, client *Client) {
 func handleShareLinkList(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		params := url.Values{}
-		addPaginationParams(params, request)
+		if errRes := addPaginationParams(params, request); errRes != nil {
+			return errRes, nil
+		}
 		addStringParam(params, request, "created_after", "created__date__gte")
 		addStringParam(params, request, "created_before", "created__date__lte")
 		addStringParam(params, request, "expiration_after", "expiration__date__gte")

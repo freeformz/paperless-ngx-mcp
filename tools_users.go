@@ -138,7 +138,13 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 func handleUserList(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		params := url.Values{}
-		addPaginationParams(params, request)
+		if errRes := addPaginationParams(params, request); errRes != nil {
+			return errRes, nil
+		}
+		includePermissions, errRes := optionalBool(request, "include_permissions", false)
+		if errRes != nil {
+			return errRes, nil
+		}
 		path := "/api/users/"
 		resp, err := client.Get(ctx, path, params)
 		return doRequestJSON(resp, err, "GET", path, func(v any) any {
@@ -146,7 +152,7 @@ func handleUserList(client *Client) server.ToolHandlerFunc {
 			if !ok {
 				return v
 			}
-			if !request.GetBool("include_permissions", false) {
+			if !includePermissions {
 				if results, ok := m["results"].([]any); ok {
 					for _, r := range results {
 						if user, ok := r.(map[string]any); ok {

@@ -119,8 +119,8 @@ func withIMAPSecurity(name string) mcp.ToolOption {
 }
 
 func getIMAPSecurity(request mcp.CallToolRequest) (int, bool, *mcp.CallToolResult) {
-	raw, ok := request.GetArguments()["imap_security"]
-	if !ok || raw == nil {
+	raw := request.GetArguments()["imap_security"]
+	if !argIsSet(raw) {
 		return 0, false, nil
 	}
 	if value, ok := imapSecurityValue(raw); ok {

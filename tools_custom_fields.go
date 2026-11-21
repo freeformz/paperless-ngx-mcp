@@ -70,7 +70,9 @@ func registerCustomFieldTools(srv *server.MCPServer, client *Client) {
 func handleCustomFieldList(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		params := url.Values{}
-		addPaginationParams(params, request)
+		if errRes := addPaginationParams(params, request); errRes != nil {
+			return errRes, nil
+		}
 		addStringParam(params, request, "name", "name__icontains")
 		addStringParam(params, request, "ordering", "ordering")
 
@@ -97,7 +99,7 @@ func handleCustomFieldCreate(client *Client) server.ToolHandlerFunc {
 
 		body := map[string]any{"name": name, "data_type": dataType}
 
-		if err := setJSONField(body, request, "extra_data"); err != nil {
+		if err := setOptionalJSONObject(body, request, "extra_data"); err != nil {
 			return errResult(err.Error()), nil
 		}
 
@@ -118,7 +120,7 @@ func handleCustomFieldUpdate(client *Client) server.ToolHandlerFunc {
 		if v := request.GetString("name", ""); v != "" {
 			body["name"] = v
 		}
-		if err := setJSONField(body, request, "extra_data"); err != nil {
+		if err := setOptionalJSONObject(body, request, "extra_data"); err != nil {
 			return errResult(err.Error()), nil
 		}
 

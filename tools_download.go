@@ -84,7 +84,10 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 			return errResult(fmt.Sprintf("invalid variant %q: must be archived, original, or thumbnail", variant)), nil
 		}
 
-		returnContent := request.GetBool("content", false)
+		returnContent, errRes := optionalBool(request, "content", false)
+		if errRes != nil {
+			return errRes, nil
+		}
 
 		destDir := request.GetString("dest_dir", "")
 		var saveDir string
