@@ -24,6 +24,8 @@ jobs:
               - 'go.mod'
               - 'go.sum'
               - 'Makefile'
+              - '**/*.cue'
+              - 'testdata/**'
               - '.github/workflows/ci.yml'
 
       - uses: actions/setup-go@v6

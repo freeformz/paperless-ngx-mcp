@@ -163,13 +163,15 @@ func TestNativeObjectMailRuleBody(t *testing.T) {
 	}
 }
 
-func TestNativeObjectWorkflowBody(t *testing.T) {
-	client, got := captureJSONBody(t, "POST", "/api/workflows/")
-	assertNotError(t, callTool(t, handleWorkflowCreate(client), map[string]any{
-		"name": "Auto-tag", "body": map[string]any{"enabled": true},
-	}))
-	if (*got)["enabled"] != true {
-		t.Errorf("body = %v, want enabled: true", *got)
+func TestNativeAndStringWorkflowTriggers(t *testing.T) {
+	for _, triggers := range []any{[]any{map[string]any{"type": float64(5)}}, `[{"type": 5}]`} {
+		client, got := captureJSONBody(t, "POST", "/api/workflows/")
+		assertNotError(t, callThroughMiddleware(t, client, "workflow_create", map[string]any{
+			"name": "Auto-tag", "triggers": triggers, "actions": []any{map[string]any{"type": float64(6)}},
+		}))
+		if tr, _ := (*got)["triggers"].([]any); len(tr) != 1 {
+			t.Errorf("triggers %T: body = %v", triggers, *got)
+		}
 	}
 }
 

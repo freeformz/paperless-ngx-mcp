@@ -14,7 +14,7 @@ func registerBulkTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_bulk_edit",
 			append([]mcp.ToolOption{
-				mcp.WithDescription("Bulk edit document metadata. parameters by method: set_correspondent {correspondent: id or null}; set_document_type {document_type: id or null}; set_storage_path {storage_path: id or null}; add_tag / remove_tag {tag: id}; modify_tags {add_tags: [id], remove_tags: [id]} (both required, may be empty); modify_custom_fields {add_custom_fields: [id] or {id: value}, remove_custom_fields: [id]} (both required); set_permissions {set_permissions: {view?: {users?: [id], groups?: [id]}, change?: {...}} or null, owner?: id or null, merge?: bool} (needs ownership; without merge, leaving out owner clears it); run_workflow {workflow: id, filter_documents?: bool, default true} (needs view_workflow permission, an enabled workflow with a manual trigger, and ownership). Every method needs change permission on every document. " + documentSelectionNote + " The server queues a bulk task and returns its task_id at once; errors show up in that task. Pass wait: true to wait for it; for these methods the bulk task finishing means the change is done. File operations have their own tools: rotate -> document_rotate, merge -> document_merge, edit_pdf / split / delete_pages -> document_edit_pdf, remove_password -> document_remove_password, reprocess -> document_reprocess, delete -> document_bulk_delete."),
+				mcp.WithDescription("Bulk edit document metadata. parameters by method: set_correspondent {correspondent: id or null}; set_document_type {document_type: id or null}; set_storage_path {storage_path: id or null}; add_tag / remove_tag {tag: id}; modify_tags {add_tags: [id], remove_tags: [id]} (both required, may be empty); modify_custom_fields {add_custom_fields: [id] or {id: value}, remove_custom_fields: [id]} (both required); set_permissions {set_permissions: {view?: {users?: [id], groups?: [id]}, change?: {...}} or null, owner?: id or null, merge?: bool} (needs ownership; without merge, leaving out owner clears it). Every method needs change permission on every document. " + documentSelectionNote + " The server queues a bulk task and returns its task_id at once; errors show up in that task. Pass wait: true to wait for it; for these methods the bulk task finishing means the change is done. File operations have their own tools: rotate -> document_rotate, merge -> document_merge, edit_pdf / split / delete_pages -> document_edit_pdf, remove_password -> document_remove_password, reprocess -> document_reprocess, delete -> document_bulk_delete; run_workflow -> workflow_run."),
 				mcp.WithString("method", mcp.Description("Operation to perform"), mcp.Required(), mcp.Enum(bulkEditMethods...)),
 				withJSONObject("parameters", mcp.Description("Object with method-specific parameters, see the description"), mcp.Required()),
 			}, append(documentSelectionOptions(), waitToolOptions()...)...)...,
@@ -305,15 +305,16 @@ var (
 	bulkObjectOperations = []string{"set_permissions", "delete"}
 )
 
-// bulkEditMethods are the document_bulk_edit methods: metadata changes and
-// run_workflow. File operations moved to the document action tools.
+// bulkEditMethods are the document_bulk_edit methods: metadata changes. File
+// operations moved to the document action tools, run_workflow to workflow_run.
 var bulkEditMethods = []string{
 	"set_correspondent", "set_document_type", "set_storage_path", "add_tag", "remove_tag",
-	"modify_tags", "modify_custom_fields", "set_permissions", "run_workflow",
+	"modify_tags", "modify_custom_fields", "set_permissions",
 }
 
-// bulkEditMovedMethods maps the bulk_edit file methods paperless-ngx still
-// accepts (deprecated, until API v9 is dropped) to the tool that replaces them.
+// bulkEditMovedMethods maps the bulk_edit methods document_bulk_edit no longer
+// takes to the tool that replaces them: the file methods paperless-ngx still
+// accepts (deprecated, until API v9 is dropped), and run_workflow.
 var bulkEditMovedMethods = map[string]string{
 	"rotate":          "document_rotate",
 	"merge":           "document_merge",
@@ -323,4 +324,5 @@ var bulkEditMovedMethods = map[string]string{
 	"remove_password": "document_remove_password",
 	"reprocess":       "document_reprocess",
 	"delete":          "document_bulk_delete",
+	"run_workflow":    "workflow_run",
 }
