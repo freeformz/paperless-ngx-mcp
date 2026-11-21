@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -415,6 +416,41 @@ func setOptionalInt(body map[string]any, args map[string]any, name string) *mcp.
 	}
 	body[name] = n
 	return nil
+}
+
+// matchingAlgorithms maps paperless-ngx's matching algorithm names to their
+// numbers for tags, correspondents, document types and storage paths. The
+// names and aliases are the workflow tools' (schema/workflow.cue); these
+// objects also have auto (6). TestMatchingAlgorithmsMatchWorkflowNames keeps
+// the two in step.
+var matchingAlgorithms = map[string]int{
+	"none": 0, "any": 1, "all": 2, "literal": 3, "regex": 4, "fuzzy": 5, "auto": 6,
+	"any_word": 1, "all_words": 2, "exact": 3, "exact_match": 3, "regular_expression": 4, "fuzzy_word": 5,
+}
+
+const matchingAlgorithmDesc = "Matching algorithm: none, any, all, literal, regex, fuzzy or auto, or its number (0-6, 6 = auto)"
+
+// withMatchingAlgorithm declares the matching_algorithm parameter, which
+// takes a name or a number.
+func withMatchingAlgorithm() mcp.ToolOption {
+	return mcp.WithAny("matching_algorithm", func(schema map[string]any) {
+		schema["type"] = []string{"integer", "string"}
+	}, mcp.Description(matchingAlgorithmDesc))
+}
+
+// setMatchingAlgorithm sets matching_algorithm from a name or a number.
+func setMatchingAlgorithm(body map[string]any, args map[string]any) *mcp.CallToolResult {
+	if s, ok := args["matching_algorithm"].(string); ok {
+		key := strings.NewReplacer(" ", "_", "-", "_").Replace(strings.ToLower(strings.TrimSpace(s)))
+		if n, ok := matchingAlgorithms[key]; ok {
+			body["matching_algorithm"] = n
+			return nil
+		}
+		if strings.IndexFunc(key, unicode.IsLetter) >= 0 {
+			return errResult(fmt.Sprintf("matching_algorithm must be a whole number (0-6) or one of none, any, all, literal, regex, fuzzy, auto; got %q", s))
+		}
+	}
+	return setOptionalInt(body, args, "matching_algorithm")
 }
 
 // intParamLimits holds the fields whose range is wider than maxWholeNumber:
