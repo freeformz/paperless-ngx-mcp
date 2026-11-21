@@ -10,7 +10,7 @@
         "type": "boolean"
       },
       "ai_suggestion_fields": {
-        "description": "Array of fields to fill from AI suggestions (type 8; non-empty): title, tags, correspondent, document_type, storage_path, created",
+        "description": "Array of fields to fill from AI suggestions (type 8; non-empty)",
         "items": {
           "enum": [
             "title",
@@ -144,7 +144,7 @@
         ]
       },
       "clear": {
-        "description": "Array of fields to clear (remove the value)",
+        "description": "Array of fields to clear",
         "items": {
           "enum": [
             "assign_title",
@@ -169,7 +169,7 @@
         ]
       },
       "passwords": {
-        "description": "Array of passwords to try (type 5 password_removal; non-empty)",
+        "description": "Array of passwords to try (type 5; non-empty)",
         "items": {
           "pattern": "\\S",
           "type": "string"
@@ -180,31 +180,24 @@
         ]
       },
       "remove_all_correspondents": {
-        "description": "Remove the correspondent",
         "type": "boolean"
       },
       "remove_all_custom_fields": {
-        "description": "Remove all custom fields",
         "type": "boolean"
       },
       "remove_all_document_types": {
-        "description": "Remove the document type",
         "type": "boolean"
       },
       "remove_all_owners": {
-        "description": "Remove the owner",
         "type": "boolean"
       },
       "remove_all_permissions": {
-        "description": "Remove all permissions",
         "type": "boolean"
       },
       "remove_all_storage_paths": {
-        "description": "Remove the storage path",
         "type": "boolean"
       },
       "remove_all_tags": {
-        "description": "Remove all tags",
         "type": "boolean"
       },
       "remove_change_groups": {
@@ -318,7 +311,7 @@
         ]
       },
       "type": {
-        "description": "Action type: 1 assignment, 2 removal, 5 password_removal (needs passwords), 6 move_to_trash; name or number. Types 3, 4, 7 and 8 can only be set through workflow_update",
+        "description": "Action type: 1 assignment, 2 removal, 5 password_removal (needs passwords), 6 move_to_trash. Types 3, 4, 7 and 8 can only be set through workflow_update",
         "enum": [
           1,
           2,
@@ -356,7 +349,7 @@
               "type": "boolean"
             },
             "ai_suggestion_fields": {
-              "description": "Array of fields to fill from AI suggestions (type 8; non-empty): title, tags, correspondent, document_type, storage_path, created",
+              "description": "Fields to fill from AI suggestions (type 8; non-empty)",
               "items": {
                 "enum": [
                   "title",
@@ -370,7 +363,7 @@
               "type": "array"
             },
             "assign_change_groups": {
-              "description": "Array of group IDs to grant change permission",
+              "description": "Group IDs to grant change permission",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -378,7 +371,7 @@
               "type": "array"
             },
             "assign_change_users": {
-              "description": "Array of user IDs to grant change permission",
+              "description": "User IDs to grant change permission",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -391,7 +384,7 @@
               "type": "integer"
             },
             "assign_custom_fields": {
-              "description": "Array of custom field IDs to assign",
+              "description": "Custom field IDs to assign",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -400,7 +393,7 @@
             },
             "assign_custom_fields_values": {
               "additionalProperties": false,
-              "description": "Object with custom field values to assign, keyed by custom field ID",
+              "description": "Custom field values to assign, keyed by custom field ID",
               "patternProperties": {
                 "^[0-9]+$": true
               },
@@ -422,7 +415,7 @@
               "type": "integer"
             },
             "assign_tags": {
-              "description": "Array of tag IDs to assign",
+              "description": "Tag IDs to assign",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -434,7 +427,7 @@
               "type": "string"
             },
             "assign_view_groups": {
-              "description": "Array of group IDs to grant view permission",
+              "description": "Group IDs to grant view permission",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -442,7 +435,7 @@
               "type": "array"
             },
             "assign_view_users": {
-              "description": "Array of user IDs to grant view permission",
+              "description": "User IDs to grant view permission",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -450,7 +443,7 @@
               "type": "array"
             },
             "clear": {
-              "description": "Array of fields to clear (remove the value)",
+              "description": "Fields to clear",
               "items": {
                 "enum": [
                   "assign_title",
@@ -468,11 +461,9 @@
               "description": "Email settings (type 3 email)",
               "properties": {
                 "body": {
-                  "description": "Email body",
                   "type": "string"
                 },
                 "include_document": {
-                  "description": "Attach the document",
                   "type": "boolean"
                 },
                 "subject": {
@@ -493,7 +484,7 @@
               "type": "object"
             },
             "passwords": {
-              "description": "Array of passwords to try (type 5 password_removal; non-empty)",
+              "description": "Passwords to try (type 5; non-empty)",
               "items": {
                 "pattern": "\\S",
                 "type": "string"
@@ -501,35 +492,28 @@
               "type": "array"
             },
             "remove_all_correspondents": {
-              "description": "Remove the correspondent",
               "type": "boolean"
             },
             "remove_all_custom_fields": {
-              "description": "Remove all custom fields",
               "type": "boolean"
             },
             "remove_all_document_types": {
-              "description": "Remove the document type",
               "type": "boolean"
             },
             "remove_all_owners": {
-              "description": "Remove the owner",
               "type": "boolean"
             },
             "remove_all_permissions": {
-              "description": "Remove all permissions",
               "type": "boolean"
             },
             "remove_all_storage_paths": {
-              "description": "Remove the storage path",
               "type": "boolean"
             },
             "remove_all_tags": {
-              "description": "Remove all tags",
               "type": "boolean"
             },
             "remove_change_groups": {
-              "description": "Array of group IDs to remove change permission from",
+              "description": "Group IDs to remove change permission from",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -537,7 +521,7 @@
               "type": "array"
             },
             "remove_change_users": {
-              "description": "Array of user IDs to remove change permission from",
+              "description": "User IDs to remove change permission from",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -545,7 +529,7 @@
               "type": "array"
             },
             "remove_correspondents": {
-              "description": "Array of correspondent IDs to remove",
+              "description": "Correspondent IDs to remove",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -553,7 +537,7 @@
               "type": "array"
             },
             "remove_custom_fields": {
-              "description": "Array of custom field IDs to remove",
+              "description": "Custom field IDs to remove",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -561,7 +545,7 @@
               "type": "array"
             },
             "remove_document_types": {
-              "description": "Array of document type IDs to remove",
+              "description": "Document type IDs to remove",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -569,7 +553,7 @@
               "type": "array"
             },
             "remove_owners": {
-              "description": "Array of user IDs to remove as owner",
+              "description": "User IDs to remove as owner",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -577,7 +561,7 @@
               "type": "array"
             },
             "remove_storage_paths": {
-              "description": "Array of storage path IDs to remove",
+              "description": "Storage path IDs to remove",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -585,7 +569,7 @@
               "type": "array"
             },
             "remove_tags": {
-              "description": "Array of tag IDs to remove",
+              "description": "Tag IDs to remove",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -593,7 +577,7 @@
               "type": "array"
             },
             "remove_view_groups": {
-              "description": "Array of group IDs to remove view permission from",
+              "description": "Group IDs to remove view permission from",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -601,7 +585,7 @@
               "type": "array"
             },
             "remove_view_users": {
-              "description": "Array of user IDs to remove view permission from",
+              "description": "User IDs to remove view permission from",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -609,7 +593,7 @@
               "type": "array"
             },
             "type": {
-              "description": "Action type: 1 assignment, 2 removal, 3 email (needs email), 4 webhook (needs webhook), 5 password_removal (needs passwords), 6 move_to_trash, 7 remote_ocr (needs a consumption trigger), 8 apply_ai_suggestions (needs ai_suggestion_fields and a non-consumption trigger); name or number",
+              "description": "Action type: 1 assignment, 2 removal, 3 email (needs email), 4 webhook (needs webhook), 5 password_removal (needs passwords), 6 move_to_trash, 7 remote_ocr, 8 apply_ai_suggestions (needs ai_suggestion_fields)",
               "enum": [
                 1,
                 2,
@@ -646,7 +630,7 @@
                   "type": "string"
                 },
                 "clear": {
-                  "description": "Array of fields to clear (remove the value)",
+                  "description": "Fields to clear",
                   "items": {
                     "enum": [
                       "params",
@@ -660,16 +644,15 @@
                   "additionalProperties": {
                     "type": "string"
                   },
-                  "description": "Object with request headers",
+                  "description": "Request headers",
                   "type": "object"
                 },
                 "include_document": {
-                  "description": "Attach the document",
                   "type": "boolean"
                 },
                 "params": {
                   "additionalProperties": true,
-                  "description": "Object with request parameters",
+                  "description": "Request parameters",
                   "type": "object"
                 },
                 "url": {
@@ -720,7 +703,7 @@
           "additionalProperties": false,
           "properties": {
             "clear": {
-              "description": "Array of fields to clear (remove the value)",
+              "description": "Fields to clear",
               "items": {
                 "enum": [
                   "filter_path",
@@ -737,19 +720,19 @@
               "type": "array"
             },
             "filter_custom_field_query": {
-              "description": "Array of custom field query terms, e.g. [\"field_name\", \"exact\", \"value\"] (custom_field_query syntax)",
+              "description": "Custom field query terms, e.g. [\"field_name\", \"exact\", \"value\"] (custom_field_query syntax)",
               "type": [
                 "array",
                 "string"
               ]
             },
             "filter_filename": {
-              "description": "Filename filter, wildcards such as *.pdf allowed, case-insensitive",
+              "description": "Filename filter (wildcards such as *.pdf, case-insensitive)",
               "maxLength": 256,
               "type": "string"
             },
             "filter_has_all_tags": {
-              "description": "Array of tag IDs: the document has all of these",
+              "description": "Tag IDs: all of them",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -757,7 +740,7 @@
               "type": "array"
             },
             "filter_has_any_correspondents": {
-              "description": "Array of correspondent IDs: the document has one of these",
+              "description": "Correspondent IDs: any of them",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -765,7 +748,7 @@
               "type": "array"
             },
             "filter_has_any_document_types": {
-              "description": "Array of document type IDs: the document has one of these",
+              "description": "Document type IDs: any of them",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -773,7 +756,7 @@
               "type": "array"
             },
             "filter_has_any_storage_paths": {
-              "description": "Array of storage path IDs: the document has one of these",
+              "description": "Storage path IDs: any of them",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -791,7 +774,7 @@
               "type": "integer"
             },
             "filter_has_not_correspondents": {
-              "description": "Array of correspondent IDs: the document has none of these",
+              "description": "Correspondent IDs: none of them",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -799,7 +782,7 @@
               "type": "array"
             },
             "filter_has_not_document_types": {
-              "description": "Array of document type IDs: the document has none of these",
+              "description": "Document type IDs: none of them",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -807,7 +790,7 @@
               "type": "array"
             },
             "filter_has_not_storage_paths": {
-              "description": "Array of storage path IDs: the document has none of these",
+              "description": "Storage path IDs: none of them",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -815,7 +798,7 @@
               "type": "array"
             },
             "filter_has_not_tags": {
-              "description": "Array of tag IDs: the document has none of these",
+              "description": "Tag IDs: none of them",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -828,7 +811,7 @@
               "type": "integer"
             },
             "filter_has_tags": {
-              "description": "Array of tag IDs: the document has any of these",
+              "description": "Tag IDs: any of them",
               "items": {
                 "minimum": 1,
                 "type": "integer"
@@ -841,7 +824,7 @@
               "type": "integer"
             },
             "filter_path": {
-              "description": "Path filter, wildcards * allowed, case-insensitive",
+              "description": "Path filter (wildcards *, case-insensitive)",
               "maxLength": 256,
               "type": "string"
             },
@@ -855,7 +838,7 @@
               "type": "string"
             },
             "matching_algorithm": {
-              "description": "Matching algorithm: 0 none, 1 any, 2 all, 3 literal, 4 regex, 5 fuzzy; name or number",
+              "description": "Matching algorithm: 0 none, 1 any, 2 all, 3 literal, 4 regex, 5 fuzzy",
               "enum": [
                 0,
                 1,
@@ -876,12 +859,12 @@
               ]
             },
             "schedule_date_custom_field": {
-              "description": "Scheduled triggers: custom field ID when schedule_date_field is custom_field",
+              "description": "Type 4: custom field ID when schedule_date_field is custom_field",
               "minimum": 1,
               "type": "integer"
             },
             "schedule_date_field": {
-              "description": "Scheduled triggers: the date field to check: added, created, modified or custom_field",
+              "description": "Type 4: the date field to schedule from",
               "enum": [
                 "added",
                 "created",
@@ -890,20 +873,20 @@
               ]
             },
             "schedule_is_recurring": {
-              "description": "Scheduled triggers: repeat the schedule",
+              "description": "Type 4: repeat the schedule",
               "type": "boolean"
             },
             "schedule_offset_days": {
-              "description": "Scheduled triggers: days to offset the schedule by",
+              "description": "Type 4: days to offset the schedule by",
               "type": "integer"
             },
             "schedule_recurring_interval_days": {
-              "description": "Scheduled triggers: days between recurring runs (at least 1)",
+              "description": "Type 4: days between recurring runs",
               "minimum": 1,
               "type": "integer"
             },
             "sources": {
-              "description": "Array of document sources (consumption, added and updated triggers): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui; names or numbers. [] means any source; new triggers that leave sources out get 1, 2 and 3",
+              "description": "Document sources (types 1-3): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui. [] means any; a new trigger without sources gets 1, 2 and 3",
               "items": {
                 "enum": [
                   1,
@@ -923,7 +906,7 @@
               "type": "array"
             },
             "type": {
-              "description": "Trigger type: 1 consumption (needs filter_filename, filter_path or filter_mailrule in every call), 2 document_added, 3 document_updated, 4 scheduled, 5 manual (run with workflow_run); name or number",
+              "description": "Trigger type: 1 consumption (needs filter_filename, filter_path or filter_mailrule in every call), 2 document_added, 3 document_updated, 4 scheduled, 5 manual (run with workflow_run)",
               "enum": [
                 1,
                 2,
@@ -964,7 +947,7 @@
   "workflow_trigger_update": {
     "properties": {
       "clear": {
-        "description": "Array of fields to clear (remove the value)",
+        "description": "Array of fields to clear",
         "items": {
           "enum": [
             "filter_path",
@@ -991,12 +974,12 @@
         ]
       },
       "filter_filename": {
-        "description": "Filename filter, wildcards such as *.pdf allowed, case-insensitive",
+        "description": "Filename filter (wildcards such as *.pdf, case-insensitive)",
         "maxLength": 256,
         "type": "string"
       },
       "filter_has_all_tags": {
-        "description": "Array of tag IDs: the document has all of these",
+        "description": "Array of tag IDs: all of them",
         "items": {
           "minimum": 1,
           "type": "integer"
@@ -1007,7 +990,7 @@
         ]
       },
       "filter_has_any_correspondents": {
-        "description": "Array of correspondent IDs: the document has one of these",
+        "description": "Array of correspondent IDs: any of them",
         "items": {
           "minimum": 1,
           "type": "integer"
@@ -1018,7 +1001,7 @@
         ]
       },
       "filter_has_any_document_types": {
-        "description": "Array of document type IDs: the document has one of these",
+        "description": "Array of document type IDs: any of them",
         "items": {
           "minimum": 1,
           "type": "integer"
@@ -1029,7 +1012,7 @@
         ]
       },
       "filter_has_any_storage_paths": {
-        "description": "Array of storage path IDs: the document has one of these",
+        "description": "Array of storage path IDs: any of them",
         "items": {
           "minimum": 1,
           "type": "integer"
@@ -1058,7 +1041,7 @@
         ]
       },
       "filter_has_not_correspondents": {
-        "description": "Array of correspondent IDs: the document has none of these",
+        "description": "Array of correspondent IDs: none of them",
         "items": {
           "minimum": 1,
           "type": "integer"
@@ -1069,7 +1052,7 @@
         ]
       },
       "filter_has_not_document_types": {
-        "description": "Array of document type IDs: the document has none of these",
+        "description": "Array of document type IDs: none of them",
         "items": {
           "minimum": 1,
           "type": "integer"
@@ -1080,7 +1063,7 @@
         ]
       },
       "filter_has_not_storage_paths": {
-        "description": "Array of storage path IDs: the document has none of these",
+        "description": "Array of storage path IDs: none of them",
         "items": {
           "minimum": 1,
           "type": "integer"
@@ -1091,7 +1074,7 @@
         ]
       },
       "filter_has_not_tags": {
-        "description": "Array of tag IDs: the document has none of these",
+        "description": "Array of tag IDs: none of them",
         "items": {
           "minimum": 1,
           "type": "integer"
@@ -1111,7 +1094,7 @@
         ]
       },
       "filter_has_tags": {
-        "description": "Array of tag IDs: the document has any of these",
+        "description": "Array of tag IDs: any of them",
         "items": {
           "minimum": 1,
           "type": "integer"
@@ -1131,7 +1114,7 @@
         ]
       },
       "filter_path": {
-        "description": "Path filter, wildcards * allowed, case-insensitive",
+        "description": "Path filter (wildcards *, case-insensitive)",
         "maxLength": 256,
         "type": "string"
       },
@@ -1153,7 +1136,7 @@
         "type": "string"
       },
       "matching_algorithm": {
-        "description": "Matching algorithm: 0 none, 1 any, 2 all, 3 literal, 4 regex, 5 fuzzy; name or number",
+        "description": "Matching algorithm: 0 none, 1 any, 2 all, 3 literal, 4 regex, 5 fuzzy",
         "enum": [
           0,
           1,
@@ -1174,7 +1157,7 @@
         ]
       },
       "schedule_date_custom_field": {
-        "description": "Scheduled triggers: custom field ID when schedule_date_field is custom_field",
+        "description": "Type 4: custom field ID when schedule_date_field is custom_field",
         "minimum": 1,
         "pattern": "^-?\\d+$",
         "type": [
@@ -1183,7 +1166,7 @@
         ]
       },
       "schedule_date_field": {
-        "description": "Scheduled triggers: the date field to check: added, created, modified or custom_field",
+        "description": "Type 4: the date field to schedule from",
         "enum": [
           "added",
           "created",
@@ -1192,11 +1175,11 @@
         ]
       },
       "schedule_is_recurring": {
-        "description": "Scheduled triggers: repeat the schedule",
+        "description": "Type 4: repeat the schedule",
         "type": "boolean"
       },
       "schedule_offset_days": {
-        "description": "Scheduled triggers: days to offset the schedule by",
+        "description": "Type 4: days to offset the schedule by",
         "pattern": "^-?\\d+$",
         "type": [
           "integer",
@@ -1204,7 +1187,7 @@
         ]
       },
       "schedule_recurring_interval_days": {
-        "description": "Scheduled triggers: days between recurring runs (at least 1)",
+        "description": "Type 4: days between recurring runs",
         "minimum": 1,
         "pattern": "^-?\\d+$",
         "type": [
@@ -1213,7 +1196,7 @@
         ]
       },
       "sources": {
-        "description": "Array of document sources (consumption, added and updated triggers): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui; names or numbers. [] means any source; new triggers that leave sources out get 1, 2 and 3",
+        "description": "Array of document sources (types 1-3): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui. [] means any; a new trigger without sources gets 1, 2 and 3",
         "items": {
           "enum": [
             1,
@@ -1236,7 +1219,7 @@
         ]
       },
       "type": {
-        "description": "Trigger type: 1 consumption (needs filter_filename, filter_path or filter_mailrule in every call), 2 document_added, 3 document_updated, 4 scheduled, 5 manual (run with workflow_run); name or number",
+        "description": "Trigger type: 1 consumption (needs filter_filename, filter_path or filter_mailrule in every call), 2 document_added, 3 document_updated, 4 scheduled, 5 manual (run with workflow_run)",
         "enum": [
           1,
           2,
@@ -1263,369 +1246,8 @@
   "workflow_update": {
     "properties": {
       "actions": {
-        "description": "Array of action objects replacing the workflow's actions (at least one): give id to keep and update an existing action, leave id out to add one; actions left out are deleted",
+        "description": "Array of action objects replacing the workflow's actions (at least one), each with the fields of workflow_create's actions plus id to update an existing action (email and webhook may carry their id too); without id one is added, and actions left out are deleted",
         "items": {
-          "additionalProperties": false,
-          "properties": {
-            "ai_create_missing": {
-              "description": "Type 8: create suggested objects that don't exist yet",
-              "type": "boolean"
-            },
-            "ai_overwrite_existing": {
-              "description": "Type 8: overwrite values the document already has",
-              "type": "boolean"
-            },
-            "ai_suggestion_fields": {
-              "description": "Array of fields to fill from AI suggestions (type 8; non-empty): title, tags, correspondent, document_type, storage_path, created",
-              "items": {
-                "enum": [
-                  "title",
-                  "tags",
-                  "correspondent",
-                  "document_type",
-                  "storage_path",
-                  "created"
-                ]
-              },
-              "type": "array"
-            },
-            "assign_change_groups": {
-              "description": "Array of group IDs to grant change permission",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "assign_change_users": {
-              "description": "Array of user IDs to grant change permission",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "assign_correspondent": {
-              "description": "Correspondent ID to assign",
-              "minimum": 1,
-              "type": "integer"
-            },
-            "assign_custom_fields": {
-              "description": "Array of custom field IDs to assign",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "assign_custom_fields_values": {
-              "additionalProperties": false,
-              "description": "Object with custom field values to assign, keyed by custom field ID",
-              "patternProperties": {
-                "^[0-9]+$": true
-              },
-              "type": "object"
-            },
-            "assign_document_type": {
-              "description": "Document type ID to assign",
-              "minimum": 1,
-              "type": "integer"
-            },
-            "assign_owner": {
-              "description": "Owner user ID to assign",
-              "minimum": 1,
-              "type": "integer"
-            },
-            "assign_storage_path": {
-              "description": "Storage path ID to assign",
-              "minimum": 1,
-              "type": "integer"
-            },
-            "assign_tags": {
-              "description": "Array of tag IDs to assign",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "assign_title": {
-              "description": "Title to assign: a Jinja2 template, may use custom fields (e.g. {{ custom_fields['Name'].value }})",
-              "type": "string"
-            },
-            "assign_view_groups": {
-              "description": "Array of group IDs to grant view permission",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "assign_view_users": {
-              "description": "Array of user IDs to grant view permission",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "clear": {
-              "description": "Array of fields to clear (remove the value)",
-              "items": {
-                "enum": [
-                  "assign_title",
-                  "assign_correspondent",
-                  "assign_document_type",
-                  "assign_storage_path",
-                  "assign_owner",
-                  "assign_custom_fields_values"
-                ]
-              },
-              "type": "array"
-            },
-            "email": {
-              "additionalProperties": false,
-              "description": "Email settings (type 3 email)",
-              "properties": {
-                "body": {
-                  "description": "Email body",
-                  "type": "string"
-                },
-                "id": {
-                  "description": "ID of this action's existing email settings",
-                  "minimum": 1,
-                  "type": "integer"
-                },
-                "include_document": {
-                  "description": "Attach the document",
-                  "type": "boolean"
-                },
-                "subject": {
-                  "description": "Email subject (at most 256 characters)",
-                  "maxLength": 256,
-                  "type": "string"
-                },
-                "to": {
-                  "description": "Recipients, comma-separated",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "body",
-                "subject",
-                "to"
-              ],
-              "type": "object"
-            },
-            "id": {
-              "description": "ID of an action already attached to this workflow; leave out to add a new one",
-              "minimum": 1,
-              "type": "integer"
-            },
-            "passwords": {
-              "description": "Array of passwords to try (type 5 password_removal; non-empty)",
-              "items": {
-                "pattern": "\\S",
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "remove_all_correspondents": {
-              "description": "Remove the correspondent",
-              "type": "boolean"
-            },
-            "remove_all_custom_fields": {
-              "description": "Remove all custom fields",
-              "type": "boolean"
-            },
-            "remove_all_document_types": {
-              "description": "Remove the document type",
-              "type": "boolean"
-            },
-            "remove_all_owners": {
-              "description": "Remove the owner",
-              "type": "boolean"
-            },
-            "remove_all_permissions": {
-              "description": "Remove all permissions",
-              "type": "boolean"
-            },
-            "remove_all_storage_paths": {
-              "description": "Remove the storage path",
-              "type": "boolean"
-            },
-            "remove_all_tags": {
-              "description": "Remove all tags",
-              "type": "boolean"
-            },
-            "remove_change_groups": {
-              "description": "Array of group IDs to remove change permission from",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "remove_change_users": {
-              "description": "Array of user IDs to remove change permission from",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "remove_correspondents": {
-              "description": "Array of correspondent IDs to remove",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "remove_custom_fields": {
-              "description": "Array of custom field IDs to remove",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "remove_document_types": {
-              "description": "Array of document type IDs to remove",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "remove_owners": {
-              "description": "Array of user IDs to remove as owner",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "remove_storage_paths": {
-              "description": "Array of storage path IDs to remove",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "remove_tags": {
-              "description": "Array of tag IDs to remove",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "remove_view_groups": {
-              "description": "Array of group IDs to remove view permission from",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "remove_view_users": {
-              "description": "Array of user IDs to remove view permission from",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "type": {
-              "description": "Action type: 1 assignment, 2 removal, 3 email (needs email), 4 webhook (needs webhook), 5 password_removal (needs passwords), 6 move_to_trash, 7 remote_ocr (needs a consumption trigger), 8 apply_ai_suggestions (needs ai_suggestion_fields and a non-consumption trigger); name or number",
-              "enum": [
-                1,
-                2,
-                3,
-                4,
-                5,
-                6,
-                7,
-                8,
-                "assignment",
-                "removal",
-                "email",
-                "webhook",
-                "password_removal",
-                "move_to_trash",
-                "remote_ocr",
-                "apply_ai_suggestions"
-              ],
-              "type": [
-                "integer",
-                "string"
-              ]
-            },
-            "webhook": {
-              "additionalProperties": false,
-              "description": "Webhook settings (type 4 webhook)",
-              "properties": {
-                "as_json": {
-                  "description": "Send the body as JSON (default false)",
-                  "type": "boolean"
-                },
-                "body": {
-                  "description": "Request body",
-                  "type": "string"
-                },
-                "clear": {
-                  "description": "Array of fields to clear (remove the value)",
-                  "items": {
-                    "enum": [
-                      "params",
-                      "body",
-                      "headers"
-                    ]
-                  },
-                  "type": "array"
-                },
-                "headers": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "description": "Object with request headers",
-                  "type": "object"
-                },
-                "id": {
-                  "description": "ID of this action's existing webhook settings",
-                  "minimum": 1,
-                  "type": "integer"
-                },
-                "include_document": {
-                  "description": "Attach the document",
-                  "type": "boolean"
-                },
-                "params": {
-                  "additionalProperties": true,
-                  "description": "Object with request parameters",
-                  "type": "object"
-                },
-                "url": {
-                  "description": "Webhook URL (at most 256 characters)",
-                  "maxLength": 256,
-                  "type": "string"
-                },
-                "use_params": {
-                  "description": "Send params instead of body (default true)",
-                  "type": "boolean"
-                }
-              },
-              "required": [
-                "url"
-              ],
-              "type": "object"
-            }
-          },
-          "required": [
-            "type"
-          ],
           "type": "object"
         },
         "minItems": 1,
@@ -1661,241 +1283,8 @@
         ]
       },
       "triggers": {
-        "description": "Array of trigger objects replacing the workflow's triggers (at least one): give id to keep and update an existing trigger, leave id out to add one; triggers left out are deleted",
+        "description": "Array of trigger objects replacing the workflow's triggers (at least one), each with the fields of workflow_create's triggers plus id to update an existing trigger; without id one is added, and triggers left out are deleted",
         "items": {
-          "additionalProperties": false,
-          "properties": {
-            "clear": {
-              "description": "Array of fields to clear (remove the value)",
-              "items": {
-                "enum": [
-                  "filter_path",
-                  "filter_filename",
-                  "filter_mailrule",
-                  "filter_custom_field_query",
-                  "filter_has_correspondent",
-                  "filter_has_document_type",
-                  "filter_has_storage_path",
-                  "schedule_date_custom_field",
-                  "match"
-                ]
-              },
-              "type": "array"
-            },
-            "filter_custom_field_query": {
-              "description": "Array of custom field query terms, e.g. [\"field_name\", \"exact\", \"value\"] (custom_field_query syntax)",
-              "type": [
-                "array",
-                "string"
-              ]
-            },
-            "filter_filename": {
-              "description": "Filename filter, wildcards such as *.pdf allowed, case-insensitive",
-              "maxLength": 256,
-              "type": "string"
-            },
-            "filter_has_all_tags": {
-              "description": "Array of tag IDs: the document has all of these",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "filter_has_any_correspondents": {
-              "description": "Array of correspondent IDs: the document has one of these",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "filter_has_any_document_types": {
-              "description": "Array of document type IDs: the document has one of these",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "filter_has_any_storage_paths": {
-              "description": "Array of storage path IDs: the document has one of these",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "filter_has_correspondent": {
-              "description": "Correspondent ID the document must have",
-              "minimum": 1,
-              "type": "integer"
-            },
-            "filter_has_document_type": {
-              "description": "Document type ID the document must have",
-              "minimum": 1,
-              "type": "integer"
-            },
-            "filter_has_not_correspondents": {
-              "description": "Array of correspondent IDs: the document has none of these",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "filter_has_not_document_types": {
-              "description": "Array of document type IDs: the document has none of these",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "filter_has_not_storage_paths": {
-              "description": "Array of storage path IDs: the document has none of these",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "filter_has_not_tags": {
-              "description": "Array of tag IDs: the document has none of these",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "filter_has_storage_path": {
-              "description": "Storage path ID the document must have",
-              "minimum": 1,
-              "type": "integer"
-            },
-            "filter_has_tags": {
-              "description": "Array of tag IDs: the document has any of these",
-              "items": {
-                "minimum": 1,
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            "filter_mailrule": {
-              "description": "Mail rule ID (documents fetched by that rule)",
-              "minimum": 1,
-              "type": "integer"
-            },
-            "filter_path": {
-              "description": "Path filter, wildcards * allowed, case-insensitive",
-              "maxLength": 256,
-              "type": "string"
-            },
-            "id": {
-              "description": "ID of a trigger already attached to this workflow; leave out to add a new one",
-              "minimum": 1,
-              "type": "integer"
-            },
-            "is_insensitive": {
-              "description": "Case-insensitive matching (default true)",
-              "type": "boolean"
-            },
-            "match": {
-              "description": "Content match pattern, used with matching_algorithm",
-              "maxLength": 256,
-              "type": "string"
-            },
-            "matching_algorithm": {
-              "description": "Matching algorithm: 0 none, 1 any, 2 all, 3 literal, 4 regex, 5 fuzzy; name or number",
-              "enum": [
-                0,
-                1,
-                2,
-                3,
-                4,
-                5,
-                "none",
-                "any",
-                "all",
-                "literal",
-                "regex",
-                "fuzzy"
-              ],
-              "type": [
-                "integer",
-                "string"
-              ]
-            },
-            "schedule_date_custom_field": {
-              "description": "Scheduled triggers: custom field ID when schedule_date_field is custom_field",
-              "minimum": 1,
-              "type": "integer"
-            },
-            "schedule_date_field": {
-              "description": "Scheduled triggers: the date field to check: added, created, modified or custom_field",
-              "enum": [
-                "added",
-                "created",
-                "modified",
-                "custom_field"
-              ]
-            },
-            "schedule_is_recurring": {
-              "description": "Scheduled triggers: repeat the schedule",
-              "type": "boolean"
-            },
-            "schedule_offset_days": {
-              "description": "Scheduled triggers: days to offset the schedule by",
-              "type": "integer"
-            },
-            "schedule_recurring_interval_days": {
-              "description": "Scheduled triggers: days between recurring runs (at least 1)",
-              "minimum": 1,
-              "type": "integer"
-            },
-            "sources": {
-              "description": "Array of document sources (consumption, added and updated triggers): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui; names or numbers. [] means any source; new triggers that leave sources out get 1, 2 and 3",
-              "items": {
-                "enum": [
-                  1,
-                  2,
-                  3,
-                  4,
-                  "consume_folder",
-                  "api_upload",
-                  "mail_fetch",
-                  "web_ui"
-                ],
-                "type": [
-                  "integer",
-                  "string"
-                ]
-              },
-              "type": "array"
-            },
-            "type": {
-              "description": "Trigger type: 1 consumption (needs filter_filename, filter_path or filter_mailrule in every call), 2 document_added, 3 document_updated, 4 scheduled, 5 manual (run with workflow_run); name or number",
-              "enum": [
-                1,
-                2,
-                3,
-                4,
-                5,
-                "consumption",
-                "document_added",
-                "document_updated",
-                "scheduled",
-                "manual"
-              ],
-              "type": [
-                "integer",
-                "string"
-              ]
-            }
-          },
-          "required": [
-            "type"
-          ],
           "type": "object"
         },
         "minItems": 1,

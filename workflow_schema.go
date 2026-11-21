@@ -402,10 +402,56 @@ func workflowToolSchema(def string) mcp.ToolInputSchema {
 			m["type"] = []string{"array", "string"}
 		}
 	}
+	for name, p := range props {
+		if m, ok := p.(map[string]any); ok {
+			if _, typedElsewhere := untypedItems[def][name]; typedElsewhere {
+				// The item schema is advertised once, on workflow_create; the
+				// description points there and CUE still checks every field.
+				m["items"] = map[string]any{"type": "object"}
+				continue
+			}
+			trimNestedDescriptions(m)
+		}
+	}
 	return mcp.ToolInputSchema{
 		Type:       "object",
 		Properties: props,
 		Required:   toStrings(adv["required"]),
+	}
+}
+
+// untypedItems lists, per definition, the array parameters whose items are
+// advertised as plain objects to keep tools/list small.
+var untypedItems = map[string]map[string]struct{}{
+	defWorkflowUpdate: {"triggers": {}, "actions": {}},
+}
+
+// trimNestedDescriptions drops the "Array of"/"Object with" prefix below the
+// top level, where it only matters for top-level parameters (they also take
+// JSON text).
+func trimNestedDescriptions(node map[string]any) {
+	visit := func(child any) {
+		m, ok := child.(map[string]any)
+		if !ok {
+			return
+		}
+		if d, ok := m["description"].(string); ok {
+			for _, prefix := range []string{"Array of ", "Object with "} {
+				if rest, found := strings.CutPrefix(d, prefix); found && rest != "" {
+					m["description"] = strings.ToUpper(rest[:1]) + rest[1:]
+				}
+			}
+		}
+		trimNestedDescriptions(m)
+	}
+	if props, ok := node["properties"].(map[string]any); ok {
+		for _, p := range props {
+			visit(p)
+		}
+	}
+	if items, ok := node["items"].(map[string]any); ok {
+		// items carry no description of their own; recurse into them.
+		trimNestedDescriptions(items)
 	}
 }
 
