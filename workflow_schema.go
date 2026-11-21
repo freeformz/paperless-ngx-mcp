@@ -741,7 +741,7 @@ func (ws *workflowSchemas) normalizeNamed(kind string, v any) any {
 	switch x := v.(type) {
 	case string:
 		// A numeric string is a number, so "-1" isn't read as the name "_1".
-		if n, err := strconv.Atoi(strings.TrimSpace(x)); err == nil {
+		if n, whole := wholeNumberUpTo(strings.TrimSpace(x), maxWholeNumber); whole {
 			return n
 		}
 		if n, ok := ws.names[kind][choiceKey(x)]; ok {

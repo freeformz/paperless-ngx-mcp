@@ -174,7 +174,7 @@ v0.5.1 changes:
 
 Next release:
 - The tag, correspondent, document type and storage path create and update tools take a `matching_algorithm` name as well as a number: `none`, `any`, `all`, `literal`, `regex`, `fuzzy` or `auto` (and the web UI's labels, such as `regular expression`), the same as the workflow tools plus `auto`.
-- `tag_create`, `document_type_create` and `storage_path_create` now default to `auto`, like `correspondent_create` and the web UI; before, paperless-ngx's API default (`any`) applied. With `any` and an empty `match` a new object matched nothing; with `auto` the classifier learns it from the documents that have it and starts assigning it to new documents (for a storage path, that moves their files). Pass `matching_algorithm: "none"` for no automatic matching.
+- `tag_create`, `document_type_create` and `storage_path_create` now default to `auto`, like `correspondent_create` and the web UI; before, paperless-ngx's API default (`any`) applied. With `any` and an empty `match` a new object matched nothing; with `auto`, once the classifier next retrains on the documents that have it, it is assigned to newly consumed documents it predicts (a storage path then files them there). Inbox tags are never learned. Pass `matching_algorithm: "none"` for no automatic matching.
 
 ### System
 `system_status`, `remote_version`, `ui_settings_get`, `config_list`, `config_get`, `config_update`, `task_list`, `task_get`, `task_wait`, `task_acknowledge`, `task_run`, `task_stats`, `log_list`, `log_get`, `trash_list`, `trash_action`

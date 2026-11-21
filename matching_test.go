@@ -136,3 +136,13 @@ func TestWorkflowTriggerRefusesAuto(t *testing.T) {
 		}
 	}
 }
+
+// The workflow tools read numeric strings and names the same way.
+func TestNormalizeNamedNumericStrings(t *testing.T) {
+	ws := mustWorkflowSchemas()
+	for in, want := range map[string]any{"4.0": 4, "-1": -1, " 2 ": 2, "Regular  Expression": 4, "exact-match": 3, "auto": "auto"} {
+		if got := ws.normalizeNamed("matching_algorithm", in); got != want {
+			t.Errorf("normalizeNamed(%q) = %#v, want %#v", in, got, want)
+		}
+	}
+}
