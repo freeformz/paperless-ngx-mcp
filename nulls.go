@@ -65,10 +65,10 @@ var freeTextParams = map[string]bool{
 
 // searchTextParams are free-text parameters that only search, so "null" there
 // is harmless: at worst a search for the word.
-var searchTextParams = map[string]bool{"query": true, "text": true, "title_search": true, "term": true, "result": true}
+var searchTextParams = map[string]bool{"query": true, "term": true, "result": true}
 
 // listTextFilters are the free-text filters of the list tools.
-var listTextFilters = map[string]bool{"name": true, "title": true, "content": true, "path": true}
+var listTextFilters = map[string]bool{"name": true, "title": true, "content": true, "path": true, "text": true, "title_search": true}
 
 // keepNullText reports whether the string "null" is kept as text: for search
 // text (search_* params and the list tools' text filters), and for required

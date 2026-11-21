@@ -170,7 +170,7 @@ v0.5.0 changes:
 
 Next release:
 - `document_list` and the selection `filters` gain `text` (indexed search of title and content), `title_search` (titles) and `has_duplicates`. paperless-ngx's rule on combining them is checked before sending: one of `text`, `title_search`, `query` and `more_like_id`, or `query` together with `text` or `title_search`. The server instructions describe the 3.x `query` syntax (`NOT` rather than a leading `-`; `notes.note:`, `custom_fields.value:` and `barcodes:` prefixes; date ranges such as `added:[-1 week to now]`).
-- Newly refused: `text`/`title_search` with no letters or digits (upstream matches nothing), any search text over 4096 characters, `ordering` by `score` without a search or beside other fields, and any `ordering` with `more_like_id` (upstream ignores these).
+- Newly refused: `text`/`title_search` words over 128 bytes (upstream drops them silently), any search text over 4096 characters, `ordering` by `score` without a search or beside other fields, and any `ordering` with `more_like_id` (upstream ignores these).
 
 ### System
 `system_status`, `remote_version`, `ui_settings_get`, `config_list`, `config_get`, `config_update`, `task_list`, `task_get`, `task_wait`, `task_acknowledge`, `task_run`, `task_stats`, `log_list`, `log_get`, `trash_list`, `trash_action`

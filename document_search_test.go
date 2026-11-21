@@ -22,6 +22,16 @@ func TestDocumentListSearchParams(t *testing.T) {
 		{map[string]any{"text": "invoice", "ordering": " -score "}, map[string]string{"text": "invoice", "ordering": "-score"}},
 		{map[string]any{"query": "x", "ordering": "created"}, map[string]string{"query": "x", "ordering": "created"}},
 		{map[string]any{"ordering": "-created"}, map[string]string{"ordering": "-created"}},
+		{map[string]any{"query": "x", "ordering": "score"}, map[string]string{"query": "x", "ordering": "score"}},
+		// Simple search splits on whitespace only: punctuation and CJK are real words.
+		{map[string]any{"text": "#42 €"}, map[string]string{"text": "#42 €"}},
+		{map[string]any{"title_search": "!!!"}, map[string]string{"title_search": "!!!"}},
+		{map[string]any{"text": "請求書"}, map[string]string{"text": "請求書"}},
+		{map[string]any{"text": strings.Repeat("x", maxSimpleWordBytes)}, map[string]string{"text": strings.Repeat("x", maxSimpleWordBytes)}},
+		// A whitespace-only query is still sent as given; only text and title_search treat it as padding.
+		{map[string]any{"query": "  "}, map[string]string{"query": "  "}},
+		// A padded more_like_id doesn't block ordering.
+		{map[string]any{"more_like_id": "", "ordering": "created"}, map[string]string{"ordering": "created"}},
 	} {
 		client, got := captureQuery(t, "/api/documents/", `{"count":0,"results":[]}`)
 		assertNotError(t, callThroughMiddleware(t, client, "document_list", tc.args))
@@ -49,8 +59,10 @@ func TestDocumentListRefusesSearchMisuse(t *testing.T) {
 		"title and more_like_id":     {map[string]any{"title_search": "a", "more_like_id": float64(3)}, "use only one of"},
 		"query and more_like_id":     {map[string]any{"query": "a", "more_like_id": float64(3)}, "use only one of"},
 		"three":                      {map[string]any{"text": "a", "title_search": "b", "query": "c"}, "use only one of"},
-		"no words":                   {map[string]any{"text": "!!! --"}, "text must be text with searchable words"},
-		"title no words":             {map[string]any{"title_search": "*"}, "title_search must be text with searchable words"},
+		"long word":                  {map[string]any{"text": "invoice " + strings.Repeat("x", maxSimpleWordBytes+1)}, "text must be words of at most 128 bytes"},
+		"long multibyte word":        {map[string]any{"title_search": strings.Repeat("é", 65)}, "title_search must be words of at most 128 bytes"},
+		"score after other field":    {map[string]any{"text": "a", "ordering": "created,-score"}, "score can't be combined"},
+		"score with spaces":          {map[string]any{"text": "a", "ordering": "-score, created"}, "score can't be combined"},
 		"long text":                  {map[string]any{"text": long}, "text must be at most 4096 characters"},
 		"long title_search":          {map[string]any{"title_search": long}, "at most 4096"},
 		"long query":                 {map[string]any{"query": long}, "query must be at most 4096"},
@@ -76,6 +88,8 @@ func TestSelectionSearchFilters(t *testing.T) {
 		{map[string]any{"text": "invoice"}, map[string]any{"text": "invoice"}},
 		{map[string]any{"title_search": "invoice", "query": "tag:x"}, map[string]any{"title_search": "invoice", "query": "tag:x"}},
 		{map[string]any{"has_duplicates": true}, map[string]any{"has_duplicates": "true"}},
+		{map[string]any{"has_duplicates": false}, map[string]any{"has_duplicates": "false"}},
+		{map[string]any{"text": "€ 42"}, map[string]any{"text": "€ 42"}},
 	} {
 		client, got := captureJSONBody(t, "POST", "/api/documents/selection_data/")
 		assertNotError(t, callTool(t, handleDocumentSelectionData(client), map[string]any{"all": true, "filters": tc.filters}))

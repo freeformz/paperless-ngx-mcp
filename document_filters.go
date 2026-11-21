@@ -43,7 +43,7 @@ type filterParam struct {
 // documentFilterParams are document_list's filters and the keys the selection
 // tools' filters object accepts.
 var documentFilterParams = []filterParam{
-	{"text", "text", filterText, "Search: words to find in title or content (indexed). Every word must appear, matched inside words (art finds party); correspondents, tags and notes aren't searched. At most 4096 characters"},
+	{"text", "text", filterText, "Search: words (split on spaces, punctuation included) to find in title or content (indexed). Every word must appear, matched inside words (art finds party; in multi-word searches numbers match from a word start); correspondents, tags and notes aren't searched. Words of at most 128 bytes, at most 4096 characters"},
 	{"title_search", "title_search", filterText, "Search: words to find in titles, matched like text. At most 4096 characters"},
 	{"query", "query", filterText, "Advanced search with field syntax, e.g. tag:unpaid added:[-1 week to now]. AND/OR/NOT in capitals; a leading - does not exclude (use NOT); notes, custom fields and barcodes need notes.note:, custom_fields.value: or barcodes: (the old note:/custom_field: match as plain text). See Document Search in the server instructions. At most 4096 characters; may be added to text or title_search as an extra filter"},
 	{"more_like_id", "more_like_id", filterInt, "Documents similar to this document ID; can't be combined with text, title_search or query. Hits have score 0 and no highlights; an invalid or hidden ID is a 403"},
@@ -109,11 +109,19 @@ func isSearchText(name string) bool {
 	return name == "text" || name == "title_search" || name == "query"
 }
 
-// hasSearchableWord reports whether simple search (text, title_search) would
-// find a word in s: paperless-ngx splits on everything but letters and digits,
-// and no words matches nothing.
-func hasSearchableWord(s string) bool {
-	return strings.IndexFunc(s, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) >= 0
+// maxSimpleWordBytes is the longest word simple search (text, title_search)
+// keeps: paperless-ngx splits on whitespace and silently drops words of 129
+// bytes or more (remove_long), which would widen a search.
+const maxSimpleWordBytes = 128
+
+// longSimpleWord returns the first word of s that simple search would drop.
+func longSimpleWord(s string) (string, bool) {
+	for _, w := range strings.Fields(s) {
+		if len(w) > maxSimpleWordBytes {
+			return w, true
+		}
+	}
+	return "", false
 }
 
 // checkSearchParams applies paperless-ngx's rule for the search parameters
@@ -230,19 +238,24 @@ func filterValueText(p filterParam, v any, strict bool) (text string, ok bool, e
 		if !strict {
 			// document_list: blank is not given; only the checks paperless-ngx
 			// would fail on (or answer with nothing) apply.
+			// A whitespace-only text or title_search is padding (upstream it
+			// would match nothing); query keeps its old meaning.
 			switch {
 			case !isSearchText(p.name):
 				return s, s != "", nil
-			case trimmed == "":
+			case s == "" || (simple && trimmed == ""):
 				return "", false, nil
 			case utf8.RuneCountInString(s) > maxQueryLen:
 				return bad(fmt.Sprintf("at most %d characters", maxQueryLen))
-			case simple && !hasSearchableWord(s):
-				return bad("text with searchable words (letters or digits); without any, paperless-ngx matches nothing")
+			}
+			if w, long := longSimpleWord(s); simple && long {
+				return bad(fmt.Sprintf("words of at most %d bytes; paperless-ngx silently drops longer ones (%.20s…)", maxSimpleWordBytes, w))
 			}
 			return s, true, nil
 		}
 		switch {
+		case trimmed == "" && simple:
+			return bad("non-blank text (blank search text selects nothing)")
 		case trimmed == "":
 			return bad("non-blank text (blank text is ignored upstream, which would select everything)")
 		case strings.ContainsRune(s, 0):
@@ -251,8 +264,9 @@ func filterValueText(p filterParam, v any, strict bool) (text string, ok bool, e
 			return bad("a real search query; wildcards alone match everything, so leave query out to mean every document")
 		case isSearchText(p.name) && utf8.RuneCountInString(s) > maxQueryLen:
 			return bad(fmt.Sprintf("at most %d characters", maxQueryLen))
-		case simple && !hasSearchableWord(s):
-			return bad("text with searchable words (letters or digits); without any, paperless-ngx matches nothing")
+		}
+		if w, long := longSimpleWord(s); simple && long {
+			return bad(fmt.Sprintf("words of at most %d bytes; paperless-ngx silently drops longer ones, which widens the selection (%.20s…)", maxSimpleWordBytes, w))
 		}
 		return s, true, nil
 	}
