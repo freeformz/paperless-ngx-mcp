@@ -35,7 +35,7 @@ func registerStoragePathTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Create a new storage path."),
 			mcp.WithString("name", mcp.Description("Storage path name"), mcp.Required()),
 			mcp.WithString("path", mcp.Description("Path template"), mcp.Required()),
-			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
+			withMatchingAlgorithm(", default auto"),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
 		),
@@ -48,7 +48,7 @@ func registerStoragePathTools(srv *server.MCPServer, client *Client) {
 			withNumber("id", mcp.Description("Storage path ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Storage path name")),
 			mcp.WithString("path", mcp.Description("Path template")),
-			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
+			withMatchingAlgorithm(""),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
 		),
@@ -100,13 +100,13 @@ func handleStoragePathCreate(client *Client) server.ToolHandlerFunc {
 			return errRes, nil
 		}
 
-		body := map[string]any{"name": name, "path": pathTemplate}
+		body := map[string]any{"name": name, "path": pathTemplate, "matching_algorithm": matchAuto}
 		args := request.GetArguments()
 
 		if v := request.GetString("match", ""); v != "" {
 			body["match"] = v
 		}
-		if errRes := setOptionalInt(body, args, "matching_algorithm"); errRes != nil {
+		if errRes := setMatchingAlgorithm(body, args); errRes != nil {
 			return errRes, nil
 		}
 		if errRes := setOptionalBool(body, request, "is_insensitive"); errRes != nil {
@@ -138,7 +138,7 @@ func handleStoragePathUpdate(client *Client) server.ToolHandlerFunc {
 		if v := request.GetString("match", ""); v != "" {
 			body["match"] = v
 		}
-		if errRes := setOptionalInt(body, args, "matching_algorithm"); errRes != nil {
+		if errRes := setMatchingAlgorithm(body, args); errRes != nil {
 			return errRes, nil
 		}
 		if errRes := setOptionalBool(body, request, "is_insensitive"); errRes != nil {

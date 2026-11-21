@@ -397,7 +397,7 @@ func TestNullPaddingIsIgnored(t *testing.T) {
 	}{
 		{"document_update", "PATCH", "/api/documents/1/", map[string]any{"id": float64(1), "title": "T", "content": nil, "correspondent": nil, "owner": "null", "tags": "null", "custom_fields": nil, "clear": nil}, map[string]any{"title": "T"}},
 		{"user_update", "PATCH", "/api/users/1/", map[string]any{"id": float64(1), "first_name": "A", "is_staff": nil, "is_superuser": nil, "is_active": "null", "groups": "null"}, map[string]any{"first_name": "A"}},
-		{"tag_create", "POST", "/api/tags/", map[string]any{"name": "n", "matching_algorithm": nil, "is_insensitive": nil, "is_inbox_tag": "null", "parent": nil}, map[string]any{"name": "n"}},
+		{"tag_create", "POST", "/api/tags/", map[string]any{"name": "n", "matching_algorithm": nil, "is_insensitive": nil, "is_inbox_tag": "null", "parent": nil}, map[string]any{"name": "n", "matching_algorithm": float64(6)}},
 		{"tag_update", "PATCH", "/api/tags/1/", map[string]any{"id": float64(1), "name": "n", "parent": nil, "clear": "null"}, map[string]any{"name": "n"}},
 		{"correspondent_update", "PATCH", "/api/correspondents/1/", map[string]any{"id": float64(1), "name": "n", "matching_algorithm": nil, "is_insensitive": nil}, map[string]any{"name": "n"}},
 		{"saved_view_update", "PATCH", "/api/saved_views/1/", map[string]any{"id": float64(1), "name": "n", "page_size": nil, "display_mode": nil, "display_fields": "null", "sort_reverse": nil}, map[string]any{"name": "n"}},

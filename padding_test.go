@@ -30,7 +30,7 @@ func TestUpdatePaddingAndBadValues(t *testing.T) {
 			return func() *mcp.CallToolResult {
 				return callTool(t, handleTagUpdate(c), map[string]any{"id": float64(1), "matching_algorithm": "abc"})
 			}
-		}, "matching_algorithm must be a whole number"},
+		}, "matching_algorithm must be a name"},
 		{"tag_update is_inbox_tag", func(c *Client) func() *mcp.CallToolResult {
 			return func() *mcp.CallToolResult {
 				return callTool(t, handleTagUpdate(c), map[string]any{"id": float64(1), "is_inbox_tag": "maybe"})

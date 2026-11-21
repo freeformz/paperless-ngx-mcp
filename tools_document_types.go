@@ -33,7 +33,7 @@ func registerDocumentTypeTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("document_type_create",
 			mcp.WithDescription("Create a new document type."),
 			mcp.WithString("name", mcp.Description("Document type name"), mcp.Required()),
-			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
+			withMatchingAlgorithm(", default auto"),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
 		),
@@ -45,7 +45,7 @@ func registerDocumentTypeTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Update a document type; only the fields given change, and "+nullsIgnoredHint+"."),
 			withNumber("id", mcp.Description("Document type ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Document type name")),
-			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
+			withMatchingAlgorithm(""),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
 		),
@@ -83,13 +83,13 @@ func handleDocumentTypeCreate(client *Client) server.ToolHandlerFunc {
 			return errRes, nil
 		}
 
-		body := map[string]any{"name": name}
+		body := map[string]any{"name": name, "matching_algorithm": matchAuto}
 		args := request.GetArguments()
 
 		if v := request.GetString("match", ""); v != "" {
 			body["match"] = v
 		}
-		if errRes := setOptionalInt(body, args, "matching_algorithm"); errRes != nil {
+		if errRes := setMatchingAlgorithm(body, args); errRes != nil {
 			return errRes, nil
 		}
 		if errRes := setOptionalBool(body, request, "is_insensitive"); errRes != nil {
@@ -118,7 +118,7 @@ func handleDocumentTypeUpdate(client *Client) server.ToolHandlerFunc {
 		if v := request.GetString("match", ""); v != "" {
 			body["match"] = v
 		}
-		if errRes := setOptionalInt(body, args, "matching_algorithm"); errRes != nil {
+		if errRes := setMatchingAlgorithm(body, args); errRes != nil {
 			return errRes, nil
 		}
 		if errRes := setOptionalBool(body, request, "is_insensitive"); errRes != nil {

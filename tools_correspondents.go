@@ -33,7 +33,7 @@ func registerCorrespondentTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("correspondent_create",
 			mcp.WithDescription("Create a new correspondent."),
 			mcp.WithString("name", mcp.Description("Correspondent name"), mcp.Required()),
-			withNumber("matching_algorithm", mcp.Description("Matching algorithm: 1=Any, 2=All, 3=Exact, 4=Regex, 5=Fuzzy, 6=Auto (default: 6)")),
+			withMatchingAlgorithm(", default auto"),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
 		),
@@ -45,7 +45,7 @@ func registerCorrespondentTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Update a correspondent; only the fields given change, and "+nullsIgnoredHint+"."),
 			withNumber("id", mcp.Description("Correspondent ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Correspondent name")),
-			withNumber("matching_algorithm", mcp.Description("Auto-matching algorithm")),
+			withMatchingAlgorithm(""),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
 		),
@@ -83,13 +83,13 @@ func handleCorrespondentCreate(client *Client) server.ToolHandlerFunc {
 			return errRes, nil
 		}
 
-		body := map[string]any{"name": name, "matching_algorithm": 6}
+		body := map[string]any{"name": name, "matching_algorithm": matchAuto}
 		args := request.GetArguments()
 
 		if v := request.GetString("match", ""); v != "" {
 			body["match"] = v
 		}
-		if errRes := setOptionalInt(body, args, "matching_algorithm"); errRes != nil {
+		if errRes := setMatchingAlgorithm(body, args); errRes != nil {
 			return errRes, nil
 		}
 		if errRes := setOptionalBool(body, request, "is_insensitive"); errRes != nil {
@@ -118,7 +118,7 @@ func handleCorrespondentUpdate(client *Client) server.ToolHandlerFunc {
 		if v := request.GetString("match", ""); v != "" {
 			body["match"] = v
 		}
-		if errRes := setOptionalInt(body, args, "matching_algorithm"); errRes != nil {
+		if errRes := setMatchingAlgorithm(body, args); errRes != nil {
 			return errRes, nil
 		}
 		if errRes := setOptionalBool(body, request, "is_insensitive"); errRes != nil {

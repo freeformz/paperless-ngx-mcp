@@ -347,7 +347,7 @@ Permissions (a 403 says only "Insufficient permissions"; superusers skip them; a
 | name | string | yes | Tag name |
 | color | string | no | Hex color (e.g., `#a6cee3`) |
 | is_inbox_tag | boolean | no | Whether this is an inbox tag |
-| matching_algorithm | integer | no | Auto-matching algorithm |
+| matching_algorithm | integer or name | no | none (0), any (1), all (2), literal (3), regex (4), fuzzy (5) or auto (6, the default; learned from your documents). The correspondent, document type and storage path tools take the same values |
 | match | string | no | Match pattern |
 | is_insensitive | boolean | no | Case-insensitive matching |
 | parent | integer | no | Parent tag ID for hierarchy |
