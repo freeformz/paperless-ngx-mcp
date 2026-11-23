@@ -211,7 +211,7 @@ func truncateContentFields(items any, limit int) {
 
 // stripNotesFields replaces the "notes" array of each object in items with a
 // notes_count field, keeping list results compact. Full notes are available
-// via document_note_list or document_get.
+// via document_note_list or document_get (both read the root document's notes).
 func stripNotesFields(items any) {
 	arr, ok := items.([]any)
 	if !ok {

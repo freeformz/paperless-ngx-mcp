@@ -45,6 +45,12 @@ All list endpoints support `page` (default: 1) and `page_size` (default: 25) par
 - Use `document_note_add` to add notes to documents for tracking decisions or observations
 - Notes are timestamped and include the user who created them
 - Use `document_note_list` to see existing notes before adding duplicates
+- Notes belong to the root document; a version id passed to the note tools is mapped to its root
+
+### Versions
+
+- A document's root holds the metadata; each version has its own file and content. `document_version_list` lists them, `document_root` finds a version's root, and `document_get`, `document_download`, `document_metadata` and `document_page_image` take `version`
+- `document_merge_as_versions` can't be undone
 
 ### API Version
 

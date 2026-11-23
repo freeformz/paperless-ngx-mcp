@@ -177,7 +177,8 @@ By default each document's `content` (OCR text) is truncated to a snippet (defau
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| id | integer | yes | Document ID |
+| id | integer | yes | Document ID (a root document; a version id is a 404) |
+| version | integer | no | Version id whose `content` and `page_count` to return (default: the latest version) |
 
 **Returns:** Full document object including tags, correspondent, document type, storage path, custom fields, notes, permissions, and API URL paths for download, preview, and thumbnail (unauthenticated paths relative to `PAPERLESS_URL`).
 
@@ -199,6 +200,7 @@ By default each document's `content` (OCR text) is truncated to a snippet (defau
 | owner | integer | no | Owner user ID |
 | custom_fields | array or JSON string | no | Array of custom field assignments |
 | clear | array of strings | no | Fields to clear (sent as null): `correspondent`, `document_type`, `storage_path`, `archive_serial_number`, `owner`. A `null` value is ignored (see Null Values) |
+| version | integer | no | Version id whose content to change; refused unless `content` is given or cleared. Other fields still change the root |
 
 **Returns:** Updated document object.
 
@@ -275,6 +277,21 @@ Removes downloaded document files. With no arguments, removes all files in the i
 | `document_note_add` | POST | `/api/documents/{id}/notes/` | Add a note to a document |
 | `document_note_delete` | DELETE | `/api/documents/{id}/notes/?id={note_id}` | Delete a note |
 
+Notes belong to the root document: the web UI, search and `document_get` only see the root's notes. Each note tool first asks `GET /api/documents/{id}/root/` and uses the root, adding a second text block when a version id was mapped. `/root/` errors pass through. `document_note_list` with a version id also reports notes stored on the version itself (from a document merged as a version), and `document_note_delete` retries on the version when the root has no such note.
+
+#### Document Versions
+
+A root document holds the metadata; each version has its own file, content and page count. A version id is a 404 on `/api/documents/{id}/`, but works in download, thumb, preview, metadata, notes, email and share links. `document_get`, `document_update` (content only), `document_metadata`, `document_download` (one id) and `document_page_image` take `version` (`?version=`).
+
+| Tool | Method | Endpoint | Description |
+|------|--------|----------|-------------|
+| `document_version_upload` | POST | `/api/documents/{id}/update_version/` | Add a file as the new latest version (multipart `document`, optional `version_label` ≤ 64 characters, trimmed); returns the consume task UUID; `wait` / `timeout` |
+| `document_version_list` | GET | `/api/documents/{id}/?fields=id,versions` | `{root_id, versions}`, newest first; a version id falls back to `/root/` |
+| `document_version_label` | PATCH | `/api/documents/{id}/versions/{version_id}/` | Set `version_label`, or `clear: ["version_label"]`; the root version can be labelled |
+| `document_version_delete` | DELETE | `/api/documents/{id}/versions/{version_id}/` | Move one version to the trash; the root version is a 400 |
+| `document_root` | GET | `/api/documents/{id}/root/` | `{root_id}`; works for trashed documents |
+| `document_merge_as_versions` | POST | `/api/documents/merge_as_versions/` | Make documents versions of `root_document_id` (see Editing Documents) |
+
 #### Document Bulk Operations
 
 | Tool | Method | Endpoint | Description |
@@ -309,8 +326,9 @@ Dedicated endpoints for operations that change a document's file (paperless-ngx 
 | `document_remove_password` | `/api/documents/remove_password/` | `password`, `update_document`, `delete_original`, `include_metadata`, `source_mode` | Skips unencrypted PDFs; one document at a time |
 | `document_reprocess` | `/api/documents/reprocess/` | `remote_ocr` | A root reprocesses its latest version |
 | `document_bulk_delete` | `/api/documents/delete/` | — | To the trash, with versions; `trash_action restore` undoes it |
+| `document_merge_as_versions` | `/api/documents/merge_as_versions/` | `root_document_id` (one of `documents`), `version_label` (only with exactly 2 documents) | Explicit documents only. Can't be undone: sources become versions, lose their ASN (the root takes the first if it has none) and leave list and search; all documents, root included, must be top-level, and sources must have no versions (trashed ones count). Needs change permission and ownership (or no owner) of every document, and the global delete permission |
 
-The caller owns every new document and version these create. `POST /api/documents/merge_as_versions/` is a seventh action endpoint, not exposed yet (#44).
+The caller owns every new document and version these create.
 
 Permissions (a 403 says only "Insufficient permissions"; superusers skip them; add and delete permissions are global, not per document): change permission on every document for all tools; ownership (or no owner) for delete, rotate, edit_pdf and remove_password, and for merge with `delete_originals`; add permission for merge and for edit_pdf / remove_password without `update_document`; delete permission for delete, merge with `delete_originals`, and edit_pdf / remove_password with `delete_original` and no `update_document`.
 

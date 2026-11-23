@@ -91,7 +91,7 @@ A top-level `null` means "not given" in every tool, because some MCP clients fil
 
 `document_bulk_edit`, `document_selection_data`, `document_rotate`, `document_reprocess`, `document_bulk_delete` and `workflow_run` select documents by `documents` or by `all: true` with `filters` (the same names as `document_list`'s filters) and `excluded_documents`; `bulk_edit_objects` takes `all: true` with its own `filters` (`name`, tags' `is_root`, storage paths' `path`). Unknown filter names and values the server would silently ignore are rejected, since paperless-ngx would otherwise select everything. Preview with `document_list` and the same filters (`page_size: 1` gives `count`).
 
-`document_upload`, `document_bulk_edit`, the document editing tools, `workflow_run` and `task_run` start background tasks and return at once; pass `wait: true` (optional `timeout`, default 60 s, at most 600 s) to get the task's outcome in the same call, or use `task_wait` later. A failed or revoked task comes back as a tool error.
+`document_upload`, `document_version_upload`, `document_bulk_edit`, the document editing tools (including `document_merge_as_versions`), `workflow_run` and `task_run` start background tasks and return at once; pass `wait: true` (optional `timeout`, default 60 s, at most 600 s) to get the task's outcome in the same call, or use `task_wait` later. A failed or revoked task comes back as a tool error.
 
 Responses are shaped to stay compact for MCP clients: document `content` in `document_list` results is truncated to a snippet — default 500 bytes, adjustable per call with `content_snippet_bytes` (0 disables); `full_content: true` opts out and `document_get` returns full text — document `notes` in `document_list` results are replaced with a `notes_count` field (`include_notes: true` keeps them; `document_note_list` returns full notes), `task_list` trims each task's `result_data.traceback` to its last 500 bytes (`include_traceback: true` keeps it; `task_get` returns it in full), `log_get` returns only the last `tail` lines (default 100), `document_selection_data` omits zero-count objects, `user_list` omits `inherited_permissions` unless `include_permissions: true`, and `profile_get` redacts the API auth token.
 
@@ -100,6 +100,9 @@ Responses are shaped to stay compact for MCP clients: document `content` in `doc
 
 ### Document Notes
 `document_note_list`, `document_note_add`, `document_note_delete`
+
+### Document Versions
+`document_version_upload`, `document_version_list`, `document_version_label`, `document_version_delete`, `document_root`, `document_merge_as_versions`
 
 ### Downloads & Page Images
 `document_download` (disk or inline; images come back as viewable MCP image content), `document_page_image` (render a PDF page or region as an image the model can see — for handwriting and bad scans where OCR fails), `cleanup_downloads`
@@ -172,9 +175,14 @@ v0.5.1 changes:
 - `document_list` and the selection `filters` gain `text` (indexed search of title and content), `title_search` (titles) and `has_duplicates`. paperless-ngx's rule on combining them is checked before sending: one of `text`, `title_search`, `query` and `more_like_id`, or `query` together with `text` or `title_search`. The server instructions describe the 3.x `query` syntax (`NOT` rather than a leading `-`; `notes.note:`, `custom_fields.value:` and `barcodes:` prefixes; date ranges such as `added:[-1 week to now]`).
 - Newly refused: `text`/`title_search` words over 128 bytes (upstream drops them silently), any search text over 4096 characters, `ordering` by `score` without a search or beside other fields, and any `ordering` with `more_like_id` (upstream ignores these).
 
-Next release:
+v0.6.0 changes:
 - The tag, correspondent, document type and storage path create and update tools take a `matching_algorithm` name as well as a number: `none`, `any`, `all`, `literal`, `regex`, `fuzzy` or `auto` (and the web UI's labels, such as `regular expression`), the same as the workflow tools plus `auto`.
 - `tag_create`, `document_type_create` and `storage_path_create` now default to `auto`, like `correspondent_create` and the web UI; before, paperless-ngx's API default (`any`) applied. With `any` and an empty `match` a new object matched nothing; with `auto`, once the classifier next retrains on the documents that have it, it is assigned to newly consumed documents it predicts (a storage path then files them there). Inbox tags are never learned. Pass `matching_algorithm: "none"` for no automatic matching.
+
+Next release:
+- Document versions (paperless-ngx 3): `document_version_upload` (add a file as the new latest version, with `wait`), `document_version_list`, `document_version_label`, `document_version_delete` (to the trash), `document_root` (find a version's root) and `document_merge_as_versions` (make documents versions of another; can't be undone). Thanks to MarcelAnderson, whose #51 started this.
+- `document_get`, `document_update` (content only), `document_metadata`, `document_download` (one id) and `document_page_image` take `version` to read or edit one version instead of the latest.
+- The note tools map a version id to its root document, where paperless-ngx keeps a document's notes (a second text block says so). Notes already stored on a version are still listed and can be deleted.
 
 ### System
 `system_status`, `remote_version`, `ui_settings_get`, `config_list`, `config_get`, `config_update`, `task_list`, `task_get`, `task_wait`, `task_acknowledge`, `task_run`, `task_stats`, `log_list`, `log_get`, `trash_list`, `trash_action`
