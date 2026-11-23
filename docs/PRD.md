@@ -326,7 +326,7 @@ Dedicated endpoints for operations that change a document's file (paperless-ngx 
 | `document_remove_password` | `/api/documents/remove_password/` | `password`, `update_document`, `delete_original`, `include_metadata`, `source_mode` | Skips unencrypted PDFs; one document at a time |
 | `document_reprocess` | `/api/documents/reprocess/` | `remote_ocr` | A root reprocesses its latest version |
 | `document_bulk_delete` | `/api/documents/delete/` | — | To the trash, with versions; `trash_action restore` undoes it |
-| `document_merge_as_versions` | `/api/documents/merge_as_versions/` | `root_document_id` (one of `documents`), `version_label` (only with exactly 2 documents) | Explicit documents only. Can't be undone: sources become versions, lose their ASN (the root takes the first if it has none) and leave list and search; sources must be top-level without versions (trashed ones count). Needs change permission and ownership (or no owner) of every document, and the global delete permission |
+| `document_merge_as_versions` | `/api/documents/merge_as_versions/` | `root_document_id` (one of `documents`), `version_label` (only with exactly 2 documents) | Explicit documents only. Can't be undone: sources become versions, lose their ASN (the root takes the first if it has none) and leave list and search; all documents, root included, must be top-level, and sources must have no versions (trashed ones count). Needs change permission and ownership (or no owner) of every document, and the global delete permission |
 
 The caller owns every new document and version these create.
 

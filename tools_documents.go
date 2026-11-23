@@ -108,7 +108,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_share_links",
-			mcp.WithDescription("List share links for a specific document. Links are per file: a link made with a root id serves the root's own (original) file, one made with a version id serves that version."),
+			mcp.WithDescription("List share links for a specific document. Links are per file: a link made with a root id serves the root's own (original) file, one made with a version id serves that version. A root id lists only links made on the root; pass a version id (from document_version_list) to see that version's links, including links a merged source had."),
 			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/documents/%d/share_links/"),
