@@ -428,6 +428,9 @@ func uploadCustomFields(request mcp.CallToolRequest) (string, *mcp.CallToolResul
 			if _, isBool := e.(bool); isBool {
 				return "", errResult(customFieldsShape)
 			}
+			if s, isString := e.(string); isString {
+				e = strings.TrimSpace(s)
+			}
 			n, ok := fieldID(e)
 			if !ok {
 				return "", errResult(fmt.Sprintf("%s; %v is not a custom field id", customFieldsShape, e))

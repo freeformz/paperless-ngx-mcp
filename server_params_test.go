@@ -39,6 +39,7 @@ func TestDocumentUploadCustomFields(t *testing.T) {
 		want any // decoded JSON of the one custom_fields form field
 	}{
 		{"array", []any{float64(3), float64(7)}, []any{float64(3), float64(7)}},
+		{"array with spaced string ids", []any{"3", " 7 "}, []any{float64(3), float64(7)}},
 		{"array deduped", []any{float64(3), "3", float64(7)}, []any{float64(3), float64(7)}},
 		{"json string array", "[4]", []any{float64(4)}},
 		{"object", map[string]any{"3": "INV-1", "7": 12.5}, map[string]any{"3": "INV-1", "7": 12.5}},
