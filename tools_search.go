@@ -24,6 +24,7 @@ func registerSearchTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("search_global",
 			mcp.WithDescription("Quick lookup across object types (documents, saved views, tags, correspondents, document types, storage paths, users, groups, mail rules, mail accounts, workflows, custom fields). Returns at most 3 results per type and is not paginated. Documents carry only id, title and created; use document_get for a document's details, and document_list with text or query for real document search."),
 			mcp.WithString("query", mcp.Description("Search query, 3 to 4096 characters"), mcp.Required()),
+			mcp.WithBoolean("db_only", mcp.Description("Match documents by title in the database instead of the search index, e.g. while the index is stale or being rebuilt (default: false). Other object types always match by name in the database.")),
 		),
 		handleSearchGlobal(client),
 	)
@@ -74,6 +75,15 @@ func handleSearchGlobal(client *Client) server.ToolHandlerFunc {
 		}
 
 		params := url.Values{"query": {query}}
+		dbOnly, errRes := optionalBool(request, "db_only", false)
+		if errRes != nil {
+			return errRes, nil
+		}
+		// Upstream treats any non-empty db_only as true, "false" included,
+		// so it is only ever sent as true.
+		if dbOnly {
+			params.Set("db_only", "true")
+		}
 		path := "/api/search/"
 		resp, err := client.Get(ctx, path, params)
 		return doRequest(resp, err, "GET", path)

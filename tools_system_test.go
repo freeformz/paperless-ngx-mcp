@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -418,65 +417,57 @@ func TestTaskRunRejectsUnknownType(t *testing.T) {
 	assertIsError(t, result)
 }
 
-func TestLogGet(t *testing.T) {
+// logRoute serves lines as the log and records the limit query parameter.
+func logRoute(t *testing.T, name string, lines []string, limit *string) *routeHandler {
+	t.Helper()
 	rh := newRouteHandler(t)
-	rh.Handle("GET", "/api/logs/paperless/", jsonHandler(t, 200, []string{"line 1", "line 2"}))
-	client := testClientAndServer(t, rh)
+	rh.Handle("GET", "/api/logs/"+name+"/", func(w http.ResponseWriter, r *http.Request) {
+		*limit = r.URL.Query().Get("limit")
+		jsonHandler(t, 200, lines)(w, r)
+	})
+	return rh
+}
+
+func TestLogGet(t *testing.T) {
+	var limit string
+	client := testClientAndServer(t, logRoute(t, "paperless", []string{"line 1", "line 2"}, &limit))
 	result := callTool(t, handleLogGet(client), map[string]any{"id": "paperless"})
 	assertNotError(t, result)
 
-	m := resultJSON(t, result)
-	if m["total_lines"] != float64(2) {
-		t.Errorf("total_lines = %v, want 2", m["total_lines"])
+	if limit != "100" {
+		t.Errorf("limit = %q, want the default 100", limit)
 	}
-	if len(m["lines"].([]any)) != 2 {
-		t.Errorf("lines length = %d, want 2", len(m["lines"].([]any)))
+	m := resultJSON(t, result)
+	if _, ok := m["total_lines"]; ok {
+		t.Errorf("total_lines = %v, want it gone", m["total_lines"])
+	}
+	if got := m["lines"].([]any); len(got) != 2 || got[0] != "line 1" {
+		t.Errorf("lines = %v, want the server's lines", got)
 	}
 }
 
 func TestLogGetTail(t *testing.T) {
-	lines := make([]string, 250)
-	for i := range lines {
-		lines[i] = fmt.Sprintf("line %d", i)
+	for _, tail := range []any{float64(10), "10"} {
+		var limit string
+		client := testClientAndServer(t, logRoute(t, "celery", []string{"a", "b"}, &limit))
+		assertNotError(t, callTool(t, handleLogGet(client), map[string]any{"id": "celery", "tail": tail}))
+		if limit != "10" {
+			t.Errorf("tail %v: limit = %q, want 10", tail, limit)
+		}
 	}
-
-	rh := newRouteHandler(t)
-	rh.Handle("GET", "/api/logs/celery/", jsonHandler(t, 200, lines))
-	client := testClientAndServer(t, rh)
-	result := callTool(t, handleLogGet(client), map[string]any{"id": "celery", "tail": float64(10)})
-	assertNotError(t, result)
-
-	m := resultJSON(t, result)
-	if m["total_lines"] != float64(250) {
-		t.Errorf("total_lines = %v, want 250", m["total_lines"])
-	}
-	got := m["lines"].([]any)
-	if len(got) != 10 {
-		t.Errorf("lines length = %d, want 10", len(got))
-	}
-	if got[0] != "line 240" {
-		t.Errorf("first line = %v, want line 240", got[0])
-	}
-	if got[9] != "line 249" {
-		t.Errorf("last line = %v, want line 249", got[9])
+	// A padded "" is not given: the default applies.
+	var limit string
+	client := testClientAndServer(t, logRoute(t, "celery", nil, &limit))
+	assertNotError(t, callTool(t, handleLogGet(client), map[string]any{"id": "celery", "tail": ""}))
+	if limit != "100" {
+		t.Errorf("padded tail: limit = %q, want 100", limit)
 	}
 }
 
-func TestLogGetDefaultTail(t *testing.T) {
-	lines := make([]string, 250)
-	for i := range lines {
-		lines[i] = fmt.Sprintf("line %d", i)
-	}
-
-	rh := newRouteHandler(t)
-	rh.Handle("GET", "/api/logs/celery/", jsonHandler(t, 200, lines))
-	client := testClientAndServer(t, rh)
-	result := callTool(t, handleLogGet(client), map[string]any{"id": "celery"})
-	assertNotError(t, result)
-
-	m := resultJSON(t, result)
-	if len(m["lines"].([]any)) != 100 {
-		t.Errorf("lines length = %d, want default tail of 100", len(m["lines"].([]any)))
+func TestLogGetRejectsTailBelowOne(t *testing.T) {
+	client := testClientAndServer(t, newRouteHandler(t))
+	for _, tail := range []any{float64(0), float64(-1), "0"} {
+		assertErrorContains(t, callTool(t, handleLogGet(client), map[string]any{"id": "celery", "tail": tail}), "tail must be at least 1")
 	}
 }
 

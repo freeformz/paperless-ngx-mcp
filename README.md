@@ -179,10 +179,17 @@ v0.6.0 changes:
 - The tag, correspondent, document type and storage path create and update tools take a `matching_algorithm` name as well as a number: `none`, `any`, `all`, `literal`, `regex`, `fuzzy` or `auto` (and the web UI's labels, such as `regular expression`), the same as the workflow tools plus `auto`.
 - `tag_create`, `document_type_create` and `storage_path_create` now default to `auto`, like `correspondent_create` and the web UI; before, paperless-ngx's API default (`any`) applied. With `any` and an empty `match` a new object matched nothing; with `auto`, once the classifier next retrains on the documents that have it, it is assigned to newly consumed documents it predicts (a storage path then files them there). Inbox tags are never learned. Pass `matching_algorithm: "none"` for no automatic matching.
 
-Next release:
+v0.7.0 changes:
 - Document versions (paperless-ngx 3): `document_version_upload` (add a file as the new latest version, with `wait`), `document_version_list`, `document_version_label`, `document_version_delete` (to the trash), `document_root` (find a version's root) and `document_merge_as_versions` (make documents versions of another; can't be undone). Thanks to MarcelAnderson, whose #51 started this.
 - `document_get`, `document_update` (content only), `document_metadata`, `document_download` (one id) and `document_page_image` take `version` to read or edit one version instead of the latest.
 - The note tools map a version id to its root document, where paperless-ngx keeps a document's notes (a second text block says so). Notes already stored on a version are still listed and can be deleted.
+
+Next release:
+- `document_upload` takes `custom_fields`: an array of custom field ids (each added with no value) or an object mapping field id to value.
+- `document_email` takes `use_archive_version` (default true); false sends the uploaded file instead of the archived PDF.
+- `search_global` takes `db_only` to match documents by title in the database instead of the search index.
+- `log_get` asks the server for only the last `tail` lines instead of fetching the whole log.
+- Breaking: `log_get` returns `{lines}` without `total_lines`, and refuses `tail` below 1 (before, it became 100). `share_link_create`'s `file_version_archive` is now `use_archive_version`; the old name is refused.
 
 ### System
 `system_status`, `remote_version`, `ui_settings_get`, `config_list`, `config_get`, `config_update`, `task_list`, `task_get`, `task_wait`, `task_acknowledge`, `task_run`, `task_stats`, `log_list`, `log_get`, `trash_list`, `trash_action`
