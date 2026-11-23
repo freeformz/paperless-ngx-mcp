@@ -178,6 +178,7 @@ func TestDocumentActionWaitFollowOn(t *testing.T) {
 		{"remove_password", map[string]any{"documents": []any{float64(1)}, "password": "x", "delete_original": true, "update_document": true}, []any{"consume_file"}},
 		{"reprocess", map[string]any{"documents": []any{float64(1)}}, []any{"reprocess_document"}},
 		{"delete", map[string]any{"documents": []any{float64(1)}}, nil},
+		{"merge_as_versions", map[string]any{"documents": []any{float64(1), float64(2)}, "root_document_id": float64(1)}, nil},
 	}
 	for _, tt := range tests {
 		b, _ := json.Marshal(tt.args)
@@ -237,7 +238,7 @@ func TestDocumentActionSchemasStateNinetyDegrees(t *testing.T) {
 
 func TestDocumentActionToolsRegistered(t *testing.T) {
 	srv := NewServer(NewClient("http://unused", "unused"), nil)
-	for _, name := range []string{"document_rotate", "document_merge", "document_edit_pdf", "document_remove_password", "document_reprocess", "document_bulk_delete"} {
+	for _, name := range []string{"document_rotate", "document_merge", "document_edit_pdf", "document_remove_password", "document_reprocess", "document_bulk_delete", "document_merge_as_versions"} {
 		tool := srv.GetTool(name)
 		if tool == nil {
 			t.Fatalf("%s not registered", name)

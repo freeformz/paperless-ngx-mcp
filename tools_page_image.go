@@ -19,6 +19,7 @@ func registerPageImageTools(srv *server.MCPServer, client *Client) {
 			withJSONArray("region", mcp.Description("Array of 4 numbers: optional crop region [x0,y0,x1,y1] with values as FRACTIONS of page width/height (0-1), not pixels — e.g. [0,0,0.5,0.5] is the top-left quarter. The region is re-rendered at higher resolution, so use it to zoom into fine detail like handwriting or small print.")),
 			mcp.WithBoolean("grayscale", mcp.Description("Render in grayscale, ~3x smaller with no legibility loss on scans (default: true)")),
 			mcp.WithString("format", mcp.Description("Output image format: jpeg (default) or png")),
+			withVersion("Version id to render (from document_version_list); default the latest version. "+versionIDNote),
 		),
 		handleDocumentPageImage(client),
 	)
@@ -69,6 +70,11 @@ func handleDocumentPageImage(client *Client) server.ToolHandlerFunc {
 			return errRes, nil
 		}
 
+		version, errRes := optionalVersion(request)
+		if errRes != nil {
+			return errRes, nil
+		}
+
 		format := request.GetString("format", "jpeg")
 		switch format {
 		case "jpeg", "png":
@@ -76,7 +82,7 @@ func handleDocumentPageImage(client *Client) server.ToolHandlerFunc {
 			return errResult(fmt.Sprintf("invalid format %q: must be jpeg or png", format)), nil
 		}
 
-		body, meta, err := fetchDocument(ctx, client, id, "archived")
+		body, meta, err := fetchDocument(ctx, client, id, "archived", version)
 		if err != nil {
 			return errResult(err.Error()), nil
 		}

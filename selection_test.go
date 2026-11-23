@@ -151,9 +151,9 @@ func TestSelectionToolsAcceptAll(t *testing.T) {
 }
 
 func TestExplicitOnlyActionsRefuseSelection(t *testing.T) {
-	for _, op := range []string{"merge", "edit_pdf", "remove_password"} {
+	for _, op := range []string{"merge", "edit_pdf", "remove_password", "merge_as_versions"} {
 		for _, arg := range []map[string]any{{"all": true}, {"filters": map[string]any{"title": "x"}}, {"excluded_documents": []any{float64(3)}}} {
-			args := map[string]any{"documents": []any{float64(1), float64(2)}, "password": "p", "operations": []any{map[string]any{"page": float64(1)}}}
+			args := map[string]any{"documents": []any{float64(1), float64(2)}, "password": "p", "operations": []any{map[string]any{"page": float64(1)}}, "root_document_id": float64(1)}
 			for k, v := range arg {
 				args[k] = v
 			}
@@ -400,6 +400,7 @@ func TestNullPaddingIsIgnored(t *testing.T) {
 		{"tag_create", "POST", "/api/tags/", map[string]any{"name": "n", "matching_algorithm": nil, "is_insensitive": nil, "is_inbox_tag": "null", "parent": nil}, map[string]any{"name": "n", "matching_algorithm": float64(6)}},
 		{"tag_update", "PATCH", "/api/tags/1/", map[string]any{"id": float64(1), "name": "n", "parent": nil, "clear": "null"}, map[string]any{"name": "n"}},
 		{"correspondent_update", "PATCH", "/api/correspondents/1/", map[string]any{"id": float64(1), "name": "n", "matching_algorithm": nil, "is_insensitive": nil}, map[string]any{"name": "n"}},
+		{"document_version_label", "PATCH", "/api/documents/1/versions/9/", map[string]any{"id": float64(1), "version_id": float64(9), "version_label": "v2", "clear": nil}, map[string]any{"version_label": "v2"}},
 		{"saved_view_update", "PATCH", "/api/saved_views/1/", map[string]any{"id": float64(1), "name": "n", "page_size": nil, "display_mode": nil, "display_fields": "null", "sort_reverse": nil}, map[string]any{"name": "n"}},
 	}
 	for _, tc := range cases {

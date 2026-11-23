@@ -418,15 +418,17 @@ func TestDocumentNoteList(t *testing.T) {
 	notes := []map[string]any{{"id": 1, "note": "test note"}}
 
 	rh := newRouteHandler(t)
+	rootRoute(rh, "1", 1)
 	rh.Handle("GET", "/api/documents/1/notes/", jsonHandler(t, 200, notes))
 
 	client := testClientAndServer(t, rh)
-	result := callTool(t, handleGetByID(client, "/api/documents/%d/notes/"), map[string]any{"id": float64(1)})
+	result := callTool(t, handleDocumentNoteList(client), map[string]any{"id": float64(1)})
 	assertNotError(t, result)
 }
 
 func TestDocumentNoteAdd(t *testing.T) {
 	rh := newRouteHandler(t)
+	rootRoute(rh, "1", 1)
 	rh.Handle("POST", "/api/documents/1/notes/", jsonHandler(t, 201, map[string]any{"id": 1, "note": "new note"}))
 
 	client := testClientAndServer(t, rh)
@@ -445,6 +447,7 @@ func TestDocumentNoteAddRequiresNote(t *testing.T) {
 
 func TestDocumentNoteDelete(t *testing.T) {
 	rh := newRouteHandler(t)
+	rootRoute(rh, "1", 1)
 	rh.Handle("DELETE", "/api/documents/1/notes/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("id") != "5" {
 			t.Errorf("note id query param = %q, want 5", r.URL.Query().Get("id"))

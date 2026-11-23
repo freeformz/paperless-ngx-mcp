@@ -33,7 +33,7 @@ func registerShareLinkTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("share_link_create",
-			mcp.WithDescription("Create a share link for a document. The server generates a random slug; the public URL is {PAPERLESS_URL}/share/{slug}. Share links can't be edited: to change one, delete it and create a new one, which gets a new slug."),
+			mcp.WithDescription("Create a share link for a document. The server generates a random slug; the public URL is {PAPERLESS_URL}/share/{slug}. Share links can't be edited: to change one, delete it and create a new one, which gets a new slug. The link serves the file of the id given: a root document id serves its own (original) file, so to share the latest version pass that version's id (from document_version_list)."),
 			withNumber("document", mcp.Description("Document ID"), mcp.Required()),
 			mcp.WithString("expiration", mcp.Description("Expiration date (YYYY-MM-DD or ISO 8601); omit for a link that never expires")),
 			mcp.WithBoolean("file_version_archive", mcp.Description("Share archived version (default: true)")),

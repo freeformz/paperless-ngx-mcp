@@ -176,6 +176,13 @@ func registerDocumentActionTools(srv *server.MCPServer, client *Client) {
 		sourceModeOption(),
 	}, waitToolOptions()...)...), handleDocumentAction(client, "merge", buildMergeBody))
 
+	srv.AddTool(mcp.NewTool("document_merge_as_versions", append([]mcp.ToolOption{
+		mcp.WithDescription("Make documents versions of one root document; this can't be undone. Each other document becomes a new latest version of root_document_id, in the order given. The sources then leave document_list, search and document_get; their ids still work where version ids do (document_download, document_metadata, document_page_image, document_root, version parameters). Their own title, tags, custom fields and permissions stay stored but stop showing (only the root's metadata applies), their notes stay on them (document_note_list with the source id lists them), and their share links keep serving their files. They lose their archive serial numbers; the root takes the first one if it has none. Sources must be top-level documents without versions of their own (trashed versions count); the root may already have versions. Trashed or repeated ids fail. Needs change permission and ownership (or no owner) of every document, and the global delete-document permission. Finished means the change is made; a search reindex task follows. " + documentActionPermissionNote + " " + documentActionAsync),
+		documentsOption("Array of at least 2 document IDs: the root and the documents that become its versions"),
+		withNumber("root_document_id", mcp.Description("The document that keeps its id and metadata; must be one of documents"), mcp.Required()),
+		mcp.WithString("version_label", mcp.Description(fmt.Sprintf("Label for the new version, at most %d characters; only when merging exactly one document into the root", maxVersionLabel))),
+	}, waitToolOptions()...)...), handleDocumentAction(client, "merge_as_versions", buildMergeAsVersionsBody))
+
 	srv.AddTool(mcp.NewTool("document_edit_pdf", append([]mcp.ToolOption{
 		mcp.WithDescription("Rebuild one document's PDF page by page: split it, drop pages, reorder or rotate pages. operations lists the OUTPUT pages in order, each {page: original page number, rotate?: degrees (relative, multiple of 90), doc?: output document index, default 0}. Pages left out are dropped. Without update_document each output becomes a new document (the original stays unless delete_original is set); with update_document the single output becomes a new version of the document. The server checks page numbers against the stored page count of the id you pass (for a root document, its original file; document_get's page_count is the latest version's), and the task checks them again against the file it actually uses. To edit the latest version of a root that has versions, pass that version's id (from document_get's versions). The caller owns every output. The output keeps no PDF Info, XMP or outlines. Examples for a 5-page document: split into pages 1-2, 3 and 4-5: [{\"page\":1},{\"page\":2},{\"page\":3,\"doc\":1},{\"page\":4,\"doc\":2},{\"page\":5,\"doc\":2}]. Delete page 3: [{\"page\":1},{\"page\":2},{\"page\":4},{\"page\":5}] with update_document: true. Rotate only page 2: list every page with {\"page\":2,\"rotate\":90}, with update_document: true. Needs change permission and ownership of the document (or no owner); new documents need the global add-document permission; delete_original needs the global delete-document permission. " + documentActionPermissionNote + " " + documentActionAsync),
 		documentsOption("Array with exactly one document ID"),
@@ -213,18 +220,20 @@ func registerDocumentActionTools(srv *server.MCPServer, client *Client) {
 
 // documentActionPaths are the endpoints of the document actions.
 var documentActionPaths = map[string]string{
-	"rotate":          "/api/documents/rotate/",
-	"merge":           "/api/documents/merge/",
-	"edit_pdf":        "/api/documents/edit_pdf/",
-	"remove_password": "/api/documents/remove_password/",
-	"reprocess":       "/api/documents/reprocess/",
-	"delete":          "/api/documents/delete/",
+	"rotate":            "/api/documents/rotate/",
+	"merge":             "/api/documents/merge/",
+	"edit_pdf":          "/api/documents/edit_pdf/",
+	"merge_as_versions": "/api/documents/merge_as_versions/",
+	"remove_password":   "/api/documents/remove_password/",
+	"reprocess":         "/api/documents/reprocess/",
+	"delete":            "/api/documents/delete/",
 }
 
 // documentActionTools maps each document action to its registered tool name.
 var documentActionTools = map[string]string{
 	"rotate": "document_rotate", "merge": "document_merge", "edit_pdf": "document_edit_pdf",
 	"remove_password": "document_remove_password", "reprocess": "document_reprocess", "delete": "document_bulk_delete",
+	"merge_as_versions": "document_merge_as_versions",
 }
 
 // documentSelectionActions accept an all: true selection upstream; the
@@ -415,6 +424,31 @@ func buildMergeBody(request mcp.CallToolRequest, docs []int) (map[string]any, *m
 	return body, setSourceMode(body, request)
 }
 
+func buildMergeAsVersionsBody(request mcp.CallToolRequest, docs []int) (map[string]any, *mcp.CallToolResult) {
+	if len(docs) < 2 {
+		return nil, errResult("document_merge_as_versions needs at least 2 documents: the root and one or more to make its versions")
+	}
+	root, errRes := getRequiredInt(request, "root_document_id")
+	if errRes != nil {
+		return nil, errRes
+	}
+	if !slices.Contains(docs, root) {
+		return nil, errResult("root_document_id must be one of documents")
+	}
+	body := map[string]any{"root_document_id": root}
+	label, errRes := versionLabel(request)
+	if errRes != nil {
+		return nil, errRes
+	}
+	if label != "" {
+		if len(docs) != 2 {
+			return nil, errResult("version_label only works when merging exactly one document into the root (2 documents)")
+		}
+		body["version_label"] = label
+	}
+	return body, nil
+}
+
 func buildEditPDFBody(request mcp.CallToolRequest, docs []int) (map[string]any, *mcp.CallToolResult) {
 	if len(docs) != 1 {
 		return nil, errResult("document_edit_pdf takes exactly one document")
@@ -508,7 +542,8 @@ var documentConsumeActions = []string{"rotate", "merge", "edit_pdf", "remove_pas
 
 // documentActionFollowOn describes the tasks an action's bulk task schedules,
 // which the bulk task record doesn't link to. It returns nil for actions that
-// complete inside the bulk task (delete).
+// complete inside the bulk task (delete, and merge_as_versions, whose
+// bulk_update_documents reindex task needs no waiting).
 func documentActionFollowOn(op string, body map[string]any, task map[string]any) map[string]any {
 	var types []string
 	switch {

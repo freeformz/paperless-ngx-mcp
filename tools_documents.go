@@ -31,16 +31,18 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_get",
-			mcp.WithDescription("Get full document details including tags, correspondent, document type, custom fields, notes, and permissions. duplicate_documents lists other documents you can see with the same file (it is always [] in document_list results)."),
-			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
+			mcp.WithDescription("Get full document details including tags, correspondent, document type, custom fields, notes, and permissions. duplicate_documents lists other documents you can see with the same file (it is always [] in document_list results). versions lists the document's file versions, newest first; content and page_count are the latest version's unless version is given (the other file fields, such as mime_type and original_file_name, always describe the root). A version id as id is a 404: find its root with document_root."),
+			withNumber("id", mcp.Description("Document ID (a root document)"), mcp.Required()),
+			withVersion("Version id whose content and page_count to return (from document_version_list); default the latest version. A trashed version can be read this way too"),
 		),
-		handleGetByID(client, "/api/documents/%d/"),
+		handleGetByIDWithVersion(client, "/api/documents/%d/"),
 	)
 
 	srv.AddTool(
 		mcp.NewTool("document_update",
-			mcp.WithDescription("Update document metadata. Only specified fields are changed. "+clearHint+": clear: [\"correspondent\"] removes the correspondent."),
-			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
+			mcp.WithDescription("Update document metadata. Only specified fields are changed. "+clearHint+": clear: [\"correspondent\"] removes the correspondent. Metadata belongs to the root document; content belongs to a file version, and edits go to the latest version unless version is given."),
+			withNumber("id", mcp.Description("Document ID (a root document)"), mcp.Required()),
+			withVersion("Version id whose content to change (from document_version_list); needs content or clear: [\"content\"]. Other fields given alongside still change the root document. A trashed version's content can be edited this way too"),
 			mcp.WithString("title", mcp.Description("New title")),
 			mcp.WithString("content", mcp.Description("New document content text (OCR text); clear: [\"content\"] empties it (an empty string is ignored)")),
 			mcp.WithString("created", mcp.Description("New created date (YYYY-MM-DD)")),
@@ -58,7 +60,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_delete",
-			mcp.WithDescription("Delete a document (soft-delete to trash)."),
+			mcp.WithDescription("Delete a document (soft-delete to trash), with all of its versions. A version id is a 404: delete one version with document_version_delete."),
 			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
 		handleDeleteByID(client, "/api/documents/%d/"),
@@ -82,10 +84,11 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_metadata",
-			mcp.WithDescription("Get file metadata (checksums, sizes, MIME type) for a document. barcodes lists the barcodes found (page, value, format); it is empty unless the server stores barcode values (config_get barcode_store_values, or when that is null the PAPERLESS_CONSUMER_STORE_BARCODE_VALUES setting, off by default), and only for documents consumed or reprocessed since."),
+			mcp.WithDescription("Get file metadata (checksums, sizes, MIME type) for a document's latest version, or for version. "+versionIDNote+" barcodes lists the barcodes found (page, value, format); it is empty unless the server stores barcode values (config_get barcode_store_values, or when that is null the PAPERLESS_CONSUMER_STORE_BARCODE_VALUES setting, off by default), and only for documents consumed or reprocessed since."),
 			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
+			withVersion("Version id to describe (from document_version_list); default the latest version"),
 		),
-		handleGetByID(client, "/api/documents/%d/metadata/"),
+		handleGetByIDWithVersion(client, "/api/documents/%d/metadata/"),
 	)
 
 	srv.AddTool(
@@ -105,7 +108,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_share_links",
-			mcp.WithDescription("List share links for a specific document."),
+			mcp.WithDescription("List share links for a specific document. Links are per file: a link made with a root id serves the root's own (original) file, one made with a version id serves that version."),
 			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/documents/%d/share_links/"),
@@ -121,7 +124,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_email",
-			mcp.WithDescription("Email one or more documents."),
+			mcp.WithDescription("Email one or more documents. A root document id sends the root's own file, which is the original (oldest) version; to send the latest, pass that version's id (from document_version_list)."),
 			withJSONArray("documents", mcp.Description("Array of document IDs"), mcp.Required()),
 			mcp.WithString("subject", mcp.Description("Email subject"), mcp.Required()),
 			mcp.WithString("body", mcp.Description("Email message body"), mcp.Required()),
@@ -133,16 +136,16 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 	// Document Notes
 	srv.AddTool(
 		mcp.NewTool("document_note_list",
-			mcp.WithDescription("List notes on a document."),
-			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
+			mcp.WithDescription("List notes on a document. "+notesRootNote),
+			withNumber("id", mcp.Description("Document ID, or a version id (its root's notes are listed)"), mcp.Required()),
 		),
-		handleGetByID(client, "/api/documents/%d/notes/"),
+		handleDocumentNoteList(client),
 	)
 
 	srv.AddTool(
 		mcp.NewTool("document_note_add",
-			mcp.WithDescription("Add a note to a document."),
-			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
+			mcp.WithDescription("Add a note to a document. "+notesRootNote),
+			withNumber("id", mcp.Description("Document ID, or a version id (the note goes on its root)"), mcp.Required()),
 			mcp.WithString("note", mcp.Description("Note content"), mcp.Required()),
 		),
 		handleDocumentNoteAdd(client),
@@ -150,8 +153,8 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_note_delete",
-			mcp.WithDescription("Delete a note from a document."),
-			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
+			mcp.WithDescription("Delete a note from a document. "+notesRootNote+" A note stored on the version itself is found too."),
+			withNumber("id", mcp.Description("Document ID, or a version id"), mcp.Required()),
 			withNumber("note_id", mcp.Description("Note ID"), mcp.Required()),
 		),
 		handleDocumentNoteDelete(client),
@@ -280,8 +283,19 @@ func handleDocumentUpdate(client *Client) server.ToolHandlerFunc {
 			return errResult("no fields to update; " + clearHint), nil
 		}
 
+		version, errRes := optionalVersion(request)
+		if errRes != nil {
+			return errRes, nil
+		}
 		path := fmt.Sprintf("/api/documents/%d/", id)
-		resp, err := client.Patch(ctx, path, body)
+		target := path
+		if version != 0 {
+			if _, ok := body["content"]; !ok {
+				return errResult("version applies only to content (give content, or clear: [\"content\"]); other fields belong to the root document"), nil
+			}
+			target += "?" + versionParams(version).Encode()
+		}
+		resp, err := client.Patch(ctx, target, body)
 		return doRequest(resp, err, "PATCH", path)
 	}
 }
@@ -297,19 +311,9 @@ func handleDocumentUpload(client *Client) server.ToolHandlerFunc {
 			return errRes, nil
 		}
 
-		// Validate file path: resolve to absolute, check it's a regular file
-		absPath, err := filepath.Abs(filePath)
-		if err != nil {
-			return errResult(fmt.Sprintf("invalid file path: %s", err)), nil
-		}
-		filePath = absPath
-
-		info, err := os.Lstat(filePath)
-		if err != nil {
-			return errResult(fmt.Sprintf("file not accessible: %s", err)), nil
-		}
-		if !info.Mode().IsRegular() {
-			return errResult("file_path must be a regular file"), nil
+		filePath, errRes = validateUploadPath(filePath)
+		if errRes != nil {
+			return errRes, nil
 		}
 
 		fields := url.Values{}
@@ -380,38 +384,22 @@ func handleDocumentEmail(client *Client) server.ToolHandlerFunc {
 	}
 }
 
-func handleDocumentNoteAdd(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		note, errRes := getRequiredString(request, "note")
-		if errRes != nil {
-			return errRes, nil
-		}
-
-		body := map[string]any{"note": note}
-		path := fmt.Sprintf("/api/documents/%d/notes/", id)
-		resp, err := client.Post(ctx, path, body)
-		return doRequest(resp, err, "POST", path)
+// validateUploadPath resolves an upload's file_path to an absolute path of a
+// regular file.
+func validateUploadPath(filePath string) (string, *mcp.CallToolResult) {
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return "", errResult(fmt.Sprintf("invalid file path: %s", err))
 	}
+	info, err := os.Lstat(absPath)
+	if err != nil {
+		return "", errResult(fmt.Sprintf("file not accessible: %s", err))
+	}
+	if !info.Mode().IsRegular() {
+		return "", errResult("file_path must be a regular file")
+	}
+	return absPath, nil
 }
 
-func handleDocumentNoteDelete(client *Client) server.ToolHandlerFunc {
-	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id, errRes := getRequiredInt(request, "id")
-		if errRes != nil {
-			return errRes, nil
-		}
-		noteID, errRes := getRequiredInt(request, "note_id")
-		if errRes != nil {
-			return errRes, nil
-		}
-
-		path := fmt.Sprintf("/api/documents/%d/notes/", id)
-		params := url.Values{"id": {strconv.Itoa(noteID)}}
-		resp, err := client.Delete(ctx, path, params)
-		return doRequest(resp, err, "DELETE", path)
-	}
-}
+// notesRootNote explains where notes live, shared by the note tools.
+const notesRootNote = "Notes belong to the root document (that's where the web UI, search and document_get see them): a version id is mapped to its root, and the response then says so in a second text block. A 404 can mean the document is in the trash."

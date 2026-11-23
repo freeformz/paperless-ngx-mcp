@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"sync"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -23,10 +24,11 @@ const maxInlineSize = 100 * 1024 * 1024
 func registerDownloadTools(srv *server.MCPServer, client *Client, dl *Downloader) {
 	srv.AddTool(
 		mcp.NewTool("document_download",
-			mcp.WithDescription("Download one or more document files. By default saves to local storage and returns file paths (use cleanup_downloads to remove temp-dir files). Set content=true to return file content inline instead: image files come back as viewable MCP image content blocks, other types as base64 JSON."),
+			mcp.WithDescription("Download one or more document files (each document's latest version unless version is given). By default saves to local storage and returns file paths (use cleanup_downloads to remove temp-dir files). Set content=true to return file content inline instead: image files come back as viewable MCP image content blocks, other types as base64 JSON."),
 			withJSONArray("ids", mcp.Description("Array of document IDs to download"), mcp.Required()),
 			mcp.WithString("variant", mcp.Description("File variant: archived (default, OCR'd PDF/A), original (as uploaded), or thumbnail")),
 			mcp.WithBoolean("content", mcp.Description("Return file content inline instead of saving to disk. Image files come back as viewable MCP image content; other types as base64 in JSON.")),
+			withVersion("Version id of the file to download (from document_version_list), with a single id in ids; default the latest version. "+versionIDNote+" A trashed version can be downloaded this way too"),
 			mcp.WithString("dest_dir", mcp.Description("Save into this subdirectory of the configured download directory (requires PAPERLESS_MCP_DOWNLOAD_DIR on the server). Files saved there are not removed by cleanup_downloads.")),
 		),
 		handleDocumentDownload(client, dl),
@@ -84,6 +86,14 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 			return errResult(fmt.Sprintf("invalid variant %q: must be archived, original, or thumbnail", variant)), nil
 		}
 
+		version, errRes := optionalVersion(request)
+		if errRes != nil {
+			return errRes, nil
+		}
+		if version != 0 && len(ids) != 1 {
+			return errResult("version needs a single id in ids"), nil
+		}
+
 		returnContent, errRes := optionalBool(request, "content", false)
 		if errRes != nil {
 			return errRes, nil
@@ -114,7 +124,7 @@ func handleDocumentDownload(client *Client, dl *Downloader) server.ToolHandlerFu
 		// processJob fetches and handles a single download job. Using a named
 		// function lets us use defer to ensure the response body is always closed.
 		processJob := func(job downloadJob) {
-			body, meta, err := fetchDocument(ctx, client, job.docID, variant)
+			body, meta, err := fetchDocument(ctx, client, job.docID, variant, version)
 			if err != nil {
 				results[job.idx] = downloadResult{ID: job.docID, Error: err.Error()}
 				return
@@ -239,9 +249,12 @@ func contentModeResult(ctx context.Context, results []downloadResult) (*mcp.Call
 // fetchDocument performs the HTTP request and returns the response body along with
 // document metadata. The caller MUST close the returned body on success to avoid
 // leaking the underlying HTTP connection. On error, the body is already closed.
-func fetchDocument(ctx context.Context, client *Client, id int, variant string) (io.ReadCloser, *documentMeta, error) {
+func fetchDocument(ctx context.Context, client *Client, id int, variant string, version int) (io.ReadCloser, *documentMeta, error) {
 	var path string
 	params := url.Values{}
+	if version != 0 {
+		params.Set("version", strconv.Itoa(version))
+	}
 
 	switch variant {
 	case "original":
