@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -77,6 +78,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 				withNumber("storage_path", mcp.Description("Storage path ID")),
 				withJSONArray("tags", mcp.Description("Array of tag IDs")),
 				withNumber("archive_serial_number", mcp.Description("Archive serial number")),
+				withCustomFieldIDs("custom_fields", mcp.Description("Custom fields to set: an array of custom field ids (each added with no value), or an object mapping field id to value, e.g. {\"3\": \"INV-1\", \"7\": 12.5}; a select field takes the option id, not its label. The server checks URL, integer, monetary, string, select, document link and date values and refuses a bad one (HTTP 400, before any task); boolean, float and long text values aren't checked there.")),
 			}, waitToolOptions()...)...,
 		),
 		handleDocumentUpload(client),
@@ -129,6 +131,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			mcp.WithString("subject", mcp.Description("Email subject"), mcp.Required()),
 			mcp.WithString("body", mcp.Description("Email message body"), mcp.Required()),
 			mcp.WithString("to", mcp.Description("Recipient email address(es), comma-separated"), mcp.Required()),
+			mcp.WithBoolean("use_archive_version", mcp.Description("Send the archived (OCR'd PDF) file where one exists (default: true); false sends the uploaded file instead of the archived PDF")),
 		),
 		handleDocumentEmail(client),
 	)
@@ -342,6 +345,14 @@ func handleDocumentUpload(client *Client) server.ToolHandlerFunc {
 		for _, tagID := range tagIDs {
 			fields.Add("tags", strconv.Itoa(tagID))
 		}
+		// custom_fields is a JSON field upstream: one form field holding JSON.
+		cf, errRes := uploadCustomFields(request)
+		if errRes != nil {
+			return errRes, nil
+		}
+		if cf != "" {
+			fields.Set("custom_fields", cf)
+		}
 
 		path := "/api/documents/post_document/"
 		resp, err := client.PostMultipart(ctx, path, fields, filePath)
@@ -378,10 +389,91 @@ func handleDocumentEmail(client *Client) server.ToolHandlerFunc {
 		}
 		body["message"] = message
 
+		if errRes := setOptionalBool(body, request, "use_archive_version"); errRes != nil {
+			return errRes, nil
+		}
+
 		path := "/api/documents/email/"
 		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path)
 	}
+}
+
+const customFieldsShape = "custom_fields must be a custom field id, an array of ids, or an object mapping field id to value"
+
+// uploadCustomFields reads document_upload's custom_fields and returns it
+// as JSON text for the form ("" when not given). paperless-ngx accepts a
+// field id, a list of ids (each added with no value) or an object mapping
+// id to value; ids are normalised and values are left to the server.
+func uploadCustomFields(request mcp.CallToolRequest) (string, *mcp.CallToolResult) {
+	if !argIsSet(request.GetArguments()["custom_fields"]) {
+		return "", nil
+	}
+	v, present, err := getJSONArg(request, "custom_fields")
+	if err != nil {
+		return "", errResult(err.Error())
+	}
+	if !present {
+		return "", nil
+	}
+	fieldID := func(x any) (int, bool) {
+		n, ok := wholeNumberUpTo(x, maxWholeNumber)
+		return n, ok && n >= 1
+	}
+	var out any
+	switch x := v.(type) {
+	case []any:
+		ids := make([]int, 0, len(x))
+		for _, e := range x {
+			if _, isBool := e.(bool); isBool {
+				return "", errResult(customFieldsShape)
+			}
+			if s, isString := e.(string); isString {
+				e = strings.TrimSpace(s)
+			}
+			n, ok := fieldID(e)
+			if !ok {
+				return "", errResult(fmt.Sprintf("%s; %v is not a custom field id", customFieldsShape, e))
+			}
+			if !slices.Contains(ids, n) {
+				ids = append(ids, n)
+			}
+		}
+		if len(ids) == 0 {
+			return "", nil
+		}
+		out = ids
+	case map[string]any:
+		m := make(map[string]any, len(x))
+		for k, val := range x {
+			n, ok := fieldID(strings.TrimSpace(k))
+			if !ok {
+				return "", errResult(fmt.Sprintf("%s; key %q is not a custom field id", customFieldsShape, k))
+			}
+			key := strconv.Itoa(n)
+			if _, dup := m[key]; dup {
+				return "", errResult(fmt.Sprintf("custom_fields names field %d twice", n))
+			}
+			m[key] = val
+		}
+		if len(m) == 0 {
+			return "", nil
+		}
+		out = m
+	case float64, int, int64:
+		n, ok := fieldID(x)
+		if !ok {
+			return "", errResult(customFieldsShape)
+		}
+		out = []int{n}
+	default:
+		return "", errResult(customFieldsShape)
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return "", errResult(fmt.Sprintf("invalid custom_fields: %s", err))
+	}
+	return string(b), nil
 }
 
 // validateUploadPath resolves an upload's file_path to an absolute path of a

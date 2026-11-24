@@ -192,13 +192,13 @@ func TestOptionalIntsInBodies(t *testing.T) {
 
 	for in, want := range map[any]string{true: "archive", false: "original", "false": "original", float64(0): "original"} {
 		client, got := captureJSONBody(t, "POST", "/api/share_links/")
-		assertNotError(t, callTool(t, handleShareLinkCreate(client), map[string]any{"document": float64(1), "file_version_archive": in}))
+		assertNotError(t, callTool(t, handleShareLinkCreate(client), map[string]any{"document": float64(1), "use_archive_version": in}))
 		if (*got)["file_version"] != want {
-			t.Errorf("file_version_archive %v: file_version = %v, want %s", in, (*got)["file_version"], want)
+			t.Errorf("use_archive_version %v: file_version = %v, want %s", in, (*got)["file_version"], want)
 		}
 	}
 	client, got = captureJSONBody(t, "POST", "/api/share_links/")
-	assertNotError(t, callTool(t, handleShareLinkCreate(client), map[string]any{"document": float64(1), "file_version_archive": ""}))
+	assertNotError(t, callTool(t, handleShareLinkCreate(client), map[string]any{"document": float64(1), "use_archive_version": "", "file_version_archive": ""}))
 	if _, ok := (*got)["file_version"]; ok {
 		t.Errorf("padded \"\" sent file_version: %v", *got)
 	}

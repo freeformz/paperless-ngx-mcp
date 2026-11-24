@@ -85,7 +85,7 @@ func TestShareLinkCreate(t *testing.T) {
 	result := callTool(t, handleShareLinkCreate(client), map[string]any{
 		"document":             float64(5),
 		"expiration":           "2025-12-31",
-		"file_version_archive": false,
+		"use_archive_version":  false,
 		"slug":                 "custom",
 	})
 	assertNotError(t, result)

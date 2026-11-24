@@ -124,7 +124,7 @@ Tools are organized into tiers. Tier 1 (document-centric) tools are implemented 
 | `document_next_asn` | GET | `/api/documents/next_asn/` | Get next archive serial number |
 | `document_share_links` | GET | `/api/documents/{id}/share_links/` | List share links for a document |
 | `document_history` | GET | `/api/documents/{id}/history/` | Get audit trail for a document |
-| `document_email` | POST | `/api/documents/email/` | Email one or more documents |
+| `document_email` | POST | `/api/documents/email/` | Email one or more documents. `use_archive_version` (default true) sends the archived PDF where one exists; false sends the uploaded file |
 | `document_download` | GET | `/api/documents/{id}/download/` | Download document files to disk or inline (images as viewable MCP image content) |
 | `document_page_image` | GET | `/api/documents/{id}/download/` | Render a document page (or region) as a viewable image |
 | `cleanup_downloads` | — | — | Clean up downloaded document files |
@@ -218,6 +218,7 @@ By default each document's `content` (OCR text) is truncated to a snippet (defau
 | storage_path | integer | no | Storage path ID |
 | tags | array or JSON string | no | Array of tag IDs |
 | archive_serial_number | integer | no | Archive serial number |
+| custom_fields | array, object, integer or JSON string | no | Custom field ids (each added with no value), or an object mapping field id to value; a bare id means `[id]`. Sent as one JSON form field. The shape is checked locally; values are checked by the server |
 
 **Returns:** Task UUID for tracking consumption status. Follow it with `task_get`; a consume that hit a duplicate is reported as status `failure` with `result_data.duplicate_of`.
 
@@ -445,7 +446,7 @@ Accepts `id`, `name` and `extra_data`. It does not send `data_type`, because pap
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
 | `search_autocomplete` | GET | `/api/search/autocomplete/` | Autocomplete search terms |
-| `search_global` | GET | `/api/search/` | Quick lookup across object types: at most 3 results per type, not paginated. `query` (required) must be 3 to 4096 characters. Documents carry only `id`, `title` and `created`; use `document_list` with `query` for real document search |
+| `search_global` | GET | `/api/search/` | Quick lookup across object types: at most 3 results per type, not paginated. `query` (required) must be 3 to 4096 characters. Documents carry only `id`, `title` and `created`; use `document_list` with `query` for real document search. `db_only: true` matches documents by title in the database instead of the search index (only ever sent as true: upstream reads any non-empty value as true) |
 
 #### Statistics
 
@@ -499,7 +500,7 @@ The share link API has no update: `ShareLinkViewSet` supports create, retrieve, 
 |-------|------|----------|-------------|
 | document | number | yes | Document ID |
 | expiration | string | no | Expiration date (YYYY-MM-DD or ISO 8601); omit for no expiry |
-| file_version_archive | boolean | no | Share the archived version (`true`) or the original (`false`) |
+| use_archive_version | boolean | no | Share the archived version (`true`) or the uploaded file (`false`). The old name `file_version_archive` is refused |
 
 #### Users
 
@@ -606,7 +607,7 @@ The workflow tools' parameters are generated from `schema/workflow.cue` (CUE, ev
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
 | `log_list` | GET | `/api/logs/` | List available log files |
-| `log_get` | GET | `/api/logs/{id}/` | Get log contents (`tail` parameter, default last 100 lines; returns `total_lines` and `lines`) |
+| `log_get` | GET | `/api/logs/{id}/` | Get log contents (`tail` parameter, default 100 (0 counts as not given; negative is refused), sent as the server's `limit`; returns `{lines}`) |
 
 #### Trash
 
@@ -672,7 +673,7 @@ Paperless-ngx API responses can be far too large for MCP clients (full OCR text 
 - **Content truncation**: `document_list` truncates each document's `content` to a snippet (default 500 bytes, adjustable per call with `content_snippet_bytes`; `0` disables truncation), marking truncated entries with `content_truncated: true`. Opt out per-call with `full_content: true`, or use `document_get` for one document's full text.
 - **Notes stripped**: `document_list` replaces each document's unbounded `notes` array with a `notes_count` field (omitted when zero). Opt out per-call with `include_notes: true`, or use `document_note_list`/`document_get` for one document's full notes.
 - **Task tracebacks trimmed**: `task_list` keeps the last 500 bytes of each `result_data.traceback` (the end, where the exception is), prefixed with `…` and marked `traceback_truncated: true`. Opt out with `include_traceback: true`, or use `task_get` for one task's full traceback.
-- **Log tailing**: `log_get` returns only the last `tail` lines (default 100) with a `total_lines` count.
+- **Log tailing**: `log_get` returns only the last `tail` lines (default 100); the server does the tailing (`?limit=`).
 - **Selection data filtering**: `document_selection_data` omits objects with `document_count: 0`.
 - **Slim user lists**: `user_list` omits the large `inherited_permissions` list unless `include_permissions: true`.
 - **Token redaction**: `profile_get` replaces `auth_token` with `[redacted]`.

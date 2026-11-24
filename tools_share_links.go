@@ -36,7 +36,7 @@ func registerShareLinkTools(srv *server.MCPServer, client *Client) {
 			mcp.WithDescription("Create a share link for a document. The server generates a random slug; the public URL is {PAPERLESS_URL}/share/{slug}. Share links can't be edited: to change one, delete it and create a new one, which gets a new slug. The link serves the file of the id given: a root document id serves its own (original) file, so to share the latest version pass that version's id (from document_version_list)."),
 			withNumber("document", mcp.Description("Document ID"), mcp.Required()),
 			mcp.WithString("expiration", mcp.Description("Expiration date (YYYY-MM-DD or ISO 8601); omit for a link that never expires")),
-			mcp.WithBoolean("file_version_archive", mcp.Description("Share archived version (default: true)")),
+			mcp.WithBoolean("use_archive_version", mcp.Description("Share the archived (OCR'd PDF) file where one exists (default: true); false shares the uploaded file instead")),
 		),
 		handleShareLinkCreate(client),
 	)
@@ -80,11 +80,16 @@ func handleShareLinkCreate(client *Client) server.ToolHandlerFunc {
 		if v := request.GetString("expiration", ""); v != "" {
 			body["expiration"] = v
 		}
+		// Arguments that aren't parameters are otherwise ignored, so a caller
+		// still using the old name would silently get the archive.
+		if argIsSet(request.GetArguments()["file_version_archive"]) {
+			return errResult("file_version_archive was renamed to use_archive_version"), nil
+		}
 		archive := map[string]any{}
-		if errRes := setOptionalBool(archive, request, "file_version_archive"); errRes != nil {
+		if errRes := setOptionalBool(archive, request, "use_archive_version"); errRes != nil {
 			return errRes, nil
 		}
-		if v, ok := archive["file_version_archive"].(bool); ok {
+		if v, ok := archive["use_archive_version"].(bool); ok {
 			body["file_version"] = "archive"
 			if !v {
 				body["file_version"] = "original"

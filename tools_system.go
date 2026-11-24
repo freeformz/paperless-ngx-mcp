@@ -148,9 +148,9 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 	), handleSimpleGet(client, "/api/logs/"))
 
 	srv.AddTool(mcp.NewTool("log_get",
-		mcp.WithDescription("Get the last lines of a log file (default: last 100)."),
+		mcp.WithDescription("Get the last lines of a log file (tail, default 100). Returns {lines}."),
 		mcp.WithString("id", mcp.Description("Log file name"), mcp.Required()),
-		withNumber("tail", mcp.Description("Number of lines to return from the end of the log (default: 100)")),
+		withNumber("tail", mcp.Description("Number of lines to return from the end of the log (default and 0: 100)")),
 	), handleLogGet(client))
 
 	// Trash
@@ -396,20 +396,22 @@ func handleLogGet(client *Client) server.ToolHandlerFunc {
 		if errRes != nil {
 			return errRes, nil
 		}
-		if !given || tail < 1 {
+		if tail < 0 {
+			return errResult(fmt.Sprintf("tail must not be negative, got %d", tail)), nil
+		}
+		// 0 is padding, as for page and page_size: the default applies.
+		if !given || tail == 0 {
 			tail = 100
 		}
+		// The server returns only the last limit lines.
 		path := fmt.Sprintf("/api/logs/%s/", id)
-		resp, err := client.Get(ctx, path, nil)
+		resp, err := client.Get(ctx, path, url.Values{"limit": {strconv.Itoa(tail)}})
 		return doRequestJSON(resp, err, "GET", path, func(v any) any {
 			lines, ok := v.([]any)
 			if !ok {
 				return v
 			}
-			return map[string]any{
-				"total_lines": len(lines),
-				"lines":       lines[max(len(lines)-tail, 0):],
-			}
+			return map[string]any{"lines": lines}
 		})
 	}
 }

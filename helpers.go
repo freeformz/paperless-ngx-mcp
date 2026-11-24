@@ -517,6 +517,16 @@ func withJSONObject(name string, opts ...mcp.PropertyOption) mcp.ToolOption {
 	return mcp.WithAny(name, allOpts...)
 }
 
+// withCustomFieldIDs defines a parameter that takes a custom field id, an
+// array of ids or an object mapping field id to value, natively or as a
+// JSON-encoded string. Read it with uploadCustomFields.
+func withCustomFieldIDs(name string, opts ...mcp.PropertyOption) mcp.ToolOption {
+	allOpts := append([]mcp.PropertyOption{func(schema map[string]any) {
+		schema["type"] = []string{"array", "object", "integer", "string"}
+	}}, opts...)
+	return mcp.WithAny(name, allOpts...)
+}
+
 // withNumber defines a tool parameter that accepts both integer and string values.
 // MCP clients may send numbers as strings; the handler uses GetFloat/GetInt
 // which handle coercion automatically. Strings are constrained to integer format
