@@ -451,12 +451,12 @@ Accepts `id`, `name` and `extra_data`. It does not send `data_type`, because pap
 
 #### AI
 
-Both need AI on the server (`ui_settings` `settings.ai_enabled`); without it paperless-ngx answers 400 "AI is required for this feature", and the tool adds a hint. There is no pre-check. Both send MCP progress notifications every 5 s while they run, when the call has a progress token, and none after the response.
+Both need AI on the server (`ui_settings` `settings.ai_enabled`); without it paperless-ngx answers 400 "AI is required for this feature", and the tool adds a hint. There is no pre-check. Both send MCP progress notifications every 5 s while they run, when the call has a progress token; no report is made after the call returns. `document_chat` returns upstream's "Sorry, …" sentences as a successful answer, not a tool error.
 
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
 | `document_ai_suggestions` | GET | `/api/documents/{id}/ai_suggestions/` | LLM suggestions: `title`; `tags`, `correspondents`, `document_types`, `storage_paths` (ids of existing objects); `suggested_*` (names of objects that don't exist); `dates`. Applies nothing. Needs change permission. Upstream caches results about 50 min per document and user; any save clears them. A timeout says a retry may be fast, since the server still finishes and caches |
-| `document_chat` | POST | `/api/documents/chat/` | `q` (required, trimmed, at most 4000 characters) and optional `document_id` (positive; 0 is refused, because upstream would read it as "all documents"; a version id is mapped to its root through `/root/`, since the LLM index holds roots only, and a second text block says so). The plain-text stream is read (up to 1 MiB) and split at the last `\n\n__PAPERLESS_CHAT_METADATA__` into `{answer, references}`; text after the trailer JSON joins the answer. Upstream's failure sentences come back as the answer. A non-`text/event-stream` 200 (a proxy or login page) and a dropped stream (with the partial answer) are errors |
+| `document_chat` | POST | `/api/documents/chat/` | `q` (required, trimmed, at most 4000 characters) and optional `document_id` (positive; 0 is refused, because upstream would read it as "all documents"; a version id is mapped to its root through `/root/`, since the LLM index holds roots only, and a second text block says so). The plain-text stream is read (up to 1 MiB) and split at the last `\n\n__PAPERLESS_CHAT_METADATA__` into `{answer, references}`; text after the trailer JSON joins the answer after a blank line. Upstream's failure sentences come back as the answer. A non-`text/event-stream` 200 (a proxy or login page) and a dropped stream (with the partial answer) are errors |
 
 #### Statistics
 

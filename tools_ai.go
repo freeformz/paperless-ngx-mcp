@@ -23,11 +23,24 @@ const (
 	// maxChatQuestion is ChatStreamingSerializer's q max_length.
 	maxChatQuestion = 4000
 	aiOffMessage    = "AI is required for this feature"
-	aiOffHintText   = "AI is off on the server: see ui_settings_get settings.ai_enabled; enable it with config_update ai_enabled or the PAPERLESS_AI_ENABLED setting."
+	aiOffHintText   = "AI is off on the server: see ui_settings_get settings.ai_enabled; enable it with config_update (body {\"ai_enabled\": true}) or the PAPERLESS_AI_ENABLED setting."
 )
 
-// maxChatResponse caps a chat answer; any real answer is far smaller.
-var maxChatResponse int64 = 1 << 20
+// maxChatResponse caps a chat answer and maxAISuggestionsResponse the
+// suggestions; any real response is far smaller.
+var (
+	maxChatResponse          int64 = 1 << 20
+	maxAISuggestionsResponse int64 = 1 << 20
+)
+
+// errAITimeout is the cause of an AI request's own deadline, telling it apart
+// from a deadline the caller's context carried.
+var errAITimeout = errors.New("PAPERLESS_MCP_AI_TIMEOUT reached")
+
+// withAITimeout bounds ctx by the client's AI timeout.
+func withAITimeout(ctx context.Context, client *Client) (context.Context, context.CancelFunc) {
+	return context.WithTimeoutCause(ctx, client.AITimeout(), errAITimeout)
+}
 
 func registerAITools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
@@ -61,8 +74,10 @@ func withAIOffHint(result *mcp.CallToolResult, status int, body []byte) *mcp.Cal
 // onTimeout is appended to a timeout's message, extra to every message.
 func aiRequestError(ctx context.Context, client *Client, what string, err error, onTimeout, extra string) *mcp.CallToolResult {
 	switch {
-	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+	case errors.Is(context.Cause(ctx), errAITimeout):
 		return errResult(fmt.Sprintf("%s timed out after %s (PAPERLESS_MCP_AI_TIMEOUT)%s%s", what, client.AITimeout(), onTimeout, extra))
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return errResult(fmt.Sprintf("%s ran past the caller's deadline%s", what, extra))
 	case errors.Is(ctx.Err(), context.Canceled):
 		return errResult(what + " cancelled" + extra)
 	}
@@ -75,7 +90,7 @@ func handleDocumentAISuggestions(client *Client) server.ToolHandlerFunc {
 		if errRes != nil {
 			return errRes, nil
 		}
-		ctx, cancel := context.WithTimeout(ctx, client.AITimeout())
+		ctx, cancel := withAITimeout(ctx, client)
 		defer cancel()
 		stop := progressTicker(ctx, request, client.AITimeout(), func() string { return "waiting for the AI backend" })
 		defer stop()
@@ -88,12 +103,19 @@ func handleDocumentAISuggestions(client *Client) server.ToolHandlerFunc {
 			return aiRequestError(ctx, client, what, err, retry, ""), nil
 		}
 		defer resp.Body.Close()
-		body, err := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxAISuggestionsResponse+1))
 		if err != nil {
 			return aiRequestError(ctx, client, what, err, retry, ""), nil
 		}
 		if resp.StatusCode >= 400 {
 			return withAIOffHint(apiErrorResult(resp.StatusCode, body, "GET", path), resp.StatusCode, body), nil
+		}
+		if int64(len(body)) > maxAISuggestionsResponse {
+			return errResult(fmt.Sprintf("AI suggestions response exceeds %d bytes", maxAISuggestionsResponse)), nil
+		}
+		// A proxy or login page can answer 200 with HTML.
+		if !json.Valid(body) {
+			return errResult(fmt.Sprintf("GET %s: unexpected response (HTTP %d, Content-Type %q), not JSON; a proxy or login page in the way?", path, resp.StatusCode, resp.Header.Get("Content-Type"))), nil
 		}
 		return rawJSONResult(body)
 	}
@@ -123,8 +145,10 @@ func splitChatResponse(body string) (answer string, refs []chatReference, ok boo
 	if err := dec.Decode(&trailer); err != nil || trailer.References == nil {
 		return body, []chatReference{}, false
 	}
-	after := rest[dec.InputOffset():]
-	answer = body[:i] + after
+	answer = body[:i]
+	if after := rest[dec.InputOffset():]; after != "" {
+		answer += "\n\n" + after
+	}
 	if *trailer.References != nil {
 		refs = *trailer.References
 	}
@@ -178,7 +202,7 @@ func handleDocumentChat(client *Client) server.ToolHandlerFunc {
 			body["document_id"] = root
 		}
 
-		ctx, cancel := context.WithTimeout(ctx, client.AITimeout())
+		ctx, cancel := withAITimeout(ctx, client)
 		defer cancel()
 		received := &countingWriter{}
 		stop := progressTicker(ctx, request, client.AITimeout(), func() string {

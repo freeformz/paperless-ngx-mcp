@@ -18,7 +18,8 @@ import (
 
 var version = "dev"
 
-// stdioWorkers is how many tool calls the stdio server runs at once.
+// stdioWorkers is how many tool calls the stdio server runs at once. Task
+// waits and AI calls (up to PAPERLESS_MCP_AI_TIMEOUT) each hold one.
 const stdioWorkers = 20
 
 func main() {

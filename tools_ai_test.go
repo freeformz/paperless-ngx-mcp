@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -117,7 +118,7 @@ func TestDocumentChatSplit(t *testing.T) {
 		{"no trailer", "Just text.", "Just text.", 0, false},
 		{"failure sentence", "Sorry, I couldn't find any content to answer your question.", "Sorry, I couldn't find any content to answer your question.", 0, false},
 		{"delimiter in the answer", "a" + d + "not json" + d + "{\"references\":[{\"id\":1,\"title\":\"x\"}]}", "a" + d + "not json", 1, false},
-		{"error after the trailer", "partial" + d + "{\"references\":[]}" + errSentence, "partial" + errSentence, 0, false},
+		{"error after the trailer", "partial" + d + "{\"references\":[]}" + errSentence, "partial\n\n" + errSentence, 0, false},
 		{"bad trailer", "a" + d + "{broken", "a" + d + "{broken", 0, true},
 		{"wrong shape", "a" + d + "{\"references\":\"x\"}", "a" + d + "{\"references\":\"x\"}", 0, true},
 	}
@@ -362,4 +363,123 @@ func TestAIProgressNotifications(t *testing.T) {
 	if after := len(sess.ch); after != n-1 {
 		t.Errorf("%d notifications arrived after the response", after-(n-1))
 	}
+}
+
+func TestDocumentChatStreamContentTypeWithParams(t *testing.T) {
+	rh := newRouteHandler(t)
+	rh.Handle("POST", "/api/documents/chat/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+		w.Write([]byte("fine"))
+	})
+	answer, _ := chatResult(t, callTool(t, handleDocumentChat(testClientAndServer(t, rh)), map[string]any{"q": "q?"}))
+	if answer != "fine" {
+		t.Errorf("answer = %q", answer)
+	}
+}
+
+func TestDocumentChatTimeoutMidStream(t *testing.T) {
+	rh := newRouteHandler(t)
+	rh.Handle("POST", "/api/documents/chat/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(200)
+		io.Copy(io.Discard, r.Body)
+		w.Write([]byte("so far"))
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	})
+	client := testClientAndServer(t, rh)
+	client.SetAITimeout(100 * time.Millisecond)
+	result := callTool(t, handleDocumentChat(client), map[string]any{"q": "q?"})
+	assertErrorContains(t, result, "timed out after 100ms (PAPERLESS_MCP_AI_TIMEOUT)")
+	assertErrorContains(t, result, "partial answer: so far")
+}
+
+func TestAICallerDeadlineIsNotTheAITimeout(t *testing.T) {
+	rh := newRouteHandler(t)
+	rh.Handle("POST", "/api/documents/chat/", func(w http.ResponseWriter, r *http.Request) {
+		// Read the body so the server notices the client going away.
+		io.Copy(io.Discard, r.Body)
+		<-r.Context().Done()
+	})
+	client := testClientAndServer(t, rh)
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	res, err := handleDocumentChat(client)(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"q": "q?"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertErrorContains(t, res, "ran past the caller's deadline")
+}
+
+func TestDocumentAISuggestionsRefusesNonJSONAndOversize(t *testing.T) {
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/documents/7/ai_suggestions/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte("<html>login</html>"))
+	})
+	rh.Handle("GET", "/api/documents/8/ai_suggestions/", jsonHandler(t, 200, map[string]any{"title": strings.Repeat("x", 100)}))
+	client := testClientAndServer(t, rh)
+	assertErrorContains(t, callTool(t, handleDocumentAISuggestions(client), map[string]any{"id": float64(7)}), "not JSON")
+
+	old := maxAISuggestionsResponse
+	maxAISuggestionsResponse = 50
+	t.Cleanup(func() { maxAISuggestionsResponse = old })
+	assertErrorContains(t, callTool(t, handleDocumentAISuggestions(client), map[string]any{"id": float64(8)}), "exceeds 50 bytes")
+}
+
+func TestAISuggestionsProgress(t *testing.T) {
+	old := aiProgressInterval
+	aiProgressInterval = 10 * time.Millisecond
+	t.Cleanup(func() { aiProgressInterval = old })
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/documents/7/ai_suggestions/", func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(80 * time.Millisecond)
+		jsonHandler(t, 200, map[string]any{"title": "x"})(w, r)
+	})
+	srv := NewServer(testClientAndServer(t, rh), nil)
+	sess := &fakeSession{ch: make(chan mcp.JSONRPCNotification, 100)}
+	callInProcess(t, srv, sess, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"document_ai_suggestions\",\"arguments\":{\"id\":7},\"_meta\":{\"progressToken\":7}}}")
+	if len(sess.ch) == 0 {
+		t.Fatal("no progress notifications")
+	}
+	if m := (<-sess.ch).Params.AdditionalFields["message"]; m != "waiting for the AI backend" {
+		t.Errorf("message = %v", m)
+	}
+}
+
+func TestProgressTickerStopsCleanly(t *testing.T) {
+	old := aiProgressInterval
+	aiProgressInterval = time.Millisecond
+	t.Cleanup(func() { aiProgressInterval = old })
+
+	// The server only reaches the context through message handling, so the
+	// ticker runs inside a tool of a throwaway server.
+	srv := server.NewMCPServer("test", "1")
+	round := 0
+	srv.AddTool(mcp.NewTool("tick"), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		stop := progressTicker(ctx, req, time.Second, func() string { return "m" })
+		time.Sleep(3 * time.Millisecond)
+		if round%2 == 0 {
+			cancel() // ctx ending first must also stop the ticker
+		}
+		stop()
+		stop() // stop is idempotent
+		return mcp.NewToolResultText("ok"), nil
+	})
+	sess := &fakeSession{ch: make(chan mcp.JSONRPCNotification, 10000)}
+	for round = range 50 {
+		callInProcess(t, srv, sess, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"tick\",\"_meta\":{\"progressToken\":\"tok\"}}}")
+		n := len(sess.ch)
+		time.Sleep(3 * time.Millisecond)
+		if len(sess.ch) != n {
+			t.Fatalf("round %d: a report was sent after stop returned", round)
+		}
+	}
+	if len(sess.ch) == 0 {
+		t.Error("no reports at all")
+	}
+	// Without a progress token it does nothing.
+	progressTicker(t.Context(), mcp.CallToolRequest{}, time.Second, func() string { return "m" })()
 }

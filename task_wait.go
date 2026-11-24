@@ -359,8 +359,10 @@ var aiProgressInterval = 5 * time.Second
 
 // progressTicker reports progress every aiProgressInterval while a long
 // request runs, with message() as the text. stop ends the reports and waits
-// for the goroutine, so no notification follows the call's response. It does
-// nothing when the call has no progress token.
+// for the goroutine, so no report is sent after stop returns (one already
+// queued may still be written after the response, as mcp-go writes
+// notifications from its own goroutine). It does nothing when the call has no
+// progress token.
 func progressTicker(ctx context.Context, request mcp.CallToolRequest, total time.Duration, message func() string) (stop func()) {
 	report := progressReporter(ctx, request, total)
 	if report == nil {
