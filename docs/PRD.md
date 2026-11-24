@@ -195,7 +195,7 @@ By default each document's `content` (OCR text) is truncated to a snippet (defau
 | correspondent | integer | no | Correspondent ID |
 | document_type | integer | no | Document type ID |
 | storage_path | integer | no | Storage path ID |
-| tags | array or JSON string | no | Array of tag IDs; replaces the document's tags. Each tag brings its ancestors, and a removed tag takes its descendants with it, even ones still listed |
+| tags | array or JSON string | no | Array of tag IDs; replaces the document's tags. Each tag also brings its ancestors. Removing a tag also removes its descendants, even ones still listed, except a newly added tag and its ancestors (so adding a child keeps its parent) |
 | archive_serial_number | integer | no | Archive serial number |
 | owner | integer | no | Owner user ID |
 | custom_fields | array or JSON string | no | Array of `{field, value}`; replaces all of the document's custom fields (fields left out are removed) |

@@ -51,7 +51,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			withNumber("correspondent", mcp.Description("Correspondent ID (clear: [\"correspondent\"] removes it)")),
 			withNumber("document_type", mcp.Description("Document type ID (clear: [\"document_type\"] removes it)")),
 			withNumber("storage_path", mcp.Description("Storage path ID (clear: [\"storage_path\"] removes it)")),
-			withJSONArray("tags", mcp.Description("Array of tag IDs; replaces the document's tags. Each tag also brings its ancestors, and a tag removed takes its descendants with it, even ones still listed")),
+			withJSONArray("tags", mcp.Description("Array of tag IDs; replaces the document's tags. Each tag also brings its ancestors. Removing a tag also removes its descendants, even ones still listed, except a newly added tag and its ancestors (so adding a child keeps its parent)")),
 			withNumber("archive_serial_number", mcp.Description("Archive serial number (clear: [\"archive_serial_number\"] removes it)")),
 			withNumber("owner", mcp.Description("Owner user ID (clear: [\"owner\"] removes the owner)")),
 			withJSONArray("custom_fields", mcp.Description("Array of {field: custom field id, value}; replaces the document's custom fields, so fields left out are removed with their values")),

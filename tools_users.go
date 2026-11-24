@@ -67,7 +67,7 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 	)
 	srv.AddTool(
 		mcp.NewTool("user_deactivate_totp",
-			mcp.WithDescription("Deactivate a user's TOTP two-factor authentication. A superuser can do this for anyone, other users only for themselves. A user without TOTP is a 404 \"TOTP not found\"."),
+			mcp.WithDescription("Deactivate a user's TOTP two-factor authentication. Needs the global add-user permission (paperless-ngx checks it for this request), then a superuser can do this for anyone and other users only for themselves. A user without TOTP is a 404 \"TOTP not found\"."),
 			withNumber("id", mcp.Description("User ID"), mcp.Required()),
 		),
 		handleUserDeactivateTotp(client),
