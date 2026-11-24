@@ -14,15 +14,14 @@ Paperless-ngx is a powerful document management system, but interacting with it 
 2. **Document-centric prioritization** — Document, tag, correspondent, document type, and custom field operations are first-class
 3. **Metadata management** — Enable agents to read and update document metadata (title, tags, correspondent, document type, created date, custom fields, notes, etc.)
 4. **Search and filtering** — Full-text search, tag-based filtering, custom field queries, and document listing with rich filter support
-5. **Minimal local state** — Pass-through to the Paperless-ngx server with in-memory caching of metadata lists (tags, correspondents, document types); no local database
+5. **Minimal local state** — Pass-through to the Paperless-ngx server with in-memory caching of metadata lists (tags, correspondents, document types, storage paths, custom fields); no local database
 6. **CoWork compatible** — Works as an MCPB bundle for Claude Code and CoWork agent teams
 7. **Same toolchain as tasks-mcp** — Go, mcp-go, Cobra, GoReleaser, same CI/CD patterns
 
 ## Non-Goals
 
 - Local document storage or persistent caching (in-memory metadata caching is in scope)
-- Document file modification (PDF editing, image manipulation, re-OCR, etc.) — the `content` text field (extracted OCR text) is editable via `document_update`
-- Permission management (`set_permissions`) — intentionally excluded for now
+- Image manipulation beyond paperless-ngx's own file operations (rotate, merge, edit_pdf, remove_password, reprocess)
 - Paperless-ngx server administration (installation, upgrades, backups)
 - Real-time event streaming (WebSocket status endpoint)
 - OAuth flow handling (tokens are provided via configuration)
@@ -99,7 +98,7 @@ SIGKILL can't be caught. A server killed that way (`kill -9`, the OOM killer, or
 - **API versioning**: `Accept: application/json; version=10` header on all requests (hardcoded to v10)
 - **Minimum server**: Paperless-ngx 3.5.0. Older servers stay on MCP v0.3.x. There is no runtime version check: a 2.x server answers v10 requests with 406, and 3.0 to 3.4 accept them with silent differences (for example, 3.0 and 3.1 ignore parameters added in 3.2.0, and 3.5.0 made the bulk and action endpoints asynchronous).
 - **Structured parameters**: every array or object parameter accepts a native JSON value or the same value as a JSON-encoded string; both produce the same request
-- **Pagination**: Automatic handling — list tools accept `page` and `page_size` parameters; responses include `count`, `next`, `previous`, and `results`
+- **Pagination**: tools with `page` and `page_size` parameters are paginated, and their responses include `count`, `next`, `previous` and `results`. The others aren't paginated: `search_global`, `search_autocomplete`, `log_list`, `log_get`, `config_list`, `document_note_list`, `document_share_links`, `document_history`, `document_version_list`, `task_stats` and the single-object tools. Some cap their output (`search_global` 3 per type, `task_stats` active 50, `search_autocomplete` `limit`, `log_get` `tail`).
 - **Error handling**: HTTP error responses are translated to MCP error results with status code, detail message, and endpoint context
 - **Timeouts**: 30 s per request. The AI endpoints use a second HTTP client with no overall timeout, bounded instead by a context deadline of `PAPERLESS_MCP_AI_TIMEOUT` (default 300 s; paperless-ngx's own LLM timeout defaults to 120 s per call, and suggestions can make two calls)
 - **Content types**: JSON for most endpoints; multipart/form-data for document uploads
@@ -164,9 +163,9 @@ The primary search and filtering tool. Supports the full range of Paperless-ngx 
 | page_size | integer | no | Results per page (default: 25, max: 100000) |
 | full_content | boolean | no | Include full document content instead of a truncated snippet (default: false) |
 | content_snippet_bytes | integer | no | Max bytes of document content per result (default: 500; 0 disables truncation) |
-| include_notes | boolean | no | Include full note objects in results (default: false — notes are replaced with `notes_count`) |
+| include_notes | boolean | no | Include full note objects in results (default: false — notes are replaced with `notes_count`, omitted when zero) |
 
-**Returns:** Paginated document list with count, next/previous page URLs, and document objects. Each document object includes API URLs for download (`/api/documents/{id}/download/`), preview (`/api/documents/{id}/preview/`), and thumbnail (`/api/documents/{id}/thumb/`) — these are unauthenticated URL paths relative to `PAPERLESS_URL` that require a token to fetch. With a search (`text`, `title_search`, `query`, `more_like_id`), includes `__search_hit__` with score, highlights, note_highlights and rank.
+**Returns:** Paginated document list with count, next/previous page URLs, and document objects. Document objects carry no file URLs: fetch files with `document_download` and pages with `document_page_image`. With a search (`text`, `title_search`, `query`, `more_like_id`), includes `__search_hit__` with score, highlights, note_highlights and rank.
 
 Only one of `text`, `title_search`, `query` and `more_like_id` may be given, except `query` together with `text` or `title_search` (as an extra filter); other combinations are refused before sending (upstream: a 400). Each search text is at most 4096 characters, and `text`/`title_search` words at most 128 bytes (upstream drops longer words silently). `text`/`title_search` split on whitespace, so punctuation is searchable.
 
@@ -196,10 +195,10 @@ By default each document's `content` (OCR text) is truncated to a snippet (defau
 | correspondent | integer | no | Correspondent ID |
 | document_type | integer | no | Document type ID |
 | storage_path | integer | no | Storage path ID |
-| tags | array or JSON string | no | Array of tag IDs (replaces all tags) |
+| tags | array or JSON string | no | Array of tag IDs; replaces the document's tags. Each tag also brings its ancestors. Removing a tag also removes its descendants, even ones still listed, except a newly added tag and its ancestors (so adding a child keeps its parent) |
 | archive_serial_number | integer | no | Archive serial number |
 | owner | integer | no | Owner user ID |
-| custom_fields | array or JSON string | no | Array of custom field assignments |
+| custom_fields | array or JSON string | no | Array of `{field, value}`; replaces all of the document's custom fields (fields left out are removed) |
 | clear | array of strings | no | Fields to clear (sent as null): `correspondent`, `document_type`, `storage_path`, `archive_serial_number`, `owner`. A `null` value is ignored (see Null Values) |
 | version | integer | no | Version id whose content to change; refused unless `content` is given or cleared. Other fields still change the root |
 
@@ -318,7 +317,7 @@ Both take a selection: `documents`, or `all: true` with `filters` and `excluded_
 
 #### Editing Documents
 
-Dedicated endpoints for operations that change a document's file (paperless-ngx 3.0+). Each queues a bulk task and returns `{result, task_id}`; the work runs, and permissions are checked again, inside that task. They take `documents` (a non-empty array of distinct ids) plus `wait` / `timeout`, and never send `from_webui`; `document_rotate`, `document_reprocess` and `document_bulk_delete` can take an `all: true` selection instead (see Selecting Documents by Filter), while merge, edit_pdf and remove_password refuse `all`, `filters` and `excluded_documents`. `source_mode` is `latest_version` (default: a root id resolves to its latest version) or `explicit_selection`.
+Dedicated endpoints for operations that change a document's file (paperless-ngx 3.0+). Each queues a bulk task and returns `{result, task_id}`; missing permissions (403) and invalid arguments (400) fail the call itself, and the task checks permissions again while the work runs. They take `documents` (a non-empty array of distinct ids) plus `wait` / `timeout`, and never send `from_webui`; `document_rotate`, `document_reprocess` and `document_bulk_delete` can take an `all: true` selection instead (see Selecting Documents by Filter), while merge, edit_pdf and remove_password refuse `all`, `filters` and `excluded_documents`. `source_mode` is `latest_version` (default: a root id resolves to its latest version) or `explicit_selection`.
 
 | Tool | Endpoint | Parameters | Notes |
 |------|----------|------------|-------|
@@ -356,7 +355,7 @@ Permissions (a 403 says only "Insufficient permissions"; superusers skip them; a
 | page | integer | no | Page number |
 | page_size | integer | no | Results per page |
 
-**Returns:** Paginated tag list with id, name, color, document_count, is_inbox_tag, parent, children.
+**Returns:** Paginated tag list with id, name, color, document_count, is_inbox_tag, parent (an id) and children (the visible child tags as full nested tag objects, recursively, not ids), plus `display_count`. A child tag appears both on its own and nested in its parent. Tags are hierarchical: giving a document a tag also gives it the tag's ancestors, moving a tag under a new parent adds that parent to the tag's documents, and deleting a tag deletes its descendants (it needs delete permission on each).
 
 ##### tag_create
 
@@ -462,7 +461,7 @@ Both need AI on the server (`ui_settings` `settings.ai_enabled`); without it pap
 
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
-| `statistics` | GET | `/api/statistics/` | Get system statistics |
+| `statistics` | GET | `/api/statistics/` | Document and object counts (root documents only), inbox counts, file types, `current_asn`. Totals for everything with superuser or `view_global_statistics`, otherwise for what the user can see |
 
 ### Tier 2: Admin and System
 
@@ -632,22 +631,34 @@ The workflow tools' parameters are generated from `schema/workflow.cue` (CUE, ev
 |------|--------|----------|-------------|
 | `bulk_edit_objects` | POST | `/api/bulk_edit_objects/` | `set_permissions` or `delete` on tags, correspondents, document types, storage paths |
 
-`object_type` and `operation` are enums. Objects are selected by `objects`, or `all: true` with `filters`: `name` (contains) for every type, `is_root` for tags, `path` (contains) for storage paths, the same as the `*_list` tools (`storage_path_list` has `path`). `all: true` acts on the objects the user can change (`set_permissions`) or delete (`delete`), not merely view, so it can differ from a `*_list` count; non-superusers must own every selected object. For tags, `all: true` also takes editable child tags, and a tag delete always takes child tags. `set_permissions` takes top-level `owner`, `permissions` (`{view?: {users?, groups?}, change?: {...}}`; an empty array revokes) and `merge`; `clear: ["owner"]` removes the owner (not with `merge`, which keeps it). Leaving out `owner` keeps it. The old `parameters` object is refused: the server reads these fields at the top level, so it was silently ignored.
+`object_type` and `operation` are enums. Objects are selected by `objects`, or `all: true` with `filters`: `name` (contains) for every type, `is_root` for tags, `path` (contains) for storage paths, the same as the `*_list` tools (`storage_path_list` has `path`). `all: true` acts on the objects the user can change (`set_permissions`) or delete (`delete`), not merely view, so it can differ from a `*_list` count; non-superusers need the global permission, and every selected object must be theirs or unowned. For tags, `all: true` also takes editable child tags, and a tag delete always takes child tags. `set_permissions` takes top-level `owner`, `permissions` (`{view?: {users?, groups?}, change?: {...}}`; an empty array revokes) and `merge`; `clear: ["owner"]` removes the owner (not with `merge`, which keeps it). Leaving out `owner` keeps it. The old `parameters` object is refused: the server reads these fields at the top level, so it was silently ignored.
 
 #### System
 
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
-| `system_status` | GET | `/api/status/` | System status (admin only) |
+| `system_status` | GET | `/api/status/` | System status, including the LLM index (`llmindex_status`, `llmindex_error`) and a 30-day task summary. Needs superuser, staff or `view_system_monitoring` |
 | `remote_version` | GET | `/api/remote_version/` | Check for updates |
-| `ui_settings_get` | GET | `/api/ui_settings/` | Get UI settings |
-| `config_list` | GET | `/api/config/` | List app configuration |
-| `config_get` | GET | `/api/config/{id}/` | Get config entry |
-| `config_update` | PATCH | `/api/config/{id}/` | Update config entry |
+| `ui_settings_get` | GET | `/api/ui_settings/` | The user's UI settings and permissions; `settings` also holds the effective feature state (`ai_enabled`, `remote_ocr`, `auditlog_enabled`, `email_enabled`, `trash_delay`, `version`) |
+| `config_list` | GET | `/api/config/` | The application configuration: an array with its one entry (id 1); see Application Configuration |
+| `config_get` | GET | `/api/config/{id}/` | The configuration entry (id 1) |
+| `config_update` | PATCH | `/api/config/{id}/` | Set database overrides on entry 1 |
+
+#### Application Configuration
+`/api/config/` holds overrides stored in the database, not the effective settings.
+- **Fallback:** a null, empty or 0 value means "not overridden", so the `PAPERLESS_*` setting or the built-in default applies. A true/false field set to `false` does override. `externally_configured_variables` names the `PAPERLESS_*` variables set on the server.
+- **Effective state:** read it from `ui_settings_get` `settings`.
+- **API keys** (`llm_api_key`, `llm_embedding_api_key`, `remote_ocr_api_key`) read `**********` when stored and null when not. Writing a value made only of `*` keeps the stored key, and `""` removes it.
+- **3.0 values:** `mode` is `auto`/`force`/`redo`/`off`; `archive_file_generation` (which replaced `skip_archive_file`) is `auto`/`always`/`never`.
+- **LLM index:** with AI on and an embedding backend set, an update queues an index rebuild when no index exists or an embedding setting changes.
+- **Permissions:** reading needs `view_applicationconfiguration`, and writing needs `change_applicationconfiguration`.
+
+#### Error Hints
+`document_history` gives a 400 "Audit log is disabled" when the audit log is off. `document_email` doesn't check `email_enabled`, and any send failure is a 500 "Error emailing documents". Both tools add a hint to these errors, as the AI tools do to "AI is required for this feature".
 
 ## Waiting for Tasks
 
-Since paperless-ngx 3.5.0 the document bulk and action endpoints queue a task and return `{"result": "OK", "task_id": …}` at once; uploads have always returned the consume task's UUID. Nothing has changed when these return, and runtime errors (missing permissions on a document, a wrong PDF password) exist only in the task record.
+Since paperless-ngx 3.5.0 the document bulk and action endpoints queue a task and return `{"result": "OK", "task_id": …}` at once; uploads have always returned the consume task's UUID. Nothing has changed when these return. Missing permissions (403) and invalid arguments (400) fail the call itself; errors found while the work runs (a wrong PDF password, a failed consume) exist only in the task record. `workflow_run` and `document_version_upload` take `wait` too.
 
 - `document_upload`, `document_bulk_edit`, the document editing tools and `task_run` take `wait` (default false: return the id at once, unchanged) and `timeout` (whole seconds, 1 to 600, default 60; only with `wait`). With `wait` the tool returns `{response, task, waited_seconds}`, where `response` is the original API response.
 - `task_wait` waits on a task started earlier or elsewhere; an unknown task id fails at once.
@@ -674,7 +685,7 @@ The `all` ID array that list responses carried below API v10 no longer exists, s
 
 Some MCP clients send every declared parameter, filling unused ones with `null`. A top-level `null` therefore always means "not given", in every tool: middleware drops it before any handler runs. The string `"null"` is dropped too, except where it is real text and can't be padding: search text (`query`, `text`, `title_search`, `term`, task `result`, and the list tools' `name`/`title`/`content`/`path` filters) and required free-text parameters (a note, a new object's name). Optional fields that a write would overwrite (a password, a username, a title, OCR text) drop it, so a padding client can't set a password to "null". An empty string means "not given" for optional parameters; so do `[]` and `{}` (whitespace aside) for number and true/false parameters, and `{}` for optional object parameters (`extra_data`, `permissions`). An empty list that replaces values is real: `document_update` `tags: []` and `custom_fields: []` remove them all, and `filter_rules: []` replaces every rule. This covers `document_update` `content` (clear it with `clear: ["content"]`). A number or boolean that doesn't parse is an error rather than a silent `0`, `false` or default; booleans accept `1` and `0`, except the `all` selectors and selection filters, which take only true/false. An out-of-range number gets an error naming the range. Before this, a padded `null` became a real value in many tools (`document_update` `content: null` wiped the OCR text; `user_update` `is_superuser: null` sent `false`; list filters became `=0` or `=false`).
 
-Clearing a field takes an explicit `clear` array naming it: `document_update` (`correspondent`, `document_type`, `storage_path`, `archive_serial_number`, `owner`), `tag_update` (`parent`), `saved_view_update` (`page_size`, `display_mode`, `display_fields`), `bulk_edit_objects` (`owner`), `workflow_trigger_update` and `workflow_action_update` (their nullable single-value fields), and each trigger and action object in `workflow_create`/`workflow_update` (nested nulls there are dropped too). A field both given a value and listed in `clear` is an error. Nulls nested inside other JSON objects (such as `document_bulk_edit`'s `parameters`, mail rule bodies, custom field values) are sent as given.
+Clearing a field takes an explicit `clear` array naming it: `document_update` (`correspondent`, `document_type`, `storage_path`, `archive_serial_number`, `owner`, `content`), `tag_update` (`parent`), `saved_view_update` (`page_size`, `display_mode`, `display_fields`), `bulk_edit_objects` (`owner`), `workflow_trigger_update` and `workflow_action_update` (their nullable single-value fields), and each trigger and action object in `workflow_create`/`workflow_update` (nested nulls there are dropped too). A field both given a value and listed in `clear` is an error. Nulls nested inside other JSON objects (such as `document_bulk_edit`'s `parameters`, mail rule bodies, custom field values) are sent as given.
 
 ## Response Shaping
 
@@ -693,7 +704,7 @@ Paperless-ngx API responses can be far too large for MCP clients (full OCR text 
 The MCP server provides inline instructions via `WithInstructions` that guide agent behavior:
 
 - Available tool categories and when to use them
-- How pagination works (use `page` and `page_size` parameters)
+- How pagination works (tools with `page` and `page_size` parameters; the others return everything)
 - How full-text search works (`query` parameter on `document_list`)
 - How tag filtering works (`tags_id_all`, `tags_id_none`, `tags_id_in`)
 - How custom field queries work
@@ -723,20 +734,37 @@ paperless-ngx-mcp/
 ├── main.go                 # Entry point, Cobra root command
 ├── server.go               # MCP server setup and tool registration
 ├── client.go               # Paperless-ngx HTTP client
+├── helpers.go              # Shared result, request and parameter helpers
+├── nulls.go                # Null/padding middleware (dropNullArgs)
+├── cache.go                # In-memory TTL cache for metadata lists
 ├── tools_documents.go      # Document tool handlers
+├── document_filters.go     # document_list filters and the selection tools' filters
+├── tools_document_versions.go # Document version tools
+├── tools_document_actions.go  # File operations (rotate, merge, edit_pdf, ...)
+├── tools_download.go       # document_download, cleanup_downloads
+├── download.go             # Downloader (temp dir, concurrency, tracking)
+├── tools_page_image.go     # document_page_image
+├── render.go               # PDFium (WebAssembly) page rendering
+├── matching.go             # matching_algorithm names
 ├── tools_tags.go           # Tag tool handlers
 ├── tools_correspondents.go # Correspondent tool handlers
 ├── tools_document_types.go # Document type tool handlers
 ├── tools_storage_paths.go  # Storage path tool handlers
 ├── tools_custom_fields.go  # Custom field tool handlers
 ├── tools_search.go         # Search and statistics tool handlers
+├── tools_ai.go             # AI suggestions and chat
 ├── tools_bulk.go           # Bulk operation tool handlers
-├── tools_admin.go          # Tier 2 admin/system tool handlers
+├── tools_saved_views.go    # Saved view tools
+├── saved_view_rules.go     # Saved view rule type table
+├── tools_share_links.go    # Share link tools
+├── tools_users.go          # User, group and profile tools
+├── tools_mail.go           # Mail account, rule and processed mail tools
+├── tools_system.go         # System, config, tasks, logs, trash
+├── task_wait.go            # Waiting on tasks, progress notifications
 ├── tools_workflows.go      # Workflow tools, workflow_run
 ├── workflow_schema.go      # CUE loader, schema export, normalisation, validation
 ├── schema/workflow.cue     # Workflow request schemas (single source)
 ├── testdata/upstream/      # paperless-ngx serializer fixture + extractor
-├── models.go               # API response/request structs
 ├── Makefile                # Build, test, release targets
 ├── Dockerfile              # Multi-stage build
 ├── .mise.toml              # mise tool versions (Go 1.27.1)
@@ -761,9 +789,12 @@ The HTTP client (`client.go`) encapsulates all Paperless-ngx API communication:
 
 ```go
 type Client struct {
-    baseURL    string
-    token      string
-    httpClient *http.Client
+    baseURL        string
+    token          string
+    httpClient     *http.Client // 30 s timeout
+    longHTTPClient *http.Client // no timeout; AI calls are bounded by aiTimeout
+    aiTimeout      time.Duration
+    // plus the metadata cache
 }
 ```
 
@@ -771,11 +802,10 @@ The API version is hardcoded to `10` — the `Accept: application/json; version=
 
 **Key methods:**
 
-- `Get(path string, params url.Values) (*http.Response, error)` — GET with query params
-- `Post(path string, body interface{}) (*http.Response, error)` — POST JSON
-- `Patch(path string, body interface{}) (*http.Response, error)` — PATCH JSON
-- `Delete(path string) (*http.Response, error)` — DELETE
-- `PostMultipart(path string, fields map[string]string, file io.Reader, filename string) (*http.Response, error)` — Multipart upload
+- `Get(ctx, path, params)`, `Post(ctx, path, body)`, `Patch(ctx, path, body)`, `Delete(ctx, path, params)` — JSON requests
+- `GetRaw(ctx, path, params)` — a GET whose body isn't JSON (downloads)
+- `PostMultipart(ctx, path, fields, filePath)` — multipart upload
+- `GetLong(ctx, path)`, `PostStream(ctx, path, body)` — the AI calls, on the client without a timeout
 
 All methods inject `Authorization` and `Accept` headers automatically.
 

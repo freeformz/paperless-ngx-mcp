@@ -23,7 +23,7 @@ const (
 	// maxChatQuestion is ChatStreamingSerializer's q max_length.
 	maxChatQuestion = 4000
 	aiOffMessage    = "AI is required for this feature"
-	aiOffHintText   = "AI is off on the server: see ui_settings_get settings.ai_enabled; enable it with config_update (body {\"ai_enabled\": true}) or the PAPERLESS_AI_ENABLED setting."
+	aiOffHintText   = "AI is off on the server: see ui_settings_get settings.ai_enabled; enable it with config_update id 1 (body {\"ai_enabled\": true}). The PAPERLESS_AI_ENABLED setting applies only while config_get shows ai_enabled as null."
 )
 
 // maxChatResponse caps a chat answer and maxAISuggestionsResponse the
@@ -63,10 +63,7 @@ func registerAITools(srv *server.MCPServer, client *Client) {
 
 // withAIOffHint adds a hint to the error result for upstream's "AI is off" 400.
 func withAIOffHint(result *mcp.CallToolResult, status int, body []byte) *mcp.CallToolResult {
-	if status == http.StatusBadRequest && bytes.Contains(body, []byte(aiOffMessage)) {
-		return addErrorText(result, aiOffHintText)
-	}
-	return result
+	return withAPIHints(result, status, body, []apiHint{{http.StatusBadRequest, aiOffMessage, aiOffHintText}})
 }
 
 // aiRequestError describes a failed AI request, telling a timeout and a

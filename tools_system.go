@@ -96,10 +96,14 @@ func addTaskFilters(params url.Values, request mcp.CallToolRequest, withStatus b
 	return nil
 }
 
+// configValuesNote describes what /api/config/ returns (paperless/serialisers.py,
+// paperless/config.py).
+const configValuesNote = "Its values are overrides stored in the database, not the settings in effect: null, empty or 0 means not overridden, so the PAPERLESS_* environment setting or the built-in default applies (a true/false field set to false is an override); ui_settings_get settings shows the effective feature state. API keys read as ********** when one is stored and null when not (an environment key may still be in use). externally_configured_variables names the PAPERLESS_* environment variables set on the server (names only). Needs the view application configuration permission."
+
 func registerSystemTools(srv *server.MCPServer, client *Client) {
 	// Tasks
 	taskListOpts := []mcp.ToolOption{
-		mcp.WithDescription("List background tasks, newest first by default. Paginated by the server; use page to iterate. Each task has id (integer, for task_acknowledge), task_id (UUID), task_type, trigger_source, status (pending, started, success, failure, revoked), date_created/started/done, duration_seconds, wait_time_seconds, input_data, result_data (document_id, duplicate_of, reason, error_type, error_message, traceback), related_document_ids and acknowledged. A consume that hit a duplicate has status failure and result_data.duplicate_of. result_data.traceback is cut to its last 500 bytes (traceback_truncated: true) unless include_traceback is set; task_get returns it in full. For counts use task_stats."),
+		mcp.WithDescription("List background tasks, newest first by default. Paginated by the server; use page to iterate. Each task has id (integer, for task_acknowledge), task_id (UUID), task_type, trigger_source, status (pending, started, success, failure, revoked), date_created/started/done, duration_seconds, wait_time_seconds, input_data, result_data (document_id, duplicate_of, reason, error_type, error_message, traceback), related_document_ids and acknowledged. A consume that hit a duplicate has status failure and result_data.duplicate_of. result_data.traceback is cut to its last 500 bytes (traceback_truncated: true) unless include_traceback is set; task_get returns it in full. Users who aren't staff see only their own tasks and those with no owner. For counts use task_stats."),
 		withNumber("page", mcp.Description("Page number (default: 1)")),
 		withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 		mcp.WithString("ordering", mcp.Description("Sort field: "+strings.Join(taskOrderingFields, ", ")+"; prefix - for descending (default: -date_created)")),
@@ -115,13 +119,13 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 	), handleTaskGet(client))
 
 	srv.AddTool(mcp.NewTool("task_acknowledge",
-		mcp.WithDescription("Acknowledge tasks, which hides them from the web UI's task notifications; nothing is deleted, and there is no way to un-acknowledge. Give exactly one of tasks or all. Returns {\"result\": number acknowledged}."),
+		mcp.WithDescription("Acknowledge tasks, which hides them from the web UI's task notifications; nothing is deleted, and there is no way to un-acknowledge. Give exactly one of tasks or all. Returns {\"result\": number acknowledged}. Needs the change task permission; an unknown or repeated id is a 400."),
 		withJSONArray("tasks", mcp.Description("Array of integer task IDs (the id field from task_list, not the task UUID)")),
 		mcp.WithBoolean("all", mcp.Description("Acknowledge every visible unacknowledged task, including pending and failed ones")),
 	), handleTaskAcknowledge(client))
 
 	statsOpts := []mcp.ToolOption{
-		mcp.WithDescription("Aggregate task information. mode summary: per task type over the last N days (days), total/pending/success/failure counts, average duration and wait, and last run/success/failure times. mode status_counts: counts of all, needs_attention (failure or revoked), in_progress (pending or started) and completed (success); accepts task_list's filters except status and is_complete. mode active: pending and started tasks, newest first, at most 50. Parameters that don't belong to the chosen mode are rejected."),
+		mcp.WithDescription("Aggregate task information. mode summary: per task type over the last N days (days), total/pending/success/failure counts, average duration and wait, and last run/success/failure times. mode status_counts: counts of all, needs_attention (failure or revoked), in_progress (pending or started) and completed (success); accepts task_list's filters except status and is_complete. mode active: pending and started tasks, newest first, at most 50. Parameters that don't belong to the chosen mode are rejected. In status_counts and active, users who aren't staff see only their own tasks and those with no owner; summary covers every task for superusers, staff and holders of view_system_monitoring."),
 		mcp.WithString("mode", mcp.Description("What to return"), mcp.Required(), mcp.Enum(taskStatsModes...)),
 		withNumber("days", mcp.Description("summary only: how many days back, 1 to 365 (default: 30)")),
 	}
@@ -129,13 +133,13 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(mcp.NewTool("task_run",
 		append([]mcp.ToolOption{
-			mcp.WithDescription("Run a system task in the background (superuser only). Returns a task_id at once; pass wait: true to wait for the task and get its outcome, or follow the id with task_wait or task_get. Types: train_classifier (retrain the auto-matching classifier), sanity_check (verify stored files against the database), llm_index (update the AI document index; requires AI to be enabled on the server)."),
+			mcp.WithDescription("Run a system task in the background (superuser only). Returns a task_id at once; pass wait: true to wait for the task and get its outcome, or follow the id with task_wait or task_get. Types: train_classifier (retrain the auto-matching classifier), sanity_check (verify stored files against the database), llm_index (update the AI document index; needs AI on and an embedding backend set, otherwise the task succeeds without doing anything)."),
 			mcp.WithString("task_type", mcp.Description("Task type to run"), mcp.Required(), mcp.Enum(runnableTaskTypes...)),
 		}, waitToolOptions()...)...,
 	), handleTaskRun(client))
 
 	srv.AddTool(mcp.NewTool("task_wait",
-		mcp.WithDescription("Wait for a background task to finish: success, failure or revoked. Returns {task, waited_seconds}; a failed or revoked task comes back as a tool error carrying the task, and if the timeout passes first the current task comes back with timed_out: true (call task_wait again to keep waiting). The MCP host may end a long call before the timeout. Takes the task UUID that document_upload, document_version_upload, document_bulk_edit, the document editing tools (document_rotate, document_merge, document_merge_as_versions, document_edit_pdf, document_remove_password, document_reprocess, document_bulk_delete) and task_run return, or the integer id from task_list. For those editing tools, finished means their bulk task: rotate, merge, edit_pdf and remove_password then run consume_file tasks, and reprocess runs reprocess_document tasks, of their own."),
+		mcp.WithDescription("Wait for a background task to finish: success, failure or revoked. Returns {task, waited_seconds}; a failed or revoked task comes back as a tool error carrying the task, and if the timeout passes first the current task comes back with timed_out: true (call task_wait again to keep waiting). The MCP host may end a long call before the timeout. Takes the task UUID that document_upload, document_version_upload, document_bulk_edit, the document editing tools (document_rotate, document_merge, document_merge_as_versions, document_edit_pdf, document_remove_password, document_reprocess, document_bulk_delete), workflow_run and task_run return, or the integer id from task_list. For those editing tools, finished means their bulk task: rotate, merge, edit_pdf and remove_password then run consume_file tasks, and reprocess runs reprocess_document tasks, of their own."),
 		mcp.WithAny("id", mcp.Description("Task UUID or integer task id"), mcp.Required(), func(schema map[string]any) {
 			schema["type"] = []string{"string", "integer"}
 		}),
@@ -144,24 +148,24 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 
 	// Logs
 	srv.AddTool(mcp.NewTool("log_list",
-		mcp.WithDescription("List available log files."),
+		mcp.WithDescription("List the server's logs that exist (paperless, mail, celery; not paginated); read one with log_get. The log tools need a staff user."),
 	), handleSimpleGet(client, "/api/logs/"))
 
 	srv.AddTool(mcp.NewTool("log_get",
 		mcp.WithDescription("Get the last lines of a log file (tail, default 100). Returns {lines}."),
-		mcp.WithString("id", mcp.Description("Log file name"), mcp.Required()),
+		mcp.WithString("id", mcp.Description("Log name from log_list: paperless, mail or celery"), mcp.Required()),
 		withNumber("tail", mcp.Description("Number of lines to return from the end of the log (default and 0: 100)")),
 	), handleLogGet(client))
 
 	// Trash
 	srv.AddTool(mcp.NewTool("trash_list",
-		mcp.WithDescription("List trashed documents."),
+		mcp.WithDescription("List trashed documents. They are deleted for good after the trash delay (ui_settings_get settings.trash_delay, in days)."),
 		withNumber("page", mcp.Description("Page number (default: 1)")),
 		withNumber("page_size", mcp.Description("Results per page (default: 25)")),
 	), handlePaginatedList(client, "/api/trash/"))
 
 	srv.AddTool(mcp.NewTool("trash_action",
-		mcp.WithDescription("Restore trashed documents, or permanently delete them (empty), which can't be undone and doesn't wait for the trash delay. restore needs documents. A version deleted on its own (document_version_delete) is listed and restored by itself; a version whose root document is also in the trash can't be (\"Restore the root document instead of one of its versions\"), so restore the root, which brings back the versions trashed with it. empty takes documents, or all: true to empty the whole trash: for a superuser every trashed document, for anyone else the trashed documents they own or that have no owner. Leaving out documents is an error, not \"everything\". Preview with trash_list."),
+		mcp.WithDescription("Restore trashed documents, or permanently delete them (empty), which can't be undone and doesn't wait for the trash delay. restore needs documents. A version deleted on its own (document_version_delete) is listed and restored by itself; a version whose root document is also in the trash can't be (\"Restore the root document instead of one of its versions\"), so restore the root, which brings back the versions trashed with it. empty takes documents, or all: true to empty the whole trash: for a superuser every trashed document, for anyone else the trashed documents they own or that have no owner. Leaving out documents is an error, not \"everything\". Both actions need delete permission on every document listed. Preview with trash_list."),
 		mcp.WithString("action", mcp.Description("Action"), mcp.Required(), mcp.Enum(trashActions...)),
 		withJSONArray("documents", mcp.Description("Array of trashed document IDs"), mcp.Items(map[string]any{"type": "integer"})),
 		mcp.WithBoolean("all", mcp.Description("empty only: permanently delete everything in the trash that you may delete, instead of listing documents")),
@@ -169,7 +173,7 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 
 	// System
 	srv.AddTool(mcp.NewTool("system_status",
-		mcp.WithDescription("Get system status including version, database, storage info (admin only)."),
+		mcp.WithDescription("Get system status: pngx_version, server_os, install_type, storage, database (status and migrations), and tasks: redis, celery, search index, classifier, sanity check, the LLM index (llmindex_status DISABLED, OK, WARNING or ERROR, plus llmindex_error) and summary (task counts over the last 30 days). Needs a superuser, staff, or the view_system_monitoring permission."),
 	), handleSimpleGet(client, "/api/status/"))
 
 	srv.AddTool(mcp.NewTool("remote_version",
@@ -177,22 +181,22 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 	), handleSimpleGet(client, "/api/remote_version/"))
 
 	srv.AddTool(mcp.NewTool("ui_settings_get",
-		mcp.WithDescription("Get UI settings for the current user."),
+		mcp.WithDescription("Get the current user's UI settings, with permissions (the user's permission codenames) and settings, which also holds the server's effective feature state: ai_enabled, remote_ocr {configured, mode}, auditlog_enabled, email_enabled, trash_delay and version. Read feature state here rather than from config_list, which shows only database overrides."),
 	), handleSimpleGet(client, "/api/ui_settings/"))
 
 	// Config
 	srv.AddTool(mcp.NewTool("config_list",
-		mcp.WithDescription("List application configuration entries."),
+		mcp.WithDescription("List the application configuration: an array with its one entry (id 1). "+configValuesNote),
 	), handleSimpleGet(client, "/api/config/"))
 
 	srv.AddTool(mcp.NewTool("config_get",
-		mcp.WithDescription("Get a configuration entry."),
-		withNumber("id", mcp.Description("Config entry ID"), mcp.Required()),
+		mcp.WithDescription("Get the application configuration entry (id 1). "+configValuesNote),
+		withNumber("id", mcp.Description("Config entry ID (1)"), mcp.Required()),
 	), handleGetByID(client, "/api/config/%d/"))
 
 	srv.AddTool(mcp.NewTool("config_update",
-		mcp.WithDescription("Update a configuration entry."),
-		withNumber("id", mcp.Description("Config entry ID"), mcp.Required()),
+		mcp.WithDescription("Update the application configuration (id 1) with the fields in body. A value set here overrides the PAPERLESS_* setting; an empty, 0 or null value falls back to it, except that a true/false field (deskew, rotate_pages, the barcode switches, ai_enabled) set to false does override. \"\" for user_args, barcode_tag_mapping, language or llm_output_language stores null. For the API keys (llm_api_key, llm_embedding_api_key, remote_ocr_api_key), a value made only of * (as read back) keeps the stored key and \"\" removes it. mode takes auto, force, redo or off; archive_file_generation takes auto, always or never (it replaced skip_archive_file in paperless-ngx 3.0). With AI on and an embedding backend set, an update queues an LLM index rebuild when there is no index yet (turning on ai_enabled can start one) or when llm_embedding_backend, llm_embedding_model, llm_embedding_endpoint, llm_embedding_chunk_size or llm_context_size changes. Needs the change application configuration permission."),
+		withNumber("id", mcp.Description("Config entry ID (1)"), mcp.Required()),
 		withJSONObject("body", mcp.Description("Object with fields to update"), mcp.Required()),
 	), handleConfigUpdate(client))
 }

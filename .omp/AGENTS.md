@@ -28,6 +28,14 @@ MCP server for Paperless-ngx document management, built in Go.
 - `workflow_schema.go` — loads `schema/workflow.cue`, derives the workflow tools' input schemas, normalises and validates calls
 - `schema/workflow.cue` — typed workflow, trigger and action request schemas (kept in step with upstream by `TestWorkflowCUEMatchesUpstream` and `testdata/upstream/`)
 - `tools_system.go` — System status, config, tasks, logs, and trash tool handlers
+- `task_wait.go` — waiting on tasks (`wait`, `task_wait`) and progress notifications
+- `tools_document_versions.go` — document version tools
+- `tools_document_actions.go` — file operations (rotate, merge, edit_pdf, remove_password, reprocess, bulk delete)
+- `tools_page_image.go`, `render.go` — `document_page_image` and PDFium (WebAssembly) rendering
+- `document_filters.go` — `document_list` filters and the selection tools' `filters`
+- `nulls.go` — null/padding middleware (`dropNullArgs`)
+- `matching.go` — `matching_algorithm` names
+- `saved_view_rules.go` — saved view rule type table
 - `test_helpers_test.go` — Shared test infrastructure (mock server, helpers)
 - `shutdown_test.go` — Subprocess shutdown tests (Unix only); its `TestMain` runs `main()` when `PAPERLESS_MCP_TEST_RUN_MAIN=1`
 - `.omp/AGENTS.md` — This developer guide (omp agent context)
@@ -78,6 +86,8 @@ The MCP server is configured via environment variables:
 |----------|----------|-------------|
 | `PAPERLESS_URL` | yes | Base URL of the Paperless-ngx instance |
 | `PAPERLESS_TOKEN` | yes | API authentication token |
+| `PAPERLESS_MCP_DOWNLOAD_DIR` | no | Directory for disk downloads, with real filenames (cleanup_downloads leaves them alone) |
+| `PAPERLESS_MCP_AI_TIMEOUT` | no | Seconds the AI tools may take, 1 to 3600 (default 300) |
 
 ## Architecture
 

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func TestDocumentList(t *testing.T) {
@@ -649,5 +651,86 @@ func TestAPIErrorHandling(t *testing.T) {
 	m := resultJSON(t, result)
 	if m["status_code"] != float64(404) {
 		t.Errorf("status_code = %v, want 404", m["status_code"])
+	}
+}
+
+func TestDocumentHistoryAuditLogOffHint(t *testing.T) {
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/documents/1/history/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(400)
+		w.Write([]byte("Audit log is disabled"))
+	})
+	rh.Handle("GET", "/api/documents/2/history/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(403)
+		w.Write([]byte(`{"detail":"Insufficient permissions"}`))
+	})
+	rh.Handle("GET", "/api/documents/3/history/", jsonHandler(t, 200, []any{}))
+	client := testClientAndServer(t, rh)
+	h := handleDocumentHistory(client)
+
+	blocks := textBlocks(callTool(t, h, map[string]any{"id": float64(1)}))
+	if len(blocks) != 2 || !strings.Contains(blocks[0], "Audit log is disabled") || blocks[1] != auditLogOffHint.text {
+		t.Fatalf("audit log off: blocks = %q", blocks)
+	}
+	result := callTool(t, h, map[string]any{"id": float64(2)})
+	assertIsError(t, result)
+	if blocks := textBlocks(result); len(blocks) != 1 {
+		t.Errorf("403: want no hint, got %q", blocks)
+	}
+	result = callTool(t, h, map[string]any{"id": float64(3)})
+	assertNotError(t, result)
+	if blocks := textBlocks(result); len(blocks) != 1 {
+		t.Errorf("success: want one block, got %q", blocks)
+	}
+}
+
+func TestDocumentEmailFailureHint(t *testing.T) {
+	status, reply := 500, "Error emailing documents, check logs for more detail."
+	rh := newRouteHandler(t)
+	rh.Handle("POST", "/api/documents/email/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(status)
+		w.Write([]byte(reply))
+	})
+	client := testClientAndServer(t, rh)
+	args := map[string]any{"documents": "[1]", "to": "user@example.com", "subject": "Doc", "body": "Hi"}
+
+	result := callTool(t, handleDocumentEmail(client), args)
+	assertIsError(t, result)
+	if blocks := textBlocks(result); len(blocks) != 2 || blocks[1] != emailFailedHint.text {
+		t.Fatalf("send failure: blocks = %q", blocks)
+	}
+	// Another 500 (a proxy, an unhandled server error) gets no hint.
+	reply = "<html>Internal Server Error</html>"
+	if blocks := textBlocks(callTool(t, handleDocumentEmail(client), args)); len(blocks) != 1 {
+		t.Errorf("other 500: want no hint, got %q", blocks)
+	}
+	// Nor does the same text with another status.
+	status, reply = 400, `{"detail":"Error emailing documents"}`
+	if blocks := textBlocks(callTool(t, handleDocumentEmail(client), args)); len(blocks) != 1 {
+		t.Errorf("400: want no hint, got %q", blocks)
+	}
+}
+
+func TestWithAPIHints(t *testing.T) {
+	hints := []apiHint{{400, "alpha", "hint A"}, {400, "beta", "hint B"}, {500, "alpha", "hint C"}}
+	errRes := func() *mcp.CallToolResult { return apiErrorResult(400, []byte("alpha beta"), "GET", "/x/") }
+
+	if blocks := textBlocks(withAPIHints(errRes(), 400, []byte("alpha beta"), hints)); len(blocks) != 3 || blocks[1] != "hint A" || blocks[2] != "hint B" {
+		t.Errorf("two matching hints: blocks = %q", blocks)
+	}
+	if blocks := textBlocks(withAPIHints(errRes(), 400, []byte("gamma"), hints)); len(blocks) != 1 {
+		t.Errorf("no phrase match: blocks = %q", blocks)
+	}
+	if blocks := textBlocks(withAPIHints(errRes(), 404, []byte("alpha"), hints)); len(blocks) != 1 {
+		t.Errorf("status mismatch: blocks = %q", blocks)
+	}
+	ok := mcp.NewToolResultText("fine")
+	if blocks := textBlocks(withAPIHints(ok, 400, []byte("alpha"), hints)); len(blocks) != 1 {
+		t.Errorf("non-error result changed: blocks = %q", blocks)
+	}
+	if withAPIHints(nil, 400, []byte("alpha"), hints) != nil {
+		t.Error("nil result should stay nil")
 	}
 }

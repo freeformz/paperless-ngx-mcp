@@ -48,8 +48,8 @@ Build a results table organized by category:
 - `id:10` — system_status: Paperless-ngx version, install type
 - `id:11` — remote_version: available update version
 - `id:12` — statistics: document count, inbox stats
-- `id:13` — ui_settings_get: UI theme/settings
-- `id:14` — config_list: configuration entries
+- `id:13` — ui_settings_get: user UI settings, permissions, and effective feature state under settings (ai_enabled, remote_ocr, auditlog_enabled, email_enabled, trash_delay)
+- `id:14` — config_list: array with the one config entry (id 1) of database overrides; null means the env setting applies
 - `id:15` — log_list: available log files
 - `id:16` — task_list: background tasks
 
