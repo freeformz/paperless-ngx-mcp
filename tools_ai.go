@@ -183,6 +183,10 @@ func handleDocumentChat(client *Client) server.ToolHandlerFunc {
 		if errRes != nil {
 			return errRes, nil
 		}
+		// The root lookup counts against the AI timeout too.
+		ctx, cancel := withAITimeout(ctx, client)
+		defer cancel()
+
 		var note string
 		if given {
 			// Upstream reads 0 as no document, which would widen the
@@ -202,8 +206,6 @@ func handleDocumentChat(client *Client) server.ToolHandlerFunc {
 			body["document_id"] = root
 		}
 
-		ctx, cancel := withAITimeout(ctx, client)
-		defer cancel()
 		received := &countingWriter{}
 		stop := progressTicker(ctx, request, client.AITimeout(), func() string {
 			return fmt.Sprintf("%d bytes received", received.n.Load())
