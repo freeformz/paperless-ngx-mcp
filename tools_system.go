@@ -98,7 +98,7 @@ func addTaskFilters(params url.Values, request mcp.CallToolRequest, withStatus b
 
 // configValuesNote describes what /api/config/ returns (paperless/serialisers.py,
 // paperless/config.py).
-const configValuesNote = "Its values are overrides stored in the database, not the settings in effect: null (or empty) means not overridden, so the PAPERLESS_* environment setting or the built-in default applies; ui_settings_get settings shows the effective feature state. API keys read as ********** when one is stored and null when not (an environment key may still be in use). externally_configured_variables names the PAPERLESS_* environment variables set on the server (names only). Needs the view application configuration permission."
+const configValuesNote = "Its values are overrides stored in the database, not the settings in effect: null, empty or 0 means not overridden, so the PAPERLESS_* environment setting or the built-in default applies (a true/false field set to false is an override); ui_settings_get settings shows the effective feature state. API keys read as ********** when one is stored and null when not (an environment key may still be in use). externally_configured_variables names the PAPERLESS_* environment variables set on the server (names only). Needs the view application configuration permission."
 
 func registerSystemTools(srv *server.MCPServer, client *Client) {
 	// Tasks
@@ -125,7 +125,7 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 	), handleTaskAcknowledge(client))
 
 	statsOpts := []mcp.ToolOption{
-		mcp.WithDescription("Aggregate task information. mode summary: per task type over the last N days (days), total/pending/success/failure counts, average duration and wait, and last run/success/failure times. mode status_counts: counts of all, needs_attention (failure or revoked), in_progress (pending or started) and completed (success); accepts task_list's filters except status and is_complete. mode active: pending and started tasks, newest first, at most 50. Parameters that don't belong to the chosen mode are rejected. Users who aren't staff see only their own tasks and those with no owner."),
+		mcp.WithDescription("Aggregate task information. mode summary: per task type over the last N days (days), total/pending/success/failure counts, average duration and wait, and last run/success/failure times. mode status_counts: counts of all, needs_attention (failure or revoked), in_progress (pending or started) and completed (success); accepts task_list's filters except status and is_complete. mode active: pending and started tasks, newest first, at most 50. Parameters that don't belong to the chosen mode are rejected. In status_counts and active, users who aren't staff see only their own tasks and those with no owner; summary covers every task for superusers, staff and holders of view_system_monitoring."),
 		mcp.WithString("mode", mcp.Description("What to return"), mcp.Required(), mcp.Enum(taskStatsModes...)),
 		withNumber("days", mcp.Description("summary only: how many days back, 1 to 365 (default: 30)")),
 	}

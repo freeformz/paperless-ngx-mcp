@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func TestDocumentList(t *testing.T) {
@@ -665,7 +667,7 @@ func TestDocumentHistoryAuditLogOffHint(t *testing.T) {
 	})
 	rh.Handle("GET", "/api/documents/3/history/", jsonHandler(t, 200, []any{}))
 	client := testClientAndServer(t, rh)
-	h := handleGetByID(client, "/api/documents/%d/history/", auditLogOffHint)
+	h := handleDocumentHistory(client)
 
 	blocks := textBlocks(callTool(t, h, map[string]any{"id": float64(1)}))
 	if len(blocks) != 2 || !strings.Contains(blocks[0], "Audit log is disabled") || blocks[1] != auditLogOffHint.text {
@@ -684,9 +686,10 @@ func TestDocumentHistoryAuditLogOffHint(t *testing.T) {
 }
 
 func TestDocumentEmailFailureHint(t *testing.T) {
-	status, reply := 500, `{"detail":"Error emailing documents, check logs for more detail."}`
+	status, reply := 500, "Error emailing documents, check logs for more detail."
 	rh := newRouteHandler(t)
 	rh.Handle("POST", "/api/documents/email/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(status)
 		w.Write([]byte(reply))
 	})
@@ -707,5 +710,27 @@ func TestDocumentEmailFailureHint(t *testing.T) {
 	status, reply = 400, `{"detail":"Error emailing documents"}`
 	if blocks := textBlocks(callTool(t, handleDocumentEmail(client), args)); len(blocks) != 1 {
 		t.Errorf("400: want no hint, got %q", blocks)
+	}
+}
+
+func TestWithAPIHints(t *testing.T) {
+	hints := []apiHint{{400, "alpha", "hint A"}, {400, "beta", "hint B"}, {500, "alpha", "hint C"}}
+	errRes := func() *mcp.CallToolResult { return apiErrorResult(400, []byte("alpha beta"), "GET", "/x/") }
+
+	if blocks := textBlocks(withAPIHints(errRes(), 400, []byte("alpha beta"), hints)); len(blocks) != 3 || blocks[1] != "hint A" || blocks[2] != "hint B" {
+		t.Errorf("two matching hints: blocks = %q", blocks)
+	}
+	if blocks := textBlocks(withAPIHints(errRes(), 400, []byte("gamma"), hints)); len(blocks) != 1 {
+		t.Errorf("no phrase match: blocks = %q", blocks)
+	}
+	if blocks := textBlocks(withAPIHints(errRes(), 404, []byte("alpha"), hints)); len(blocks) != 1 {
+		t.Errorf("status mismatch: blocks = %q", blocks)
+	}
+	ok := mcp.NewToolResultText("fine")
+	if blocks := textBlocks(withAPIHints(ok, 400, []byte("alpha"), hints)); len(blocks) != 1 {
+		t.Errorf("non-error result changed: blocks = %q", blocks)
+	}
+	if withAPIHints(nil, 400, []byte("alpha"), hints) != nil {
+		t.Error("nil result should stay nil")
 	}
 }

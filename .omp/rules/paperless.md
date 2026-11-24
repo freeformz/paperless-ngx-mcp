@@ -26,7 +26,7 @@ You have access to a Paperless-ngx MCP server for managing documents and metadat
 2. Update only the fields you want to change with `document_update`
 3. To clear a field (correspondent, document_type, storage_path, archive_serial_number, owner, content), name it in `clear` (e.g. `clear: ["correspondent"]`); a null value is ignored in every tool
 4. For tags, pass a JSON array of tag IDs — this replaces the document's tags; each tag also brings its ancestors, and removing a tag removes its descendants
-5. For custom fields, pass a JSON array of custom field assignments
+5. For custom fields, pass a JSON array of `{field, value}`; it replaces all of the document's custom fields, so include every field to keep
 
 ### Bulk Operations
 
@@ -38,7 +38,7 @@ You have access to a Paperless-ngx MCP server for managing documents and metadat
 
 ### Pagination
 
-Tools with `page` (default: 1) and `page_size` (default: 25) parameters are paginated: responses include `count`, `next`, `previous`, and `results` fields, and you iterate through pages to get everything. Tools without them (search_global, log_list, config_list, document_note_list, document_share_links, document_history, document_version_list, task_stats) return everything at once.
+Tools with `page` (default: 1) and `page_size` (default: 25) parameters are paginated: responses include `count`, `next`, `previous`, and `results` fields, and you iterate through pages to get everything. Tools without them (search_global, search_autocomplete, log_list, log_get, config_list, document_note_list, document_share_links, document_history, document_version_list, task_stats) aren't paginated; some cap their output (search_global 3 per type, task_stats active 50, search_autocomplete limit, log_get tail).
 
 ### Notes
 

@@ -15,7 +15,7 @@ const tagNestedNote = "children holds the tag's child tags you can see as full n
 func registerTagTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("tag_list",
-			mcp.WithDescription("List tags with optional filtering. Each tag's "+tagNestedNote+" A child tag is listed both on its own and nested in its parent; display_count counts the listed tags plus their descendants."),
+			mcp.WithDescription("List tags with optional filtering. Each tag's "+tagNestedNote+" A child tag that matches the filters is listed on its own too; display_count counts every matching tag (all pages) plus their visible descendants."),
 			mcp.WithString("name", mcp.Description("Filter by name (icontains)")),
 			mcp.WithBoolean("is_root", mcp.Description("Filter root tags only")),
 			mcp.WithString("ordering", mcp.Description("Sort field")),

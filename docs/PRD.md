@@ -98,7 +98,7 @@ SIGKILL can't be caught. A server killed that way (`kill -9`, the OOM killer, or
 - **API versioning**: `Accept: application/json; version=10` header on all requests (hardcoded to v10)
 - **Minimum server**: Paperless-ngx 3.5.0. Older servers stay on MCP v0.3.x. There is no runtime version check: a 2.x server answers v10 requests with 406, and 3.0 to 3.4 accept them with silent differences (for example, 3.0 and 3.1 ignore parameters added in 3.2.0, and 3.5.0 made the bulk and action endpoints asynchronous).
 - **Structured parameters**: every array or object parameter accepts a native JSON value or the same value as a JSON-encoded string; both produce the same request
-- **Pagination**: tools with `page` and `page_size` parameters are paginated, and their responses include `count`, `next`, `previous` and `results`. The others return everything at once: `search_global`, `log_list`, `config_list`, `document_note_list`, `document_share_links`, `document_history`, `document_version_list`, `task_stats` and the single-object tools.
+- **Pagination**: tools with `page` and `page_size` parameters are paginated, and their responses include `count`, `next`, `previous` and `results`. The others aren't paginated: `search_global`, `search_autocomplete`, `log_list`, `log_get`, `config_list`, `document_note_list`, `document_share_links`, `document_history`, `document_version_list`, `task_stats` and the single-object tools. Some cap their output (`search_global` 3 per type, `task_stats` active 50, `search_autocomplete` `limit`, `log_get` `tail`).
 - **Error handling**: HTTP error responses are translated to MCP error results with status code, detail message, and endpoint context
 - **Timeouts**: 30 s per request. The AI endpoints use a second HTTP client with no overall timeout, bounded instead by a context deadline of `PAPERLESS_MCP_AI_TIMEOUT` (default 300 s; paperless-ngx's own LLM timeout defaults to 120 s per call, and suggestions can make two calls)
 - **Content types**: JSON for most endpoints; multipart/form-data for document uploads
@@ -163,7 +163,7 @@ The primary search and filtering tool. Supports the full range of Paperless-ngx 
 | page_size | integer | no | Results per page (default: 25, max: 100000) |
 | full_content | boolean | no | Include full document content instead of a truncated snippet (default: false) |
 | content_snippet_bytes | integer | no | Max bytes of document content per result (default: 500; 0 disables truncation) |
-| include_notes | boolean | no | Include full note objects in results (default: false — notes are replaced with `notes_count`) |
+| include_notes | boolean | no | Include full note objects in results (default: false — notes are replaced with `notes_count`, omitted when zero) |
 
 **Returns:** Paginated document list with count, next/previous page URLs, and document objects. Document objects carry no file URLs: fetch files with `document_download` and pages with `document_page_image`. With a search (`text`, `title_search`, `query`, `more_like_id`), includes `__search_hit__` with score, highlights, note_highlights and rank.
 
@@ -198,7 +198,7 @@ By default each document's `content` (OCR text) is truncated to a snippet (defau
 | tags | array or JSON string | no | Array of tag IDs; replaces the document's tags. Each tag brings its ancestors, and a removed tag takes its descendants with it, even ones still listed |
 | archive_serial_number | integer | no | Archive serial number |
 | owner | integer | no | Owner user ID |
-| custom_fields | array or JSON string | no | Array of custom field assignments |
+| custom_fields | array or JSON string | no | Array of `{field, value}`; replaces all of the document's custom fields (fields left out are removed) |
 | clear | array of strings | no | Fields to clear (sent as null): `correspondent`, `document_type`, `storage_path`, `archive_serial_number`, `owner`. A `null` value is ignored (see Null Values) |
 | version | integer | no | Version id whose content to change; refused unless `content` is given or cleared. Other fields still change the root |
 
@@ -652,7 +652,9 @@ The workflow tools' parameters are generated from `schema/workflow.cue` (CUE, ev
 - **3.0 values:** `mode` is `auto`/`force`/`redo`/`off`; `archive_file_generation` (which replaced `skip_archive_file`) is `auto`/`always`/`never`.
 - **LLM index:** with AI on and an embedding backend set, an update queues an index rebuild when no index exists or an embedding setting changes.
 - **Permissions:** reading needs `view_applicationconfiguration`, and writing needs `change_applicationconfiguration`.
-- **Errors:** `document_history` is a 400 "Audit log is disabled" when the audit log is off. `document_email` doesn't check `email_enabled`, and any send failure is a 500. Both tools add a hint to these errors.
+
+#### Error Hints
+`document_history` gives a 400 "Audit log is disabled" when the audit log is off. `document_email` doesn't check `email_enabled`, and any send failure is a 500 "Error emailing documents". Both tools add a hint to these errors, as the AI tools do to "AI is required for this feature".
 
 ## Waiting for Tasks
 
@@ -800,7 +802,8 @@ The API version is hardcoded to `10` — the `Accept: application/json; version=
 
 **Key methods:**
 
-- `Get(ctx, path, params)`, `Post(ctx, path, body)`, `Patch(ctx, path, body)`, `Delete(ctx, path)` — JSON requests
+- `Get(ctx, path, params)`, `Post(ctx, path, body)`, `Patch(ctx, path, body)`, `Delete(ctx, path, params)` — JSON requests
+- `GetRaw(ctx, path, params)` — a GET whose body isn't JSON (downloads)
 - `PostMultipart(ctx, path, fields, filePath)` — multipart upload
 - `GetLong(ctx, path)`, `PostStream(ctx, path, body)` — the AI calls, on the client without a timeout
 

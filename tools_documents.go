@@ -33,7 +33,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_get",
-			mcp.WithDescription("Get full document details including tags, correspondent, document type, custom fields, notes, owner, user_can_change and is_shared_by_requester (the per-user permissions object isn't returned). duplicate_documents lists other documents you can see with the same file (it is always [] in document_list results). versions lists the document's file versions, newest first; content and page_count are the latest version's unless version is given (the other file fields, such as mime_type and original_file_name, always describe the root). A version id as id is a 404: find its root with document_root. created_date is a deprecated copy of created's date; use created."),
+			mcp.WithDescription("Get full document details including tags, correspondent, document type, custom fields, notes, owner, user_can_change and is_shared_by_requester (the permissions object, with view and change users and groups, isn't returned here; document_update's response includes it). duplicate_documents lists other documents you can see with the same file (it is always [] in document_list results). versions lists the document's file versions, newest first; content and page_count are the latest version's unless version is given (the other file fields, such as mime_type and original_file_name, always describe the root). A version id as id is a 404: find its root with document_root. created_date is a deprecated copy of created's date; use created."),
 			withNumber("id", mcp.Description("Document ID (a root document)"), mcp.Required()),
 			withVersion("Version id whose content and page_count to return (from document_version_list); default the latest version. A trashed version can be read this way too"),
 		),
@@ -119,10 +119,10 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_history",
-			mcp.WithDescription("Get a document's audit trail (every entry, not paginated). Needs the audit log on (ui_settings_get settings.auditlog_enabled; otherwise a 400 \"Audit log is disabled\"), the view log entry permission, and ownership of the document (or superuser)."),
+			mcp.WithDescription("Get a document's audit trail (every entry, not paginated). Needs the audit log on (ui_settings_get settings.auditlog_enabled; otherwise a 400 \"Audit log is disabled\"), the view log entry permission, and ownership of the document's root (or no owner; superusers skip this)."),
 			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
-		handleGetByID(client, "/api/documents/%d/history/", auditLogOffHint),
+		handleDocumentHistory(client),
 	)
 
 	srv.AddTool(
@@ -400,12 +400,18 @@ func handleDocumentEmail(client *Client) server.ToolHandlerFunc {
 	}
 }
 
+// handleDocumentHistory gets a document's audit trail, with a hint when the
+// audit log is off.
+func handleDocumentHistory(client *Client) server.ToolHandlerFunc {
+	return handleGetByID(client, "/api/documents/%d/history/", auditLogOffHint)
+}
+
 // auditLogOffHint explains upstream's 400 for document history when the
 // audit log is off (documents/views.py history).
 var auditLogOffHint = apiHint{
 	status: http.StatusBadRequest,
 	phrase: "Audit log is disabled",
-	text:   "The audit log is off on the server (ui_settings_get settings.auditlog_enabled); the PAPERLESS_AUDIT_LOG_ENABLED setting turns it on (it is on by default).",
+	text:   "The audit log is off on the server (ui_settings_get settings.auditlog_enabled); the PAPERLESS_AUDIT_LOG_ENABLED setting turns it on (it is on by default; a server restart is needed, and changes made while it was off aren't recorded).",
 }
 
 // emailFailedHint explains upstream's 500 for any failure while emailing,
