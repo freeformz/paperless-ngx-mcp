@@ -607,7 +607,7 @@ The workflow tools' parameters are generated from `schema/workflow.cue` (CUE, ev
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
 | `log_list` | GET | `/api/logs/` | List available log files |
-| `log_get` | GET | `/api/logs/{id}/` | Get log contents (`tail` parameter, at least 1, default 100, sent as the server's `limit`; returns `{lines}`) |
+| `log_get` | GET | `/api/logs/{id}/` | Get log contents (`tail` parameter, default 100 (0 counts as not given; negative is refused), sent as the server's `limit`; returns `{lines}`) |
 
 #### Trash
 

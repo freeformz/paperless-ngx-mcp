@@ -189,7 +189,7 @@ Next release:
 - `document_email` takes `use_archive_version` (default true); false sends the uploaded file instead of the archived PDF.
 - `search_global` takes `db_only` to match documents by title in the database instead of the search index.
 - `log_get` asks the server for only the last `tail` lines instead of fetching the whole log.
-- Breaking: `log_get` returns `{lines}` without `total_lines`, and refuses `tail` below 1 (before, it became 100). `share_link_create`'s `file_version_archive` is now `use_archive_version`; the old name is refused.
+- Breaking: `log_get` returns `{lines}` without `total_lines`, and refuses a negative `tail` (before, it became 100; 0 still means the default). `share_link_create`'s `file_version_archive` is now `use_archive_version`; the old name is refused.
 
 ### System
 `system_status`, `remote_version`, `ui_settings_get`, `config_list`, `config_get`, `config_update`, `task_list`, `task_get`, `task_wait`, `task_acknowledge`, `task_run`, `task_stats`, `log_list`, `log_get`, `trash_list`, `trash_action`

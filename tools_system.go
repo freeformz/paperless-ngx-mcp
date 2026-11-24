@@ -150,7 +150,7 @@ func registerSystemTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(mcp.NewTool("log_get",
 		mcp.WithDescription("Get the last lines of a log file (tail, default 100). Returns {lines}."),
 		mcp.WithString("id", mcp.Description("Log file name"), mcp.Required()),
-		withNumber("tail", mcp.Description("Number of lines to return from the end of the log, at least 1 (default: 100)")),
+		withNumber("tail", mcp.Description("Number of lines to return from the end of the log (default and 0: 100)")),
 	), handleLogGet(client))
 
 	// Trash
@@ -396,11 +396,12 @@ func handleLogGet(client *Client) server.ToolHandlerFunc {
 		if errRes != nil {
 			return errRes, nil
 		}
-		if !given {
-			tail = 100
+		if tail < 0 {
+			return errResult(fmt.Sprintf("tail must not be negative, got %d", tail)), nil
 		}
-		if tail < 1 {
-			return errResult(fmt.Sprintf("tail must be at least 1, got %d", tail)), nil
+		// 0 is padding, as for page and page_size: the default applies.
+		if !given || tail == 0 {
+			tail = 100
 		}
 		// The server returns only the last limit lines.
 		path := fmt.Sprintf("/api/logs/%s/", id)

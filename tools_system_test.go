@@ -455,19 +455,21 @@ func TestLogGetTail(t *testing.T) {
 			t.Errorf("tail %v: limit = %q, want 10", tail, limit)
 		}
 	}
-	// A padded "" is not given: the default applies.
-	var limit string
-	client := testClientAndServer(t, logRoute(t, "celery", nil, &limit))
-	assertNotError(t, callTool(t, handleLogGet(client), map[string]any{"id": "celery", "tail": ""}))
-	if limit != "100" {
-		t.Errorf("padded tail: limit = %q, want 100", limit)
+	// A padded "" or 0 is not given: the default applies.
+	for _, tail := range []any{"", float64(0), "0"} {
+		var limit string
+		client := testClientAndServer(t, logRoute(t, "celery", nil, &limit))
+		assertNotError(t, callTool(t, handleLogGet(client), map[string]any{"id": "celery", "tail": tail}))
+		if limit != "100" {
+			t.Errorf("padded tail %#v: limit = %q, want 100", tail, limit)
+		}
 	}
 }
 
-func TestLogGetRejectsTailBelowOne(t *testing.T) {
+func TestLogGetRejectsNegativeTail(t *testing.T) {
 	client := testClientAndServer(t, newRouteHandler(t))
-	for _, tail := range []any{float64(0), float64(-1), "0"} {
-		assertErrorContains(t, callTool(t, handleLogGet(client), map[string]any{"id": "celery", "tail": tail}), "tail must be at least 1")
+	for _, tail := range []any{float64(-1), "-5"} {
+		assertErrorContains(t, callTool(t, handleLogGet(client), map[string]any{"id": "celery", "tail": tail}), "tail must not be negative")
 	}
 }
 
