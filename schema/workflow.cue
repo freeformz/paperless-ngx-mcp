@@ -52,15 +52,15 @@ clearable: {
 #TriggerFields: {
 	// Trigger type: 1 consumption (needs filter_filename, filter_path or filter_mailrule in every call), 2 document_added, 3 document_updated, 4 scheduled, 5 manual (run with workflow_run)
 	type?: #TriggerType
-	// Array of document sources (consumption, added and updated triggers): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui. [] means any; a new trigger without sources gets 1, 2 and 3
+	// Array of document sources (checked by consumption triggers only): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui. [] means any; a new trigger without sources gets 1, 2 and 3
 	sources?: [...#Source]
-	// Path filter (wildcards *, case-insensitive)
+	// Path filter (wildcards *, case-insensitive; consumption triggers only)
 	filter_path?: #Text256 | null
 	// Filename filter (wildcards such as *.pdf, case-insensitive)
 	filter_filename?: #Text256 | null
-	// Mail rule ID (documents fetched by that rule)
+	// Mail rule ID (documents fetched by that rule; consumption triggers only)
 	filter_mailrule?: #ID | null
-	// Content match pattern, used with matching_algorithm
+	// Content match pattern, used with matching_algorithm (types 2-5 only; consumption triggers ignore it, as they do every filter_has_* field and filter_custom_field_query)
 	match?: #Text256
 	// Matching algorithm: 0 none, 1 any, 2 all, 3 literal, 4 regex, 5 fuzzy
 	matching_algorithm?: #Matching

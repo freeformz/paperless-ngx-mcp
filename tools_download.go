@@ -26,7 +26,7 @@ func registerDownloadTools(srv *server.MCPServer, client *Client, dl *Downloader
 		mcp.NewTool("document_download",
 			mcp.WithDescription("Download one or more document files (each document's latest version unless version is given). By default saves to local storage and returns file paths (use cleanup_downloads to remove temp-dir files). Set content=true to return file content inline instead: image files come back as viewable MCP image content blocks, other types as base64 JSON."),
 			withJSONArray("ids", mcp.Description("Array of document IDs to download"), mcp.Required()),
-			mcp.WithString("variant", mcp.Description("File variant: archived (default, OCR'd PDF/A), original (as uploaded), or thumbnail")),
+			mcp.WithString("variant", mcp.Description("File variant: archived (default: the OCR'd PDF, or the original when there is no archived file), original (as uploaded), or thumbnail")),
 			mcp.WithBoolean("content", mcp.Description("Return file content inline instead of saving to disk. Image files come back as viewable MCP image content; other types as base64 in JSON.")),
 			withVersion("Version id of the file to download (from document_version_list), with a single id in ids; default the latest version. "+versionIDNote+" A trashed version can be downloaded this way too"),
 			mcp.WithString("dest_dir", mcp.Description("Save into this subdirectory of the configured download directory (requires PAPERLESS_MCP_DOWNLOAD_DIR on the server). Files saved there are not removed by cleanup_downloads.")),
@@ -36,7 +36,7 @@ func registerDownloadTools(srv *server.MCPServer, client *Client, dl *Downloader
 
 	srv.AddTool(
 		mcp.NewTool("cleanup_downloads",
-			mcp.WithDescription("Clean up downloaded document files. With no arguments, removes all downloaded files. Pass specific file paths to remove only those."),
+			mcp.WithDescription("Clean up downloaded document files in this server's temp download directory. With no arguments, removes all of them; pass specific file paths to remove only those. Files saved under PAPERLESS_MCP_DOWNLOAD_DIR (where every download goes when it is set) are never removed."),
 			withJSONArray("files", mcp.Description("Array of file paths to remove (must be inside download directory). Omit to remove all.")),
 		),
 		handleCleanupDownloads(dl),

@@ -29,7 +29,7 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 	)
 	srv.AddTool(
 		mcp.NewTool("user_create",
-			mcp.WithDescription("Create a new user."),
+			mcp.WithDescription("Create a new user. Only a superuser can create a staff user or superuser."),
 			mcp.WithString("username", mcp.Description("Username"), mcp.Required()),
 			mcp.WithString("password", mcp.Description("Password"), mcp.Required()),
 			mcp.WithString("email", mcp.Description("Email address")),
@@ -44,7 +44,7 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 	)
 	srv.AddTool(
 		mcp.NewTool("user_update",
-			mcp.WithDescription("Update a user; only the fields given change, and "+nullsIgnoredHint+"."),
+			mcp.WithDescription("Update a user; only the fields given change, and "+nullsIgnoredHint+". Only a superuser can change is_staff or is_superuser, or change a superuser."),
 			withNumber("id", mcp.Description("User ID"), mcp.Required()),
 			mcp.WithString("username", mcp.Description("Username")),
 			mcp.WithString("password", mcp.Description("Password")),
@@ -67,7 +67,7 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 	)
 	srv.AddTool(
 		mcp.NewTool("user_deactivate_totp",
-			mcp.WithDescription("Deactivate TOTP two-factor authentication for a user (admin only)."),
+			mcp.WithDescription("Deactivate a user's TOTP two-factor authentication. A superuser can do this for anyone, other users only for themselves. A user without TOTP is a 404 \"TOTP not found\"."),
 			withNumber("id", mcp.Description("User ID"), mcp.Required()),
 		),
 		handleUserDeactivateTotp(client),

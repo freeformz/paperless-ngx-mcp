@@ -197,10 +197,14 @@ v0.8.0 changes:
 - `log_get` asks the server for only the last `tail` lines instead of fetching the whole log.
 - Breaking: `log_get` returns `{lines}` without `total_lines`, and refuses a negative `tail` (before, it became 100; 0 still means the default). `share_link_create`'s `file_version_archive` is now `use_archive_version`; the old name is refused.
 
-Next release:
+v0.9.0 changes:
 - AI tools (paperless-ngx 3, with AI on): `document_ai_suggestions` (LLM suggestions for a document; nothing is applied) and `document_chat` (ask across your documents or about one; returns `{answer, references}`, with progress notifications while it streams).
 - `PAPERLESS_MCP_AI_TIMEOUT` (default 300 seconds, also in the MCPB settings) bounds the AI calls; other requests keep their 30-second limit.
 - Breaking: `document_suggestions` is renamed `document_classifier_suggestions`, since it is the classifier, not the LLM.
+
+Next release:
+- Tool descriptions and server instructions corrected for paperless-ngx 3.5: pagination (only tools with `page`/`page_size` are paginated), what `config_*` returns (database overrides, masked API keys, env fallback), where `ui_settings_get` shows effective feature state, `system_status` and `statistics` permissions and fields, and hierarchical tags (ancestors added, descendants removed and deleted).
+- `document_history` adds a hint when the audit log is off, and `document_email` when paperless-ngx reports a send failure. The AI-off hint now says that a database `ai_enabled` value beats `PAPERLESS_AI_ENABLED`.
 
 ### System
 `system_status`, `remote_version`, `ui_settings_get`, `config_list`, `config_get`, `config_update`, `task_list`, `task_get`, `task_wait`, `task_acknowledge`, `task_run`, `task_stats`, `log_list`, `log_get`, `trash_list`, `trash_action`

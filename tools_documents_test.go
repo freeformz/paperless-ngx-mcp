@@ -651,3 +651,61 @@ func TestAPIErrorHandling(t *testing.T) {
 		t.Errorf("status_code = %v, want 404", m["status_code"])
 	}
 }
+
+func TestDocumentHistoryAuditLogOffHint(t *testing.T) {
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/documents/1/history/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(400)
+		w.Write([]byte("Audit log is disabled"))
+	})
+	rh.Handle("GET", "/api/documents/2/history/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(403)
+		w.Write([]byte(`{"detail":"Insufficient permissions"}`))
+	})
+	rh.Handle("GET", "/api/documents/3/history/", jsonHandler(t, 200, []any{}))
+	client := testClientAndServer(t, rh)
+	h := handleGetByID(client, "/api/documents/%d/history/", auditLogOffHint)
+
+	blocks := textBlocks(callTool(t, h, map[string]any{"id": float64(1)}))
+	if len(blocks) != 2 || !strings.Contains(blocks[0], "Audit log is disabled") || blocks[1] != auditLogOffHint.text {
+		t.Fatalf("audit log off: blocks = %q", blocks)
+	}
+	result := callTool(t, h, map[string]any{"id": float64(2)})
+	assertIsError(t, result)
+	if blocks := textBlocks(result); len(blocks) != 1 {
+		t.Errorf("403: want no hint, got %q", blocks)
+	}
+	result = callTool(t, h, map[string]any{"id": float64(3)})
+	assertNotError(t, result)
+	if blocks := textBlocks(result); len(blocks) != 1 {
+		t.Errorf("success: want one block, got %q", blocks)
+	}
+}
+
+func TestDocumentEmailFailureHint(t *testing.T) {
+	status, reply := 500, `{"detail":"Error emailing documents, check logs for more detail."}`
+	rh := newRouteHandler(t)
+	rh.Handle("POST", "/api/documents/email/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(status)
+		w.Write([]byte(reply))
+	})
+	client := testClientAndServer(t, rh)
+	args := map[string]any{"documents": "[1]", "to": "user@example.com", "subject": "Doc", "body": "Hi"}
+
+	result := callTool(t, handleDocumentEmail(client), args)
+	assertIsError(t, result)
+	if blocks := textBlocks(result); len(blocks) != 2 || blocks[1] != emailFailedHint.text {
+		t.Fatalf("send failure: blocks = %q", blocks)
+	}
+	// Another 500 (a proxy, an unhandled server error) gets no hint.
+	reply = "<html>Internal Server Error</html>"
+	if blocks := textBlocks(callTool(t, handleDocumentEmail(client), args)); len(blocks) != 1 {
+		t.Errorf("other 500: want no hint, got %q", blocks)
+	}
+	// Nor does the same text with another status.
+	status, reply = 400, `{"detail":"Error emailing documents"}`
+	if blocks := textBlocks(callTool(t, handleDocumentEmail(client), args)); len(blocks) != 1 {
+		t.Errorf("400: want no hint, got %q", blocks)
+	}
+}

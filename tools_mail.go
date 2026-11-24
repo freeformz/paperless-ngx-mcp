@@ -13,6 +13,9 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+// mailRuleFieldsNote lists the mail rule fields (paperless_mail/models.py MailRule).
+const mailRuleFieldsNote = "Fields: folder (default INBOX), filter_from, filter_to, filter_subject, filter_body, filter_attachment_filename_include, filter_attachment_filename_exclude, maximum_age (days, default 30), action (1 delete, 2 move, 3 mark read, 4 flag, 5 tag; move and tag need action_parameter, the folder or tag), assign_title_from (1 subject, 2 filename, 3 none), assign_correspondent_from (1 none, 2 mail address, 3 name, 4 assign_correspondent), assign_correspondent, assign_tags, assign_document_type, assign_owner_from_rule, attachment_type (1 attachments only, 2 all files including inline), consumption_scope (1 attachments, 2 the mail as .eml, 3 both), pdf_layout (0 default, 1 text then HTML, 2 HTML then text, 3 HTML only, 4 text only), order, enabled, stop_processing."
+
 func registerMailTools(srv *server.MCPServer, client *Client) {
 	// Mail Accounts
 	srv.AddTool(mcp.NewTool("mail_account_list",
@@ -59,7 +62,7 @@ func registerMailTools(srv *server.MCPServer, client *Client) {
 	), handleMailAccountTest(client))
 
 	srv.AddTool(mcp.NewTool("mail_account_process",
-		mcp.WithDescription("Manually process a mail account to check for new mail."),
+		mcp.WithDescription("Queue a check of a mail account for new mail; returns {result: \"OK\"} at once, before any mail is read. See the outcome with processed_mail_list or task_list."),
 		withNumber("id", mcp.Description("Mail account ID"), mcp.Required()),
 	), handleMailAccountProcess(client))
 
@@ -79,13 +82,13 @@ func registerMailTools(srv *server.MCPServer, client *Client) {
 		mcp.WithDescription("Create a mail rule."),
 		mcp.WithString("name", mcp.Description("Rule name"), mcp.Required()),
 		withNumber("account", mcp.Description("Mail account ID"), mcp.Required()),
-		withJSONObject("body", mcp.Description("Object with rule configuration"), mcp.Required()),
+		withJSONObject("body", mcp.Description("Object with rule configuration. "+mailRuleFieldsNote), mcp.Required()),
 	), handleMailRuleCreate(client))
 
 	srv.AddTool(mcp.NewTool("mail_rule_update",
 		mcp.WithDescription("Update a mail rule."),
 		withNumber("id", mcp.Description("Mail rule ID"), mcp.Required()),
-		withJSONObject("body", mcp.Description("Object with fields to update"), mcp.Required()),
+		withJSONObject("body", mcp.Description("Object with fields to update (fields and codes as in mail_rule_create's body)"), mcp.Required()),
 	), handleMailRuleUpdate(client))
 
 	srv.AddTool(mcp.NewTool("mail_rule_delete",
@@ -113,7 +116,7 @@ func registerMailTools(srv *server.MCPServer, client *Client) {
 
 func withIMAPSecurity(name string) mcp.ToolOption {
 	return mcp.WithString(name,
-		mcp.Description("Security: none (no encryption), ssl, starttls. Sent to paperless-ngx as the integers 1, 2 and 3."),
+		mcp.Description("Security: none (no encryption), ssl (the default on create), starttls. Sent to paperless-ngx as the integers 1, 2 and 3."),
 		mcp.Enum("none", "ssl", "starttls"),
 	)
 }

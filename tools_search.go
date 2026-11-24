@@ -15,7 +15,7 @@ func registerSearchTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("search_autocomplete",
 			mcp.WithDescription("Autocomplete search terms. Returns suggested completions for partial queries, ordered by how many of your documents contain the word."),
 			mcp.WithString("term", mcp.Description("Partial search term to autocomplete"), mcp.Required()),
-			withNumber("limit", mcp.Description("Maximum number of suggestions")),
+			withNumber("limit", mcp.Description("Maximum number of suggestions, at least 1 (default: 10)")),
 		),
 		handleSearchAutocomplete(client),
 	)
@@ -31,7 +31,7 @@ func registerSearchTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("statistics",
-			mcp.WithDescription("Get system statistics including document counts, inbox status, and storage usage."),
+			mcp.WithDescription("Get document and object statistics: documents_total, documents_inbox and inbox_tags (null when there is no inbox tag; inbox_tag is a legacy single id), document_file_type_counts, character_count, tag_count, correspondent_count, document_type_count, storage_path_count and current_asn. Only root documents are counted. A superuser or a holder of the view_global_statistics permission sees totals for everything; anyone else, only for what they can see."),
 		),
 		handleSimpleGet(client, "/api/statistics/"),
 	)

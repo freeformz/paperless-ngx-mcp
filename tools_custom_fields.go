@@ -40,7 +40,7 @@ func registerCustomFieldTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("custom_field_create",
-			mcp.WithDescription("Create a new custom field definition. Choose the data type carefully: paperless-ngx treats it as fixed, and custom_field_update does not change it."),
+			mcp.WithDescription("Create a new custom field definition. Choose the data type carefully: the web UI can't change it later, custom_field_update doesn't either, and existing values are never converted."),
 			mcp.WithString("name", mcp.Description("Field name (must be unique)"), mcp.Required()),
 			mcp.WithString("data_type", mcp.Description("Field data type: "+strings.Join(customFieldDataTypes, ", ")), mcp.Required(), mcp.Enum(customFieldDataTypes...)),
 			withJSONObject("extra_data", mcp.Description(`Object with type-specific configuration. Required for select: {"select_options": [{"label": "Option A"}, ...]} (ids are generated when omitted). Optional for monetary: {"default_currency": "EUR"} (3-letter code).`)),

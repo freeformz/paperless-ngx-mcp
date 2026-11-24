@@ -9,10 +9,13 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+// tagNestedNote describes a tag's children and parent (documents/serialisers.py TagSerializer).
+const tagNestedNote = "children holds the tag's child tags you can see as full nested tag objects (each with its own children), not ids; parent is an id."
+
 func registerTagTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("tag_list",
-			mcp.WithDescription("List all tags with optional filtering."),
+			mcp.WithDescription("List tags with optional filtering. Each tag's "+tagNestedNote+" A child tag is listed both on its own and nested in its parent; display_count counts the listed tags plus their descendants."),
 			mcp.WithString("name", mcp.Description("Filter by name (icontains)")),
 			mcp.WithBoolean("is_root", mcp.Description("Filter root tags only")),
 			mcp.WithString("ordering", mcp.Description("Sort field")),
@@ -24,7 +27,7 @@ func registerTagTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("tag_get",
-			mcp.WithDescription("Get tag details."),
+			mcp.WithDescription("Get tag details. "+tagNestedNote),
 			withNumber("id", mcp.Description("Tag ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/tags/%d/"),
@@ -39,14 +42,14 @@ func registerTagTools(srv *server.MCPServer, client *Client) {
 			withMatchingAlgorithm(", default auto"),
 			mcp.WithString("match", mcp.Description("Match pattern")),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
-			withNumber("parent", mcp.Description("Parent tag ID for hierarchy")),
+			withNumber("parent", mcp.Description("Parent tag ID for hierarchy. A document given a tag also gets its ancestors.")),
 		),
 		handleTagCreate(client),
 	)
 
 	srv.AddTool(
 		mcp.NewTool("tag_update",
-			mcp.WithDescription("Update a tag; only the fields given change. "+clearHint+"."),
+			mcp.WithDescription("Update a tag; only the fields given change. "+clearHint+". Moving a tag under a new parent also adds that parent and its ancestors to every document that has the tag."),
 			withNumber("id", mcp.Description("Tag ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Tag name")),
 			mcp.WithString("color", mcp.Description("Hex color")),
@@ -62,7 +65,7 @@ func registerTagTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("tag_delete",
-			mcp.WithDescription("Delete a tag."),
+			mcp.WithDescription("Delete a tag and all of its descendant tags. Needs delete permission on the tag and on every descendant (otherwise a 403 and nothing is deleted)."),
 			withNumber("id", mcp.Description("Tag ID"), mcp.Required()),
 		),
 		handleDeleteByID(client, "/api/tags/%d/"),

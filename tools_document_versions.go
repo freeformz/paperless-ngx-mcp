@@ -103,7 +103,7 @@ func registerDocumentVersionTools(srv *server.MCPServer, client *Client) {
 	srv.AddTool(
 		mcp.NewTool("document_version_upload",
 			append([]mcp.ToolOption{
-				mcp.WithDescription("Add a file as a new version of a document. The version becomes the latest: document_get's content and page_count, downloads and page images then use it, while the metadata stays on the root document. The file goes through the normal consume; the call returns the consume task's UUID at once, and with wait: true the outcome (finished means the version exists). Needs the global change-document permission and change permission on the root."),
+				mcp.WithDescription("Add a file as a new version of a document. The version becomes the latest: document_get's content and page_count, downloads and page images then use it, while the metadata stays on the root document. The file goes through the normal consume; the call returns the consume task's UUID at once, and with wait: true the outcome (finished means the version exists). Needs the global add-document and change-document permissions and change permission on the root."),
 				withNumber("id", mcp.Description("Root document ID, or one of its version ids"), mcp.Required()),
 				mcp.WithString("file_path", mcp.Description("Local path to the file to upload"), mcp.Required()),
 				mcp.WithString("version_label", mcp.Description(fmt.Sprintf("Label for the new version, at most %d characters", maxVersionLabel))),

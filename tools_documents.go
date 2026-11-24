@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -25,14 +26,14 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			withNumber("page_size", mcp.Description("Results per page (default: 25, max: 100000)")),
 			mcp.WithBoolean("full_content", mcp.Description("Include full document content in results instead of a truncated snippet (default: false)")),
 			withNumber("content_snippet_bytes", mcp.Description("Max bytes of document content per result (default: 500; 0 disables truncation)")),
-			mcp.WithBoolean("include_notes", mcp.Description("Include full note objects in results (default: false — notes are replaced with notes_count; use document_note_list for full notes)")),
+			mcp.WithBoolean("include_notes", mcp.Description("Include full note objects in results (default: false — notes are replaced with notes_count, left out when there are none; use document_note_list for full notes)")),
 		)...),
 		handleDocumentList(client),
 	)
 
 	srv.AddTool(
 		mcp.NewTool("document_get",
-			mcp.WithDescription("Get full document details including tags, correspondent, document type, custom fields, notes, and permissions. duplicate_documents lists other documents you can see with the same file (it is always [] in document_list results). versions lists the document's file versions, newest first; content and page_count are the latest version's unless version is given (the other file fields, such as mime_type and original_file_name, always describe the root). A version id as id is a 404: find its root with document_root."),
+			mcp.WithDescription("Get full document details including tags, correspondent, document type, custom fields, notes, owner, user_can_change and is_shared_by_requester (the per-user permissions object isn't returned). duplicate_documents lists other documents you can see with the same file (it is always [] in document_list results). versions lists the document's file versions, newest first; content and page_count are the latest version's unless version is given (the other file fields, such as mime_type and original_file_name, always describe the root). A version id as id is a 404: find its root with document_root. created_date is a deprecated copy of created's date; use created."),
 			withNumber("id", mcp.Description("Document ID (a root document)"), mcp.Required()),
 			withVersion("Version id whose content and page_count to return (from document_version_list); default the latest version. A trashed version can be read this way too"),
 		),
@@ -50,10 +51,10 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			withNumber("correspondent", mcp.Description("Correspondent ID (clear: [\"correspondent\"] removes it)")),
 			withNumber("document_type", mcp.Description("Document type ID (clear: [\"document_type\"] removes it)")),
 			withNumber("storage_path", mcp.Description("Storage path ID (clear: [\"storage_path\"] removes it)")),
-			withJSONArray("tags", mcp.Description("Array of tag IDs (replaces all tags)")),
+			withJSONArray("tags", mcp.Description("Array of tag IDs; replaces the document's tags. Each tag also brings its ancestors, and a tag removed takes its descendants with it, even ones still listed")),
 			withNumber("archive_serial_number", mcp.Description("Archive serial number (clear: [\"archive_serial_number\"] removes it)")),
 			withNumber("owner", mcp.Description("Owner user ID (clear: [\"owner\"] removes the owner)")),
-			withJSONArray("custom_fields", mcp.Description("Array of custom field assignments")),
+			withJSONArray("custom_fields", mcp.Description("Array of {field: custom field id, value}; replaces the document's custom fields, so fields left out are removed with their values")),
 			withClear(documentUpdateClearable...),
 		),
 		handleDocumentUpdate(client),
@@ -76,7 +77,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 				withNumber("correspondent", mcp.Description("Correspondent ID")),
 				withNumber("document_type", mcp.Description("Document type ID")),
 				withNumber("storage_path", mcp.Description("Storage path ID")),
-				withJSONArray("tags", mcp.Description("Array of tag IDs")),
+				withJSONArray("tags", mcp.Description("Array of tag IDs (each tag's ancestors are added too)")),
 				withNumber("archive_serial_number", mcp.Description("Archive serial number")),
 				withCustomFieldIDs("custom_fields", mcp.Description("Custom fields to set: an array of custom field ids (each added with no value), or an object mapping field id to value, e.g. {\"3\": \"INV-1\", \"7\": 12.5}; a select field takes the option id, not its label. The server checks URL, integer, monetary, string, select, document link and date values and refuses a bad one (HTTP 400, before any task); boolean, float and long text values aren't checked there.")),
 			}, waitToolOptions()...)...,
@@ -103,14 +104,14 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_next_asn",
-			mcp.WithDescription("Get the next available archive serial number."),
+			mcp.WithDescription("Get the highest archive serial number among documents not in the trash, plus one. A trashed document may still hold that number; setting it then fails with \"already exists in the trash\"."),
 		),
 		handleSimpleGet(client, "/api/documents/next_asn/"),
 	)
 
 	srv.AddTool(
 		mcp.NewTool("document_share_links",
-			mcp.WithDescription("List share links for a specific document. Links are per file: a link made with a root id serves the root's own (original) file, one made with a version id serves that version. A root id lists only links made on the root; pass a version id (from document_version_list) to see that version's links, including links a merged source had."),
+			mcp.WithDescription("List a document's share links that haven't expired (not paginated). Needs change permission on the document. Links are per file: a link made with a root id serves the root's own (original) file, one made with a version id serves that version. A root id lists only links made on the root; pass a version id (from document_version_list) to see that version's links, including links a merged source had."),
 			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/documents/%d/share_links/"),
@@ -118,15 +119,15 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_history",
-			mcp.WithDescription("Get audit trail for a document."),
+			mcp.WithDescription("Get a document's audit trail (every entry, not paginated). Needs the audit log on (ui_settings_get settings.auditlog_enabled; otherwise a 400 \"Audit log is disabled\"), the view log entry permission, and ownership of the document (or superuser)."),
 			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
-		handleGetByID(client, "/api/documents/%d/history/"),
+		handleGetByID(client, "/api/documents/%d/history/", auditLogOffHint),
 	)
 
 	srv.AddTool(
 		mcp.NewTool("document_email",
-			mcp.WithDescription("Email one or more documents. A root document id sends the root's own file, which is the original (oldest) version; to send the latest, pass that version's id (from document_version_list)."),
+			mcp.WithDescription("Email one or more documents. A root document id sends the root's own file, which is the original (oldest) version; to send the latest, pass that version's id (from document_version_list). paperless-ngx doesn't check that email is set up: any failure while sending is a 500 \"Error emailing documents\"."),
 			withJSONArray("documents", mcp.Description("Array of document IDs"), mcp.Required()),
 			mcp.WithString("subject", mcp.Description("Email subject"), mcp.Required()),
 			mcp.WithString("body", mcp.Description("Email message body"), mcp.Required()),
@@ -139,7 +140,7 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 	// Document Notes
 	srv.AddTool(
 		mcp.NewTool("document_note_list",
-			mcp.WithDescription("List notes on a document. "+notesRootNote),
+			mcp.WithDescription("List notes on a document (all of them, not paginated). "+notesRootNote),
 			withNumber("id", mcp.Description("Document ID, or a version id (its root's notes are listed)"), mcp.Required()),
 		),
 		handleDocumentNoteList(client),
@@ -395,8 +396,24 @@ func handleDocumentEmail(client *Client) server.ToolHandlerFunc {
 
 		path := "/api/documents/email/"
 		resp, err := client.Post(ctx, path, body)
-		return doRequest(resp, err, "POST", path)
+		return doRequest(resp, err, "POST", path, emailFailedHint)
 	}
+}
+
+// auditLogOffHint explains upstream's 400 for document history when the
+// audit log is off (documents/views.py history).
+var auditLogOffHint = apiHint{
+	status: http.StatusBadRequest,
+	phrase: "Audit log is disabled",
+	text:   "The audit log is off on the server (ui_settings_get settings.auditlog_enabled); the PAPERLESS_AUDIT_LOG_ENABLED setting turns it on (it is on by default).",
+}
+
+// emailFailedHint explains upstream's 500 for any failure while emailing,
+// which doesn't check whether email is set up.
+var emailFailedHint = apiHint{
+	status: http.StatusInternalServerError,
+	phrase: "Error emailing documents",
+	text:   "paperless-ngx gives this error for any failure while sending, such as mail server trouble or a missing file; the server log has the cause. If email isn't set up, ui_settings_get settings.email_enabled is usually false (it is true when PAPERLESS_EMAIL_HOST isn't localhost or PAPERLESS_EMAIL_HOST_USER is set).",
 }
 
 const customFieldsShape = "custom_fields must be a custom field id, an array of ids, or an object mapping field id to value"

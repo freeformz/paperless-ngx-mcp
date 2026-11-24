@@ -827,12 +827,12 @@
               "type": "array"
             },
             "filter_mailrule": {
-              "description": "Mail rule ID (documents fetched by that rule)",
+              "description": "Mail rule ID (documents fetched by that rule; consumption triggers only)",
               "minimum": 1,
               "type": "integer"
             },
             "filter_path": {
-              "description": "Path filter (wildcards *, case-insensitive)",
+              "description": "Path filter (wildcards *, case-insensitive; consumption triggers only)",
               "maxLength": 256,
               "type": "string"
             },
@@ -841,7 +841,7 @@
               "type": "boolean"
             },
             "match": {
-              "description": "Content match pattern, used with matching_algorithm",
+              "description": "Content match pattern, used with matching_algorithm (types 2-5 only; consumption triggers ignore it, as they do every filter_has_* field and filter_custom_field_query)",
               "maxLength": 256,
               "type": "string"
             },
@@ -894,7 +894,7 @@
               "type": "integer"
             },
             "sources": {
-              "description": "Document sources (consumption, added and updated triggers): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui. [] means any; a new trigger without sources gets 1, 2 and 3",
+              "description": "Document sources (checked by consumption triggers only): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui. [] means any; a new trigger without sources gets 1, 2 and 3",
               "items": {
                 "enum": [
                   1,
@@ -1113,7 +1113,7 @@
         ]
       },
       "filter_mailrule": {
-        "description": "Mail rule ID (documents fetched by that rule)",
+        "description": "Mail rule ID (documents fetched by that rule; consumption triggers only)",
         "minimum": 1,
         "pattern": "^-?\\d+$",
         "type": [
@@ -1122,7 +1122,7 @@
         ]
       },
       "filter_path": {
-        "description": "Path filter (wildcards *, case-insensitive)",
+        "description": "Path filter (wildcards *, case-insensitive; consumption triggers only)",
         "maxLength": 256,
         "type": "string"
       },
@@ -1139,7 +1139,7 @@
         "type": "boolean"
       },
       "match": {
-        "description": "Content match pattern, used with matching_algorithm",
+        "description": "Content match pattern, used with matching_algorithm (types 2-5 only; consumption triggers ignore it, as they do every filter_has_* field and filter_custom_field_query)",
         "maxLength": 256,
         "type": "string"
       },
@@ -1204,7 +1204,7 @@
         ]
       },
       "sources": {
-        "description": "Array of document sources (consumption, added and updated triggers): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui. [] means any; a new trigger without sources gets 1, 2 and 3",
+        "description": "Array of document sources (checked by consumption triggers only): 1 consume_folder, 2 api_upload, 3 mail_fetch, 4 web_ui. [] means any; a new trigger without sources gets 1, 2 and 3",
         "items": {
           "enum": [
             1,

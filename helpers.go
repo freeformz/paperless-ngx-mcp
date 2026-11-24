@@ -74,10 +74,29 @@ func apiErrorResult(statusCode int, body []byte, method, path string) *mcp.CallT
 	}
 }
 
+// apiHint is a text block added to the error result of an upstream error
+// with this status whose body contains phrase.
+type apiHint struct {
+	status int
+	phrase string
+	text   string
+}
+
+// withAPIHints adds the text of every matching hint to an error result.
+func withAPIHints(result *mcp.CallToolResult, status int, body []byte, hints []apiHint) *mcp.CallToolResult {
+	for _, h := range hints {
+		if status == h.status && bytes.Contains(body, []byte(h.phrase)) {
+			result = addErrorText(result, h.text)
+		}
+	}
+	return result
+}
+
 // doRequest handles the common HTTP response pattern: read body, check status, return result.
 // It closes the response body. Returns (result, nil) in all cases — tool-level errors
-// are returned as MCP error results, not Go errors.
-func doRequest(resp *http.Response, err error, method, path string) (*mcp.CallToolResult, error) {
+// are returned as MCP error results, not Go errors. A matching hint is added
+// to the error result.
+func doRequest(resp *http.Response, err error, method, path string, hints ...apiHint) (*mcp.CallToolResult, error) {
 	if err != nil {
 		return errResult(fmt.Sprintf("request failed: %s", err)), nil
 	}
@@ -89,7 +108,7 @@ func doRequest(resp *http.Response, err error, method, path string) (*mcp.CallTo
 	}
 
 	if resp.StatusCode >= 400 {
-		return apiErrorResult(resp.StatusCode, body, method, path), nil
+		return withAPIHints(apiErrorResult(resp.StatusCode, body, method, path), resp.StatusCode, body, hints), nil
 	}
 
 	// Handle empty responses (e.g., 204 No Content)
@@ -570,8 +589,9 @@ func handlePaginatedList(client *Client, path string) server.ToolHandlerFunc {
 }
 
 // handleGetByID returns a handler that GETs a resource by integer ID.
-// pathFmt must contain exactly one %d verb for the ID.
-func handleGetByID(client *Client, pathFmt string) server.ToolHandlerFunc {
+// pathFmt must contain exactly one %d verb for the ID. A matching hint is
+// added to an error result.
+func handleGetByID(client *Client, pathFmt string, hints ...apiHint) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		id, errRes := getRequiredInt(request, "id")
 		if errRes != nil {
@@ -579,7 +599,7 @@ func handleGetByID(client *Client, pathFmt string) server.ToolHandlerFunc {
 		}
 		path := fmt.Sprintf(pathFmt, id)
 		resp, err := client.Get(ctx, path, nil)
-		return doRequest(resp, err, "GET", path)
+		return doRequest(resp, err, "GET", path, hints...)
 	}
 }
 
