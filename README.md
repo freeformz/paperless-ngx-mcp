@@ -202,9 +202,12 @@ v0.9.0 changes:
 - `PAPERLESS_MCP_AI_TIMEOUT` (default 300 seconds, also in the MCPB settings) bounds the AI calls; other requests keep their 30-second limit.
 - Breaking: `document_suggestions` is renamed `document_classifier_suggestions`, since it is the classifier, not the LLM.
 
-Next release:
+v0.9.1 changes:
 - Tool descriptions and server instructions corrected for paperless-ngx 3.5: pagination (only tools with `page`/`page_size` are paginated), what `config_*` returns (database overrides, masked API keys, env fallback), where `ui_settings_get` shows effective feature state, `system_status` and `statistics` permissions and fields, and hierarchical tags (ancestors added, descendants removed and deleted).
 - `document_history` adds a hint when the audit log is off, and `document_email` when paperless-ngx reports a send failure. The AI-off hint now says that a database `ai_enabled` value beats `PAPERLESS_AI_ENABLED`.
+
+Next release:
+- `document_update`'s `custom_fields` replaces the whole set; the descriptions and instructions now point to `document_bulk_edit` `modify_custom_fields` for changing a few fields.
 
 ### System
 `system_status`, `remote_version`, `ui_settings_get`, `config_list`, `config_get`, `config_update`, `task_list`, `task_get`, `task_wait`, `task_acknowledge`, `task_run`, `task_stats`, `log_list`, `log_get`, `trash_list`, `trash_action`

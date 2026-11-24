@@ -90,6 +90,7 @@ Use custom_field_query parameter with a JSON filter expression on document_list.
 2. Review current metadata fields
 3. Update specific fields with document_update (only changed fields need to be sent)
 4. To clear a field, name it in clear (e.g., clear: ["correspondent"] removes the correspondent); a null value is ignored
+5. custom_fields in document_update replaces the whole set, so fields left out are removed. To add, change or remove a few custom fields, use document_bulk_edit modify_custom_fields with documents: [id], e.g. {"add_custom_fields": {"3": "INV-1"}, "remove_custom_fields": []}, and wait: true; other fields stay as they are
 
 ## Bulk Operations
 Use document_bulk_edit for metadata changes across multiple documents. Methods: set_correspondent, set_document_type, set_storage_path, add_tag, remove_tag, modify_tags, modify_custom_fields, set_permissions; its description lists each method's parameters. Run a manual workflow with workflow_run. bulk_edit_objects sets permissions on, or deletes, tags, correspondents, document types and storage paths (owner, permissions, merge and clear are its own parameters).
