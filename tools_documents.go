@@ -94,8 +94,8 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 	)
 
 	srv.AddTool(
-		mcp.NewTool("document_suggestions",
-			mcp.WithDescription("Get AI suggestions for tags, correspondent, document type, and storage path."),
+		mcp.NewTool("document_classifier_suggestions",
+			mcp.WithDescription("Get suggestions from paperless-ngx's classifier and matching rules (no LLM): ids of tags, correspondents, document types and storage paths, plus dates (YYYY-MM-DD). Nothing is applied. Needs change permission on the document. For LLM suggestions use document_ai_suggestions."),
 			withNumber("id", mcp.Description("Document ID"), mcp.Required()),
 		),
 		handleGetByID(client, "/api/documents/%d/suggestions/"),

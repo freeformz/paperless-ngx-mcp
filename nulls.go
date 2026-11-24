@@ -58,7 +58,7 @@ func isNullText(v any) bool {
 // note, a search query, a name.
 var freeTextParams = map[string]bool{
 	"body": true, "content": true, "first_name": true, "last_name": true,
-	"match": true, "name": true, "note": true, "password": true, "path": true,
+	"match": true, "name": true, "note": true, "password": true, "path": true, "q": true,
 	"query": true, "result": true, "subject": true, "term": true, "text": true,
 	"title": true, "title_search": true, "username": true,
 }

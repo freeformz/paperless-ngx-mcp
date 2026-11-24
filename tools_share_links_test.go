@@ -83,10 +83,10 @@ func TestShareLinkCreate(t *testing.T) {
 	client := testClientAndServer(t, rh)
 	// slug is no longer a parameter: the server always generates one, so it must not be sent.
 	result := callTool(t, handleShareLinkCreate(client), map[string]any{
-		"document":             float64(5),
-		"expiration":           "2025-12-31",
-		"use_archive_version":  false,
-		"slug":                 "custom",
+		"document":            float64(5),
+		"expiration":          "2025-12-31",
+		"use_archive_version": false,
+		"slug":                "custom",
 	})
 	assertNotError(t, result)
 

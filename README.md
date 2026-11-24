@@ -65,6 +65,7 @@ go install github.com/freeformz/paperless-ngx-mcp@latest
 |----------|----------|-------------|
 | `PAPERLESS_URL` | yes | Base URL of the Paperless-ngx instance |
 | `PAPERLESS_TOKEN` | yes | API authentication token |
+| `PAPERLESS_MCP_AI_TIMEOUT` | no | Seconds `document_ai_suggestions` and `document_chat` may take, 1 to 3600 (default 300). Other requests keep a 30-second limit. A value outside that range stops the server at startup. |
 | `PAPERLESS_MCP_DOWNLOAD_DIR` | no | Directory for document downloads. When set, files are saved here (or in a `dest_dir` subdirectory) with their real filenames and are left alone by `cleanup_downloads`. When unset, a per-instance temp directory (`paperless-ngx-mcp-*` in the system temp dir) is used and deleted with its contents when the server shuts down: on stdin EOF, SIGINT, SIGTERM or SIGHUP, or when the MCP host exits mid-call. A server killed with SIGKILL, or by a second signal during shutdown, can't clean up and leaves that directory behind. |
 
 Generate an API token in Paperless-ngx under **Settings > Administration > Auth Tokens**.
@@ -96,13 +97,18 @@ A top-level `null` means "not given" in every tool, because some MCP clients fil
 Responses are shaped to stay compact for MCP clients: document `content` in `document_list` results is truncated to a snippet — default 500 bytes, adjustable per call with `content_snippet_bytes` (0 disables); `full_content: true` opts out and `document_get` returns full text — document `notes` in `document_list` results are replaced with a `notes_count` field (`include_notes: true` keeps them; `document_note_list` returns full notes), `task_list` trims each task's `result_data.traceback` to its last 500 bytes (`include_traceback: true` keeps it; `task_get` returns it in full), `log_get` returns only the last `tail` lines (default 100), `document_selection_data` omits zero-count objects, `user_list` omits `inherited_permissions` unless `include_permissions: true`, and `profile_get` redacts the API auth token.
 
 ### Documents
-`document_list`, `document_get`, `document_update`, `document_delete`, `document_upload`, `document_download`, `document_metadata`, `document_suggestions`, `document_next_asn`, `document_share_links`, `document_history`, `document_email`
+`document_list`, `document_get`, `document_update`, `document_delete`, `document_upload`, `document_download`, `document_metadata`, `document_classifier_suggestions`, `document_next_asn`, `document_share_links`, `document_history`, `document_email`
 
 ### Document Notes
 `document_note_list`, `document_note_add`, `document_note_delete`
 
 ### Document Versions
 `document_version_upload`, `document_version_list`, `document_version_label`, `document_version_delete`, `document_root`, `document_merge_as_versions`
+
+### AI
+`document_ai_suggestions`, `document_chat`
+
+They need AI on the server (`ui_settings_get` `settings.ai_enabled`); chat also needs the LLM index. AI suggestions apply nothing. `document_chat` returns `{answer, references}` and sends progress notifications while the answer streams. Both can take minutes, bounded by `PAPERLESS_MCP_AI_TIMEOUT`.
 
 ### Downloads & Page Images
 `document_download` (disk or inline; images come back as viewable MCP image content), `document_page_image` (render a PDF page or region as an image the model can see — for handwriting and bad scans where OCR fails), `cleanup_downloads`
@@ -184,12 +190,17 @@ v0.7.0 changes:
 - `document_get`, `document_update` (content only), `document_metadata`, `document_download` (one id) and `document_page_image` take `version` to read or edit one version instead of the latest.
 - The note tools map a version id to its root document, where paperless-ngx keeps a document's notes (a second text block says so). Notes already stored on a version are still listed and can be deleted.
 
-Next release:
+v0.8.0 changes:
 - `document_upload` takes `custom_fields`: an array of custom field ids (each added with no value) or an object mapping field id to value.
 - `document_email` takes `use_archive_version` (default true); false sends the uploaded file instead of the archived PDF.
 - `search_global` takes `db_only` to match documents by title in the database instead of the search index.
 - `log_get` asks the server for only the last `tail` lines instead of fetching the whole log.
 - Breaking: `log_get` returns `{lines}` without `total_lines`, and refuses a negative `tail` (before, it became 100; 0 still means the default). `share_link_create`'s `file_version_archive` is now `use_archive_version`; the old name is refused.
+
+Next release:
+- AI tools (paperless-ngx 3, with AI on): `document_ai_suggestions` (LLM suggestions for a document; nothing is applied) and `document_chat` (ask across your documents or about one; returns `{answer, references}`, with progress notifications while it streams).
+- `PAPERLESS_MCP_AI_TIMEOUT` (default 300 seconds, also in the MCPB settings) bounds the AI calls; other requests keep their 30-second limit.
+- Breaking: `document_suggestions` is renamed `document_classifier_suggestions`, since it is the classifier, not the LLM.
 
 ### System
 `system_status`, `remote_version`, `ui_settings_get`, `config_list`, `config_get`, `config_update`, `task_list`, `task_get`, `task_wait`, `task_acknowledge`, `task_run`, `task_stats`, `log_list`, `log_get`, `trash_list`, `trash_action`

@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -145,7 +146,7 @@ func waitToolOptions() []mcp.ToolOption {
 
 // progressReporter returns a function that sends MCP progress notifications
 // while waiting, or nil when the client didn't ask for progress.
-func progressReporter(ctx context.Context, request mcp.CallToolRequest, timeout time.Duration) func(status string, elapsed time.Duration) {
+func progressReporter(ctx context.Context, request mcp.CallToolRequest, timeout time.Duration) func(message string, elapsed time.Duration) {
 	meta := request.Params.Meta
 	if meta == nil || meta.ProgressToken == nil {
 		return nil
@@ -155,13 +156,13 @@ func progressReporter(ctx context.Context, request mcp.CallToolRequest, timeout 
 		return nil
 	}
 	token := meta.ProgressToken
-	return func(status string, elapsed time.Duration) {
+	return func(message string, elapsed time.Duration) {
 		// Best effort: a dropped notification only loses a progress update.
 		_ = srv.SendNotificationToClient(ctx, "notifications/progress", map[string]any{
 			"progressToken": token,
 			"progress":      elapsed.Seconds(),
 			"total":         timeout.Seconds(),
-			"message":       "task status: " + status,
+			"message":       message,
 		})
 	}
 }
@@ -233,7 +234,7 @@ func waitForTask(ctx context.Context, client *Client, id string, timeout, grace 
 		// follows the response.
 		if progress != nil && last != nil {
 			status, _ := last["status"].(string)
-			progress(status, time.Since(start))
+			progress("task status: "+status, time.Since(start))
 		}
 		timer := time.NewTimer(min(interval, remaining))
 		select {
@@ -350,5 +351,49 @@ func handleTaskWait(client *Client) server.ToolHandlerFunc {
 			return errRes, nil
 		}
 		return taskWaitResult(outcome)
+	}
+}
+
+// aiProgressInterval is how often progressTicker reports.
+var aiProgressInterval = 5 * time.Second
+
+// progressTicker reports progress every aiProgressInterval while a long
+// request runs, with message() as the text. stop ends the reports and waits
+// for the goroutine, so no notification follows the call's response. It does
+// nothing when the call has no progress token.
+func progressTicker(ctx context.Context, request mcp.CallToolRequest, total time.Duration, message func() string) (stop func()) {
+	report := progressReporter(ctx, request, total)
+	if report == nil {
+		return func() {}
+	}
+	start := time.Now()
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		t := time.NewTicker(aiProgressInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				// Stop may have been called while the tick was pending.
+				select {
+				case <-done:
+					return
+				default:
+				}
+				report(message(), time.Since(start))
+			}
+		}
+	}()
+	var once sync.Once
+	return func() {
+		once.Do(func() { close(done) })
+		wg.Wait()
 	}
 }

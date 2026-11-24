@@ -29,6 +29,15 @@
       "description": "Optional directory for document downloads. When set, downloaded files are saved here with their real filenames and are not auto-cleaned. When unset, a temp directory is used.",
       "required": false,
       "default": ""
+    },
+    "ai_timeout": {
+      "type": "number",
+      "title": "AI Request Timeout (seconds)",
+      "description": "Optional. How long document_ai_suggestions and document_chat may take, 1 to 3600 seconds (default 300). Other requests keep their 30-second limit.",
+      "required": false,
+      "default": 300,
+      "min": 1,
+      "max": 3600
     }
   },
   "server": {
@@ -40,7 +49,8 @@
       "env": {
         "PAPERLESS_URL": "${user_config.paperless_url}",
         "PAPERLESS_TOKEN": "${user_config.paperless_token}",
-        "PAPERLESS_MCP_DOWNLOAD_DIR": "${user_config.download_dir}"
+        "PAPERLESS_MCP_DOWNLOAD_DIR": "${user_config.download_dir}",
+        "PAPERLESS_MCP_AI_TIMEOUT": "${user_config.ai_timeout}"
       },
       "platform_overrides": {
         "win32": {

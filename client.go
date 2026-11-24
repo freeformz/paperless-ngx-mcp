@@ -25,7 +25,28 @@ type Client struct {
 	baseURL    string
 	token      string
 	httpClient *http.Client
-	cache      *Cache
+	// longHTTPClient has no overall timeout: the request's context bounds it.
+	// It serves the AI endpoints, which can take minutes.
+	longHTTPClient *http.Client
+	aiTimeout      time.Duration
+	cache          *Cache
+}
+
+// defaultAITimeout bounds an AI request when PAPERLESS_MCP_AI_TIMEOUT is unset:
+// paperless-ngx's LLM timeout defaults to 120 s, and suggestions can make two
+// LLM calls.
+const defaultAITimeout = 300 * time.Second
+
+// checkRedirect limits redirects and drops the auth header when a redirect
+// leaves the original origin (scheme/host/port), so the token can't leak.
+func checkRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return fmt.Errorf("stopped after 10 redirects")
+	}
+	if len(via) > 0 && (req.URL.Scheme != via[0].URL.Scheme || req.URL.Host != via[0].URL.Host) {
+		req.Header.Del("Authorization")
+	}
+	return nil
 }
 
 // NewClient creates a new Paperless-ngx API client with in-memory caching.
@@ -35,19 +56,12 @@ func NewClient(baseURL, token string) *Client {
 		baseURL: parsedBase,
 		token:   token,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= 10 {
-					return fmt.Errorf("stopped after 10 redirects")
-				}
-				// Strip auth header if redirected to a different origin (scheme/host/port) to prevent token leaking.
-				if len(via) > 0 && (req.URL.Scheme != via[0].URL.Scheme || req.URL.Host != via[0].URL.Host) {
-					req.Header.Del("Authorization")
-				}
-				return nil
-			},
+			Timeout:       30 * time.Second,
+			CheckRedirect: checkRedirect,
 		},
-		cache: NewCache(defaultCacheTTL),
+		longHTTPClient: &http.Client{CheckRedirect: checkRedirect},
+		aiTimeout:      defaultAITimeout,
+		cache:          NewCache(defaultCacheTTL),
 	}
 }
 
@@ -111,19 +125,60 @@ func (c *Client) Post(ctx context.Context, path string, body any) (*http.Respons
 			c.cache.Invalidate(prefix)
 		}
 	}
+	req, err := newJSONRequest(ctx, "POST", c.baseURL+path, body)
+	if err != nil {
+		return nil, err
+	}
+	return c.do(req)
+}
 
+// newJSONRequest builds a request with body encoded as JSON (none when nil).
+func newJSONRequest(ctx context.Context, method, u string, body any) (*http.Request, error) {
 	var buf bytes.Buffer
 	if body != nil {
 		if err := json.NewEncoder(&buf).Encode(body); err != nil {
 			return nil, fmt.Errorf("encode body: %w", err)
 		}
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+path, &buf)
+	req, err := http.NewRequestWithContext(ctx, method, u, &buf)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	return c.do(req)
+	return req, nil
+}
+
+// SetAITimeout sets how long an AI request (GetLong, PostStream) may take.
+func (c *Client) SetAITimeout(d time.Duration) { c.aiTimeout = d }
+
+// AITimeout is how long an AI request may take.
+func (c *Client) AITimeout() time.Duration { return c.aiTimeout }
+
+// GetLong performs an uncached GET with no overall timeout of its own; ctx
+// must carry the deadline. The caller closes the body.
+func (c *Client) GetLong(ctx context.Context, path string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	return c.doLong(req, "application/json; version="+apiVersion)
+}
+
+// PostStream performs a JSON POST whose response may be a long stream, with
+// no overall timeout of its own; ctx must carry the deadline. It returns the
+// unread response; the caller closes the body.
+func (c *Client) PostStream(ctx context.Context, path string, body any) (*http.Response, error) {
+	req, err := newJSONRequest(ctx, "POST", c.baseURL+path, body)
+	if err != nil {
+		return nil, err
+	}
+	return c.doLong(req, "application/json; version="+apiVersion+", */*")
+}
+
+func (c *Client) doLong(req *http.Request, accept string) (*http.Response, error) {
+	req.Header.Set("Authorization", "Token "+c.token)
+	req.Header.Set("Accept", accept)
+	return c.longHTTPClient.Do(req)
 }
 
 // Patch performs a PATCH request with a JSON body.
