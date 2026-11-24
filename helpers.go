@@ -43,6 +43,14 @@ func rawJSONResult(data []byte) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText(buf.String()), nil
 }
 
+// addErrorText appends a text block, such as a hint, to an error result.
+func addErrorText(result *mcp.CallToolResult, text string) *mcp.CallToolResult {
+	if result != nil && result.IsError {
+		result.Content = append(result.Content, mcp.NewTextContent(text))
+	}
+	return result
+}
+
 // apiErrorResult creates a structured MCP error result from an HTTP error response.
 func apiErrorResult(statusCode int, body []byte, method, path string) *mcp.CallToolResult {
 	var detail struct {

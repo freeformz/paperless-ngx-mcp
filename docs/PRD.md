@@ -68,6 +68,7 @@ The server is configured entirely via environment variables:
 |----------|----------|-------------|
 | `PAPERLESS_URL` | yes | Base URL of the Paperless-ngx instance (e.g., `https://paperless.example.com`) |
 | `PAPERLESS_TOKEN` | yes | API authentication token |
+| `PAPERLESS_MCP_AI_TIMEOUT` | no | Whole seconds (1 to 3600, default 300) that `document_ai_suggestions` and `document_chat` may take. Empty, or an unsubstituted MCPB `${...}` template, means the default; a whole-number float such as `300.0` is accepted; anything else fails startup (exit 1). |
 | `PAPERLESS_MCP_DOWNLOAD_DIR` | no | Directory for `document_download` disk saves. When set, downloads land here (or in a `dest_dir` subdirectory of it) with their real filenames, are never touched by `cleanup_downloads`, and remain after the server exits. When unset, downloads use a per-instance temp directory (`paperless-ngx-mcp-*` in the system temp dir) that is deleted with its contents on shutdown; see [Shutdown](#shutdown). |
 
 The server always uses Paperless-ngx API version 10 and requires Paperless-ngx 3.5.0 or newer. These are passed via the MCP server configuration (`.mcp.json` or MCPB manifest) as environment variables, which is compatible with CoWork and MCPB bundle format.
@@ -100,7 +101,7 @@ SIGKILL can't be caught. A server killed that way (`kill -9`, the OOM killer, or
 - **Structured parameters**: every array or object parameter accepts a native JSON value or the same value as a JSON-encoded string; both produce the same request
 - **Pagination**: Automatic handling — list tools accept `page` and `page_size` parameters; responses include `count`, `next`, `previous`, and `results`
 - **Error handling**: HTTP error responses are translated to MCP error results with status code, detail message, and endpoint context
-- **Timeouts**: Configurable per-request timeout with sensible default (30s)
+- **Timeouts**: 30 s per request. The AI endpoints use a second HTTP client with no overall timeout, bounded instead by a context deadline of `PAPERLESS_MCP_AI_TIMEOUT` (default 300 s; paperless-ngx's own LLM timeout defaults to 120 s per call, and suggestions can make two calls)
 - **Content types**: JSON for most endpoints; multipart/form-data for document uploads
 - **Response caching**: In-memory TTL cache for metadata list endpoints (tags, correspondents, document types, storage paths, custom fields). These change infrequently but are queried often by agents doing classification work. Cache is invalidated on create/update/delete operations for the same resource type. No document content or search results are cached.
 
@@ -120,7 +121,7 @@ Tools are organized into tiers. Tier 1 (document-centric) tools are implemented 
 | `document_delete` | DELETE | `/api/documents/{id}/` | Delete document (soft-delete to trash) |
 | `document_upload` | POST | `/api/documents/post_document/` | Upload a new document |
 | `document_metadata` | GET | `/api/documents/{id}/metadata/` | Get file metadata (checksums, sizes, MIME) |
-| `document_suggestions` | GET | `/api/documents/{id}/suggestions/` | Get AI suggestions for tags, correspondent, etc. |
+| `document_classifier_suggestions` | GET | `/api/documents/{id}/suggestions/` | Classifier and matching-rule suggestions (no LLM): ids of tags, correspondents, document types and storage paths, plus dates. Formerly `document_suggestions` |
 | `document_next_asn` | GET | `/api/documents/next_asn/` | Get next archive serial number |
 | `document_share_links` | GET | `/api/documents/{id}/share_links/` | List share links for a document |
 | `document_history` | GET | `/api/documents/{id}/history/` | Get audit trail for a document |
@@ -447,6 +448,15 @@ Accepts `id`, `name` and `extra_data`. It does not send `data_type`, because pap
 |------|--------|----------|-------------|
 | `search_autocomplete` | GET | `/api/search/autocomplete/` | Autocomplete search terms |
 | `search_global` | GET | `/api/search/` | Quick lookup across object types: at most 3 results per type, not paginated. `query` (required) must be 3 to 4096 characters. Documents carry only `id`, `title` and `created`; use `document_list` with `query` for real document search. `db_only: true` matches documents by title in the database instead of the search index (only ever sent as true: upstream reads any non-empty value as true) |
+
+#### AI
+
+Both need AI on the server (`ui_settings` `settings.ai_enabled`); without it paperless-ngx answers 400 "AI is required for this feature", and the tool adds a hint. There is no pre-check. Both send MCP progress notifications every 5 s while they run, when the call has a progress token; no report is made after the call returns. `document_chat` returns upstream's "Sorry, …" sentences as a successful answer, not a tool error.
+
+| Tool | Method | Endpoint | Description |
+|------|--------|----------|-------------|
+| `document_ai_suggestions` | GET | `/api/documents/{id}/ai_suggestions/` | LLM suggestions: `title`; `tags`, `correspondents`, `document_types`, `storage_paths` (ids of existing objects); `suggested_*` (names of objects that don't exist); `dates`. Applies nothing. Needs change permission. Upstream caches results about 50 min per document and user; any save clears them. A timeout says a retry may be fast, since the server still finishes and caches |
+| `document_chat` | POST | `/api/documents/chat/` | `q` (required, trimmed, at most 4000 characters) and optional `document_id` (positive; 0 is refused, because upstream would read it as "all documents"; a version id is mapped to its root through `/root/`, since the LLM index holds roots only, and a second text block says so). The plain-text stream is read (up to 1 MiB) and split at the last `\n\n__PAPERLESS_CHAT_METADATA__` into `{answer, references}`; text after the trailer JSON joins the answer after a blank line. Upstream's failure sentences come back as the answer. A non-`text/event-stream` 200 (a proxy or login page) and a dropped stream (with the partial answer) are errors |
 
 #### Statistics
 

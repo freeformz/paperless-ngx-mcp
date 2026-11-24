@@ -23,6 +23,7 @@ func NewServer(client *Client, dl *Downloader) *server.MCPServer {
 	registerStoragePathTools(srv, client)
 	registerCustomFieldTools(srv, client)
 	registerSearchTools(srv, client)
+	registerAITools(srv, client)
 	registerBulkTools(srv, client)
 	registerDocumentActionTools(srv, client)
 	registerSavedViewTools(srv, client)
@@ -41,9 +42,10 @@ func NewServer(client *Client, dl *Downloader) *server.MCPServer {
 const serverInstructions = `Paperless-ngx MCP server — manage documents and metadata via AI agents. Requires Paperless-ngx 3.5.0 or newer (REST API v10).
 
 ## Tool Categories
-- **Documents**: document_list (search/filter), document_get, document_update, document_delete, document_upload, document_download, document_metadata, document_suggestions, document_next_asn, document_share_links, document_history, document_email
+- **Documents**: document_list (search/filter), document_get, document_update, document_delete, document_upload, document_download, document_metadata, document_classifier_suggestions, document_next_asn, document_share_links, document_history, document_email
 - **Document Notes**: document_note_list, document_note_add, document_note_delete (notes belong to the root document; a version id is mapped to it)
 - **Document Versions**: document_version_upload, document_version_list, document_version_label, document_version_delete, document_root, document_merge_as_versions
+- **AI**: document_ai_suggestions, document_chat (need AI on the server)
 - **Downloads**: document_download (fetch files, inline or disk), cleanup_downloads (remove downloaded files), document_page_image (render a page as a viewable image)
 - **Bulk Operations**: document_bulk_edit (metadata), document_selection_data, bulk_edit_objects
 - **Editing Documents**: document_rotate, document_merge, document_merge_as_versions, document_edit_pdf, document_remove_password, document_reprocess, document_bulk_delete
@@ -100,6 +102,9 @@ File operations have their own tools: document_rotate (adds a version), document
 
 ## Document Versions
 A document keeps several file versions: the root document holds the metadata (title, tags, correspondent, custom fields, notes, permissions), and each version has its own file, content and page count. Only roots appear in document_list and search, and document_get, document_update and document_delete take root ids (a version id is a 404; document_root finds the root). Version ids from document_version_list or document_get's versions work directly in document_download, document_metadata, document_page_image, document_email and share links; document_get, document_update (content only), document_metadata, document_download and document_page_image also take version. Without it, content, files and page images are the latest version's; a root id in document_email or a share link means the root's own original file. Versions are added by document_version_upload, document_rotate, and document_edit_pdf or document_remove_password with update_document; document_merge_as_versions turns whole documents into versions of another and can't be undone. document_version_delete moves one version to the trash.
+
+## AI
+document_ai_suggestions and document_chat work only when the server has AI on (ui_settings_get settings.ai_enabled); otherwise they fail with "AI is required for this feature". AI suggestions apply nothing: set what you choose with document_update or document_bulk_edit. document_classifier_suggestions is the classifier and matching rules, with no LLM. document_chat answers from the server's LLM index: it needs an embedding backend too, system_status reports llmindex_status and llmindex_error, and task_run llm_index updates the index. Each chat call stands alone. Both can take minutes, bounded by PAPERLESS_MCP_AI_TIMEOUT (default 300 s); the MCP host may end a call sooner.
 
 ## Document Downloads
 Use document_download to fetch document files. By default, files are saved to local temp storage and file paths are returned — use cleanup_downloads to remove when done. Set content=true to return file content inline instead (no cleanup needed): image files come back as viewable MCP image content, other types as base64 JSON. Specify variant: archived (default, OCR'd PDF/A), original (as uploaded), or thumbnail. If the server is configured with PAPERLESS_MCP_DOWNLOAD_DIR, disk downloads go there (optionally into a dest_dir subdirectory) with their real filenames, and cleanup_downloads leaves them alone.

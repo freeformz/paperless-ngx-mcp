@@ -4,9 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
@@ -14,7 +18,8 @@ import (
 
 var version = "dev"
 
-// stdioWorkers is how many tool calls the stdio server runs at once.
+// stdioWorkers is how many tool calls the stdio server runs at once. Task
+// waits and AI calls (up to PAPERLESS_MCP_AI_TIMEOUT) each hold one.
 const stdioWorkers = 20
 
 func main() {
@@ -79,7 +84,12 @@ func mcpCmd() *cobra.Command {
 			}
 			defer os.RemoveAll(dl.Dir())
 
+			aiTimeout, err := aiTimeoutFromEnv(os.Getenv("PAPERLESS_MCP_AI_TIMEOUT"))
+			if err != nil {
+				return err
+			}
 			client := NewClient(baseURL, token)
+			client.SetAITimeout(aiTimeout)
 			srv := NewServer(client, dl)
 			// Tool calls that wait for a task hold a worker for up to the wait
 			// timeout; mcp-go's default of 5 workers would let a few waits stall
@@ -99,4 +109,23 @@ func mcpCmd() *cobra.Command {
 
 	cmd.Flags().IntVar(&downloadConcurrency, "download-concurrency", 5, "Max parallel document downloads")
 	return cmd
+}
+
+// maxAITimeoutSeconds bounds PAPERLESS_MCP_AI_TIMEOUT.
+const maxAITimeoutSeconds = 3600
+
+// aiTimeoutFromEnv reads PAPERLESS_MCP_AI_TIMEOUT: whole seconds from 1 to
+// 3600. Unset, or an MCPB template left unsubstituted because the optional
+// setting is empty, means the default. A whole-number float ("300.0", as an
+// MCPB number field may give) is accepted.
+func aiTimeoutFromEnv(value string) (time.Duration, error) {
+	v := strings.TrimSpace(value)
+	if v == "" || strings.Contains(v, "${") {
+		return defaultAITimeout, nil
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil || f != math.Trunc(f) || f < 1 || f > maxAITimeoutSeconds {
+		return 0, fmt.Errorf("PAPERLESS_MCP_AI_TIMEOUT must be whole seconds from 1 to %d, got %q", maxAITimeoutSeconds, value)
+	}
+	return time.Duration(f) * time.Second, nil
 }

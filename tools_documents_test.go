@@ -474,7 +474,7 @@ func TestDocumentMetadata(t *testing.T) {
 	assertNotError(t, result)
 }
 
-func TestDocumentSuggestions(t *testing.T) {
+func TestDocumentClassifierSuggestions(t *testing.T) {
 	suggestions := map[string]any{"correspondents": []any{1, 2}, "tags": []any{3}}
 
 	rh := newRouteHandler(t)
