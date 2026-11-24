@@ -198,7 +198,7 @@ By default each document's `content` (OCR text) is truncated to a snippet (defau
 | tags | array or JSON string | no | Array of tag IDs; replaces the document's tags. Each tag also brings its ancestors. Removing a tag also removes its descendants, even ones still listed, except a newly added tag and its ancestors (so adding a child keeps its parent) |
 | archive_serial_number | integer | no | Archive serial number |
 | owner | integer | no | Owner user ID |
-| custom_fields | array or JSON string | no | Array of `{field, value}`; replaces all of the document's custom fields (fields left out are removed) |
+| custom_fields | array or JSON string | no | Array of `{field, value}`; replaces all of the document's custom fields (fields left out are removed). To change only some, use `document_bulk_edit` `modify_custom_fields` with `documents: [id]` |
 | clear | array of strings | no | Fields to clear (sent as null): `correspondent`, `document_type`, `storage_path`, `archive_serial_number`, `owner`. A `null` value is ignored (see Null Values) |
 | version | integer | no | Version id whose content to change; refused unless `content` is given or cleared. Other fields still change the root |
 
