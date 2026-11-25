@@ -127,12 +127,28 @@ func (c *Client) invalidateAround(path string) func() {
 	prefix := ""
 	if c.cache != nil {
 		prefix = cachePrefix(path)
+		// Users, groups and the profile decide what the cached lists show
+		// (permissions, groups, owners): their writes invalidate all of them.
+		if prefix == "" && changesVisibility(path) {
+			prefix = "/api/"
+		}
 	}
 	if prefix == "" {
 		return func() {}
 	}
 	c.cache.Invalidate(prefix)
 	return func() { c.cache.Invalidate(prefix) }
+}
+
+// changesVisibility reports whether a write to path can change which metadata
+// objects, or what owner, the cached lists show.
+func changesVisibility(path string) bool {
+	for _, p := range []string{"/api/users/", "/api/groups/", "/api/profile/"} {
+		if strings.HasPrefix(path, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // Post performs a POST request with a JSON body.

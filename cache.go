@@ -16,7 +16,9 @@ type Cache struct {
 	ttl     time.Duration
 	// gen counts invalidations. A GET records it before its request and
 	// stores its response only if no invalidation happened meanwhile, so a
-	// list fetched while a write runs can't put stale data back.
+	// list fetched while a write runs can't put stale data back. It is one
+	// counter for every type: a write keeps any overlapping list GET from
+	// being stored, which costs a cache miss, never correctness.
 	gen uint64
 }
 

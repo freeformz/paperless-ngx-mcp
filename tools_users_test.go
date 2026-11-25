@@ -203,7 +203,6 @@ func TestProfileUpdateNoFields(t *testing.T) {
 	assertIsError(t, result)
 }
 
-
 func TestUserCreateWithoutPassword(t *testing.T) {
 	var got captured
 	rh := newRouteHandler(t)

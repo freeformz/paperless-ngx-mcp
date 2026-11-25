@@ -123,7 +123,6 @@ func TestTagListWithNameFilter(t *testing.T) {
 	}
 }
 
-
 func TestMetadataUpdateClearMatch(t *testing.T) {
 	cases := []struct {
 		name    string

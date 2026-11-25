@@ -271,7 +271,7 @@ func handleUserUpdate(client *Client) server.ToolHandlerFunc {
 		if err := setJSONField(body, request, "user_permissions"); err != nil {
 			return errResult(err.Error()), nil
 		}
-		if errRes := applyClear(body, request, userNameFields); errRes != nil {
+		if errRes := applyClearBlank(body, request, userNameFields, userNameFields); errRes != nil {
 			return errRes, nil
 		}
 
@@ -359,7 +359,7 @@ func handleProfileUpdate(client *Client) server.ToolHandlerFunc {
 		if v := request.GetString("password", ""); v != "" {
 			body["password"] = v
 		}
-		if errRes := applyClear(body, request, userNameFields); errRes != nil {
+		if errRes := applyClearBlank(body, request, userNameFields, userNameFields); errRes != nil {
 			return errRes, nil
 		}
 

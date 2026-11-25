@@ -301,7 +301,6 @@ func TestDocumentPageImageGrayscaleDefault(t *testing.T) {
 	}
 }
 
-
 func TestUnrenderableMessage(t *testing.T) {
 	img := unrenderableMessage(4, "image/tiff")
 	for _, want := range []string{"no archived PDF", "image/tiff", "variant: thumbnail", "content: true", "archive_file_generation", "document_reprocess"} {

@@ -145,7 +145,6 @@ func TestClientCacheIntegration(t *testing.T) {
 	}
 }
 
-
 func TestCacheSetIfGeneration(t *testing.T) {
 	c := NewCache(time.Minute)
 	gen := c.Generation()
@@ -210,5 +209,28 @@ func TestClientWriteErrorInvalidatesAfter(t *testing.T) {
 	}
 	if got := client.cache.Generation(); got != gen+2 {
 		t.Fatalf("generation = %d, want %d (before and after)", got, gen+2)
+	}
+}
+
+// Users, groups and the profile change what the cached lists show, so their
+// writes invalidate every cached list.
+func TestUserWriteInvalidatesMetadataCache(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("PATCH /api/users/3/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":3}`))
+	})
+	client := testClientAndServer(t, mux)
+	client.cache.Set("/api/tags/", []byte("{}"))
+	client.cache.Set("/api/custom_fields/", []byte("{}"))
+	resp, err := client.Patch(t.Context(), "/api/users/3/", map[string]any{"user_permissions": []any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	for _, k := range []string{"/api/tags/", "/api/custom_fields/"} {
+		if _, ok := client.cache.Get(k); ok {
+			t.Errorf("%s still cached after a user write", k)
+		}
 	}
 }

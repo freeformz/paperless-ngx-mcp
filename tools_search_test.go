@@ -144,7 +144,6 @@ func TestStatistics(t *testing.T) {
 	}
 }
 
-
 func TestSearchAutocompleteLimit(t *testing.T) {
 	var got captured
 	rh := newRouteHandler(t)

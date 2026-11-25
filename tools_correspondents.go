@@ -125,7 +125,7 @@ func handleCorrespondentUpdate(client *Client) server.ToolHandlerFunc {
 		if errRes := setOptionalBool(body, request, "is_insensitive"); errRes != nil {
 			return errRes, nil
 		}
-		if errRes := applyClear(body, request, []string{"match"}); errRes != nil {
+		if errRes := applyClearBlank(body, request, []string{"match"}, []string{"match"}); errRes != nil {
 			return errRes, nil
 		}
 

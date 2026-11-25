@@ -270,7 +270,7 @@ func handleDocumentUpdate(client *Client) server.ToolHandlerFunc {
 				return errRes, nil
 			}
 		}
-		if errRes := applyClear(body, request, documentUpdateClearable); errRes != nil {
+		if errRes := applyClearBlank(body, request, documentUpdateClearable, []string{"content"}); errRes != nil {
 			return errRes, nil
 		}
 
@@ -398,8 +398,6 @@ func handleDocumentEmail(client *Client) server.ToolHandlerFunc {
 	}
 }
 
-// handleDocumentHistory gets a document's audit trail, with a hint when the
-// audit log is off.
 // handleDocumentGet gets one document; include_permissions asks paperless-ngx
 // for full_perms, which swaps user_can_change and is_shared_by_requester for
 // the permissions object.
@@ -430,6 +428,8 @@ func handleDocumentGet(client *Client) server.ToolHandlerFunc {
 	}
 }
 
+// handleDocumentHistory gets a document's audit trail, with a hint when the
+// audit log is off.
 func handleDocumentHistory(client *Client) server.ToolHandlerFunc {
 	return handleGetByID(client, "/api/documents/%d/history/", auditLogOffHint)
 }

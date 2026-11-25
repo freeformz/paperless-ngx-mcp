@@ -735,7 +735,6 @@ func TestWithAPIHints(t *testing.T) {
 	}
 }
 
-
 func TestDocumentGetIncludePermissions(t *testing.T) {
 	var got captured
 	rh := newRouteHandler(t)

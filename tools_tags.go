@@ -156,7 +156,7 @@ func handleTagUpdate(client *Client) server.ToolHandlerFunc {
 		if errRes := setOptionalInt(body, args, "parent"); errRes != nil {
 			return errRes, nil
 		}
-		if errRes := applyClear(body, request, []string{"parent", "match"}); errRes != nil {
+		if errRes := applyClearBlank(body, request, []string{"parent", "match"}, []string{"match"}); errRes != nil {
 			return errRes, nil
 		}
 
