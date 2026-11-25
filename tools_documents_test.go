@@ -755,3 +755,16 @@ func TestDocumentGetIncludePermissions(t *testing.T) {
 		t.Errorf("document_metadata sent full_perms: %v", got.query)
 	}
 }
+
+// A field named twice in clear is cleared once, not reported as a conflict.
+func TestDocumentUpdateClearRepeated(t *testing.T) {
+	var got captured
+	rh := newRouteHandler(t)
+	rh.Handle("PATCH", "/api/documents/5/", captureHandler(t, &got, 200, map[string]any{"id": 5}))
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleDocumentUpdate(client), map[string]any{"id": float64(5), "clear": []any{"content", "content"}})
+	assertNotError(t, result)
+	if v, ok := got.body["content"]; !ok || v != "" {
+		t.Errorf("body = %v, want content \"\"", got.body)
+	}
+}

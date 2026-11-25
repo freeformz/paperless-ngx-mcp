@@ -184,10 +184,16 @@ func getClearFields(request mcp.CallToolRequest, allowed []string) ([]string, *m
 	default:
 		return nil, errResult("clear must be an array of field names")
 	}
+	var unique []string
 	for _, n := range names {
 		if !slices.Contains(allowed, n) {
 			return nil, errResult(fmt.Sprintf("clear: %q can't be cleared here; clearable fields: %s", n, strings.Join(allowed, ", ")))
 		}
+		// A name given twice is cleared once (a second pass would see the
+		// first one's "" and call it a conflict).
+		if !slices.Contains(unique, n) {
+			unique = append(unique, n)
+		}
 	}
-	return names, nil
+	return unique, nil
 }

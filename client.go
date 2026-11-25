@@ -126,7 +126,7 @@ func (c *Client) Get(ctx context.Context, path string, params url.Values) (*http
 // times out.
 func (c *Client) invalidateAround(path string) func() {
 	prefix := ""
-	if c.cache != nil {
+	if c.cache != nil && !readOnlyPosts[path] {
 		prefix = cachePrefix(path)
 		// Users, groups and the profile decide what the cached lists show
 		// (permissions, groups, owners): their writes invalidate all of them.
@@ -139,6 +139,10 @@ func (c *Client) invalidateAround(path string) func() {
 	}
 	return c.cache.BeginWrite(prefix)
 }
+
+// readOnlyPosts are POST endpoints under a cached prefix that change nothing,
+// so they don't invalidate the cache or pause it.
+var readOnlyPosts = map[string]bool{"/api/storage_paths/test/": true}
 
 // changesVisibility reports whether a write to path can change which metadata
 // objects, or what owner, the cached lists show.

@@ -302,17 +302,20 @@ func TestDocumentPageImageGrayscaleDefault(t *testing.T) {
 }
 
 func TestUnrenderableMessage(t *testing.T) {
-	img := unrenderableMessage(4, "image/tiff")
+	img := unrenderableMessage(4, 0, "image/tiff")
 	for _, want := range []string{"no archived PDF", "image/tiff", "variant: thumbnail", "content: true", "archive_file_generation", "document_reprocess"} {
 		if !strings.Contains(img, want) {
 			t.Errorf("image message %q lacks %q", img, want)
 		}
 	}
-	text := unrenderableMessage(4, "text/plain")
+	text := unrenderableMessage(4, 0, "text/plain")
 	if strings.Contains(text, "document_reprocess") {
 		t.Errorf("text message %q suggests reprocess", text)
 	}
 	if !strings.Contains(text, "variant: thumbnail") {
 		t.Errorf("text message %q lacks the thumbnail hint", text)
+	}
+	if v := unrenderableMessage(4, 9, "image/tiff"); !strings.HasPrefix(v, "version 9 of document 4 has no archived PDF") {
+		t.Errorf("version message %q doesn't name the version", v)
 	}
 }

@@ -156,10 +156,9 @@ func handleBulkEditObjects(client *Client) server.ToolHandlerFunc {
 		// resource paths, so Post's path-based invalidation misses their
 		// cache: invalidate it before and after the request, whatever the
 		// outcome.
-		afterPost := client.invalidateAround("/api/" + objectType + "/")
+		defer client.invalidateAround("/api/" + objectType + "/")()
 		path := "/api/bulk_edit_objects/"
 		resp, err := client.Post(ctx, path, body)
-		afterPost()
 		return doRequest(resp, err, "POST", path)
 	}
 }
