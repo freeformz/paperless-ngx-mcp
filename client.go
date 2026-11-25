@@ -120,9 +120,10 @@ func (c *Client) Get(ctx context.Context, path string, params url.Values) (*http
 }
 
 // invalidateAround invalidates the cache for path's resource type now and
-// returns a function that does it again, for the caller to defer: a write
-// can land on the server even when its request errors or times out, and a
-// list fetched while it ran must not stay cached.
+// marks a write in flight; the caller defers the returned function, which
+// invalidates again and ends the write. Nothing is cached while a write
+// runs, and a write can land on the server even when its request errors or
+// times out.
 func (c *Client) invalidateAround(path string) func() {
 	prefix := ""
 	if c.cache != nil {
@@ -136,8 +137,7 @@ func (c *Client) invalidateAround(path string) func() {
 	if prefix == "" {
 		return func() {}
 	}
-	c.cache.Invalidate(prefix)
-	return func() { c.cache.Invalidate(prefix) }
+	return c.cache.BeginWrite(prefix)
 }
 
 // changesVisibility reports whether a write to path can change which metadata

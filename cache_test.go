@@ -234,3 +234,52 @@ func TestUserWriteInvalidatesMetadataCache(t *testing.T) {
 		}
 	}
 }
+
+// A list GET that starts and finishes while a write is still in flight must
+// not be cached: it may predate the write.
+func TestClientGetWithinWriteNotCached(t *testing.T) {
+	patchStarted := make(chan struct{})
+	release := make(chan struct{})
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/tags/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"count":0,"results":[]}`))
+	})
+	mux.HandleFunc("PATCH /api/tags/1/", func(w http.ResponseWriter, r *http.Request) {
+		close(patchStarted)
+		<-release
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":1}`))
+	})
+	client := testClientAndServer(t, mux)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		resp, err := client.Patch(t.Context(), "/api/tags/1/", map[string]any{"name": "x"})
+		if err == nil {
+			resp.Body.Close()
+		}
+	}()
+	<-patchStarted
+	resp, err := client.Get(t.Context(), "/api/tags/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if _, ok := client.cache.Get("/api/tags/"); ok {
+		t.Error("list fetched while a write was in flight was cached")
+	}
+	close(release)
+	<-done
+
+	// Once the write is over, lists cache again.
+	resp, err = client.Get(t.Context(), "/api/tags/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if _, ok := client.cache.Get("/api/tags/"); !ok {
+		t.Error("list not cached after the write ended")
+	}
+}

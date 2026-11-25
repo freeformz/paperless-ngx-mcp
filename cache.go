@@ -20,6 +20,9 @@ type Cache struct {
 	// counter for every type: a write keeps any overlapping list GET from
 	// being stored, which costs a cache miss, never correctness.
 	gen uint64
+	// writes counts writes in flight (BeginWrite). Nothing is stored while
+	// one runs, since a list fetched then may predate it.
+	writes int
 }
 
 type cacheEntry struct {
@@ -63,17 +66,33 @@ func (c *Cache) Set(key string, data []byte) {
 }
 
 // SetIfGeneration stores a response only if no invalidation has happened
-// since gen was read with Generation. The check and the store share the
+// since gen was read with Generation, and no write is in flight. The check and the store share the
 // lock, so an invalidation can't slip in between them. It reports whether
 // the response was stored.
 func (c *Cache) SetIfGeneration(key string, data []byte, gen uint64) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.gen != gen {
+	if c.gen != gen || c.writes > 0 {
 		return false
 	}
 	c.set(key, data)
 	return true
+}
+
+// BeginWrite marks a write to prefix's resources as in flight and invalidates
+// them. Call the returned function once the write is over, whatever its
+// outcome: it invalidates again and ends the write.
+func (c *Cache) BeginWrite(prefix string) func() {
+	c.mu.Lock()
+	c.writes++
+	c.invalidate(prefix)
+	c.mu.Unlock()
+	return func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.writes--
+		c.invalidate(prefix)
+	}
 }
 
 func (c *Cache) set(key string, data []byte) {
@@ -88,7 +107,10 @@ func (c *Cache) set(key string, data []byte) {
 func (c *Cache) Invalidate(prefix string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.invalidate(prefix)
+}
 
+func (c *Cache) invalidate(prefix string) {
 	c.gen++
 	for key := range c.entries {
 		if len(key) >= len(prefix) && key[:len(prefix)] == prefix {

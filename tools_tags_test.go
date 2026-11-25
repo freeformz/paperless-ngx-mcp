@@ -151,3 +151,13 @@ func TestMetadataUpdateClearMatch(t *testing.T) {
 		})
 	}
 }
+
+// A value the handler takes as text, though argIsSet calls it padding, still
+// conflicts with clearing the same field.
+func TestTagUpdateClearConflictWithPaddingLikeText(t *testing.T) {
+	client := NewClient("http://unused", "unused")
+	for _, v := range []string{"[]", "{}", "  "} {
+		result := callTool(t, handleTagUpdate(client), map[string]any{"id": float64(1), "match": v, "clear": []any{"match"}})
+		assertIsError(t, result)
+	}
+}

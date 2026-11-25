@@ -118,7 +118,10 @@ func applyClearBlank(body map[string]any, request mcp.CallToolRequest, allowed, 
 	}
 	args := request.GetArguments()
 	for _, f := range fields {
-		if argIsSet(args[f]) {
+		// For blank text fields, body also catches values the handler took
+		// as text that argIsSet calls padding (a match of "[]", say).
+		_, inBody := body[f]
+		if (inBody && slices.Contains(blank, f)) || argIsSet(args[f]) {
 			return errResult(fmt.Sprintf("%s is both given a value and listed in clear; pick one", f))
 		}
 		body[f] = nil
