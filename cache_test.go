@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 )
@@ -165,6 +166,7 @@ func TestCacheSetIfGeneration(t *testing.T) {
 func TestClientGetDuringWriteNotCached(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
+	releaseOnce := sync.OnceFunc(func() { close(release) })
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/tags/", func(w http.ResponseWriter, r *http.Request) {
 		close(started)
@@ -177,6 +179,9 @@ func TestClientGetDuringWriteNotCached(t *testing.T) {
 		w.Write([]byte(`{"id":1}`))
 	})
 	client := testClientAndServer(t, mux)
+	// Registered after the server's Close, so it runs first: a failing test
+	// can't leave the handler blocked and Close waiting for it.
+	t.Cleanup(releaseOnce)
 
 	done := make(chan struct{})
 	go func() {
@@ -192,7 +197,7 @@ func TestClientGetDuringWriteNotCached(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	close(release)
+	releaseOnce()
 	<-done
 	if _, ok := client.cache.Get("/api/tags/"); ok {
 		t.Fatal("list fetched during a write was cached")
@@ -240,6 +245,7 @@ func TestUserWriteInvalidatesMetadataCache(t *testing.T) {
 func TestClientGetWithinWriteNotCached(t *testing.T) {
 	patchStarted := make(chan struct{})
 	release := make(chan struct{})
+	releaseOnce := sync.OnceFunc(func() { close(release) })
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/tags/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -252,6 +258,7 @@ func TestClientGetWithinWriteNotCached(t *testing.T) {
 		w.Write([]byte(`{"id":1}`))
 	})
 	client := testClientAndServer(t, mux)
+	t.Cleanup(releaseOnce)
 
 	done := make(chan struct{})
 	go func() {
@@ -270,7 +277,7 @@ func TestClientGetWithinWriteNotCached(t *testing.T) {
 	if _, ok := client.cache.Get("/api/tags/"); ok {
 		t.Error("list fetched while a write was in flight was cached")
 	}
-	close(release)
+	releaseOnce()
 	<-done
 
 	// Once the write is over, lists cache again.
@@ -281,5 +288,25 @@ func TestClientGetWithinWriteNotCached(t *testing.T) {
 	resp.Body.Close()
 	if _, ok := client.cache.Get("/api/tags/"); !ok {
 		t.Error("list not cached after the write ended")
+	}
+}
+
+// storage_path_test only renders a template: it leaves the cache alone.
+func TestReadOnlyPostKeepsCache(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/storage_paths/test/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`"a/b"`))
+	})
+	client := testClientAndServer(t, mux)
+	client.cache.Set("/api/storage_paths/", []byte("{}"))
+	gen := client.cache.Generation()
+	resp, err := client.Post(t.Context(), "/api/storage_paths/test/", map[string]any{"path": "x", "document": 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if _, ok := client.cache.Get("/api/storage_paths/"); !ok || client.cache.Generation() != gen {
+		t.Error("storage_paths/test invalidated the cache")
 	}
 }

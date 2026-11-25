@@ -29,11 +29,19 @@ func registerPageImageTools(srv *server.MCPServer, client *Client) {
 // thumbnailHint points to the preview paperless-ngx renders for every document.
 const thumbnailHint = "document_download with variant: thumbnail and content: true returns a small preview image of the first page"
 
+// fileLabel names what was rendered: document id, or version of document id.
+func fileLabel(id, version int) string {
+	if version != 0 {
+		return fmt.Sprintf("version %d of document %d", version, id)
+	}
+	return fmt.Sprintf("document %d", id)
+}
+
 // unrenderableMessage explains why a document's file can't be rendered. The
 // file fetched is the archived PDF when one exists, so getting anything else
 // means there is none.
-func unrenderableMessage(id int, contentType string) string {
-	msg := fmt.Sprintf("document %d has no archived PDF, and its file (%s) can't be rendered here: only PDF, PNG, JPEG, GIF and WebP can. %s.", id, contentType, thumbnailHint)
+func unrenderableMessage(id, version int, contentType string) string {
+	msg := fmt.Sprintf("%s has no archived PDF, and its file (%s) can't be rendered here: only PDF, PNG, JPEG, GIF and WebP can. %s.", fileLabel(id, version), contentType, thumbnailHint)
 	if strings.HasPrefix(contentType, "image/") {
 		msg += " For a PDF of this image, set archive_file_generation to auto or always (config_update), then run document_reprocess on it."
 	}
@@ -137,7 +145,7 @@ func handleDocumentPageImage(client *Client) server.ToolHandlerFunc {
 				}
 				img, decErr := decodeImage(data, meta.contentType)
 				if decErr != nil {
-					return errResult(fmt.Sprintf("decode document %d image: %s. %s.", id, decErr, thumbnailHint)), nil
+					return errResult(fmt.Sprintf("decode %s image: %s. %s.", fileLabel(id, version), decErr, thumbnailHint)), nil
 				}
 				if region != nil {
 					if err := ctx.Err(); err != nil {
@@ -163,7 +171,7 @@ func handleDocumentPageImage(client *Client) server.ToolHandlerFunc {
 				}
 				rendered.pageCount = 1
 			default:
-				return errResult(unrenderableMessage(id, meta.contentType)), nil
+				return errResult(unrenderableMessage(id, version, meta.contentType)), nil
 			}
 
 			summary := fmt.Sprintf("Document %d, page %d of %d, %dx%d px", id, page, rendered.pageCount, rendered.width, rendered.height)
