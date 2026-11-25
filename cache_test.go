@@ -144,3 +144,71 @@ func TestClientCacheIntegration(t *testing.T) {
 		t.Errorf("expected 2 API calls after invalidation, got %d", callCount)
 	}
 }
+
+
+func TestCacheSetIfGeneration(t *testing.T) {
+	c := NewCache(time.Minute)
+	gen := c.Generation()
+	c.Invalidate("/api/tags/")
+	if c.SetIfGeneration("/api/tags/", []byte("stale"), gen) {
+		t.Fatal("stored a response fetched before an invalidation")
+	}
+	if _, ok := c.Get("/api/tags/"); ok {
+		t.Fatal("stale entry cached")
+	}
+	if !c.SetIfGeneration("/api/tags/", []byte("fresh"), c.Generation()) {
+		t.Fatal("refused a current response")
+	}
+}
+
+// A list GET that is in flight while a write runs must not cache its
+// (possibly stale) response.
+func TestClientGetDuringWriteNotCached(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/tags/", func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-release
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"count":0,"results":[]}`))
+	})
+	mux.HandleFunc("PATCH /api/tags/1/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":1}`))
+	})
+	client := testClientAndServer(t, mux)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		resp, err := client.Get(t.Context(), "/api/tags/", nil)
+		if err == nil {
+			resp.Body.Close()
+		}
+	}()
+	<-started
+	resp, err := client.Patch(t.Context(), "/api/tags/1/", map[string]any{"name": "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	close(release)
+	<-done
+	if _, ok := client.cache.Get("/api/tags/"); ok {
+		t.Fatal("list fetched during a write was cached")
+	}
+}
+
+// A write whose request fails may still have landed: the cache is
+// invalidated afterwards too.
+func TestClientWriteErrorInvalidatesAfter(t *testing.T) {
+	client := NewClient("http://127.0.0.1:1", "t")
+	gen := client.cache.Generation()
+	if _, err := client.Post(t.Context(), "/api/tags/", map[string]any{}); err == nil {
+		t.Fatal("expected a connection error")
+	}
+	if got := client.cache.Generation(); got != gen+2 {
+		t.Fatalf("generation = %d, want %d (before and after)", got, gen+2)
+	}
+}

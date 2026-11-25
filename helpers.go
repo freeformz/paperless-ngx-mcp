@@ -254,9 +254,7 @@ func stripNotesFields(items any) {
 			continue
 		}
 		delete(m, "notes")
-		if len(notes) > 0 {
-			m["notes_count"] = len(notes)
-		}
+		m["notes_count"] = len(notes)
 	}
 }
 

@@ -102,7 +102,7 @@ SIGKILL can't be caught. A server killed that way (`kill -9`, the OOM killer, or
 - **Error handling**: HTTP error responses are translated to MCP error results with status code, detail message, and endpoint context
 - **Timeouts**: 30 s per request. The AI endpoints use a second HTTP client with no overall timeout, bounded instead by a context deadline of `PAPERLESS_MCP_AI_TIMEOUT` (default 300 s; paperless-ngx's own LLM timeout defaults to 120 s per call, and suggestions can make two calls)
 - **Content types**: JSON for most endpoints; multipart/form-data for document uploads
-- **Response caching**: In-memory TTL cache for metadata list endpoints (tags, correspondents, document types, storage paths, custom fields). These change infrequently but are queried often by agents doing classification work. Cache is invalidated on create/update/delete operations for the same resource type. No document content or search results are cached.
+- **Response caching**: In-memory TTL cache for metadata list endpoints (tags, correspondents, document types, storage paths, custom fields). These change infrequently but are queried often by agents doing classification work. Cache is invalidated before and after each create/update/delete for the same resource type (after it also when the request fails, since a write may land anyway), and `bulk_edit_objects` invalidates its object type the same way. A generation counter keeps a list fetched while a write runs from being cached: its response is stored only if no invalidation happened since it started. One window remains: a write that lands after the client gave up on it (a timeout), with a list fetched before it lands, can leave stale data cached for up to the TTL (5 minutes). No document content or search results are cached.
 
 ## MCP Tools
 
@@ -163,13 +163,13 @@ The primary search and filtering tool. Supports the full range of Paperless-ngx 
 | page_size | integer | no | Results per page (default: 25, max: 100000) |
 | full_content | boolean | no | Include full document content instead of a truncated snippet (default: false) |
 | content_snippet_bytes | integer | no | Max bytes of document content per result (default: 500; 0 disables truncation) |
-| include_notes | boolean | no | Include full note objects in results (default: false — notes are replaced with `notes_count`, omitted when zero) |
+| include_notes | boolean | no | Include full note objects in results (default: false — notes are replaced with `notes_count`, 0 when there are none) |
 
 **Returns:** Paginated document list with count, next/previous page URLs, and document objects. Document objects carry no file URLs: fetch files with `document_download` and pages with `document_page_image`. With a search (`text`, `title_search`, `query`, `more_like_id`), includes `__search_hit__` with score, highlights, note_highlights and rank.
 
 Only one of `text`, `title_search`, `query` and `more_like_id` may be given, except `query` together with `text` or `title_search` (as an extra filter); other combinations are refused before sending (upstream: a 400). Each search text is at most 4096 characters, and `text`/`title_search` words at most 128 bytes (upstream drops longer words silently). `text`/`title_search` split on whitespace, so punctuation is searchable.
 
-By default each document's `content` (OCR text) is truncated to a snippet (default 500 bytes, adjustable with `content_snippet_bytes`; `content_truncated: true` marks truncated entries) — full OCR content can be huge, making default responses unusable for MCP clients. Use `document_get` for full content of a single document, and `full_content` (or `content_snippet_bytes: 0`) to disable truncation. `count` is the number of matching documents: with `page_size: 1` it previews an `all: true` selection (see Selecting Documents by Filter). Filter values are checked: `null`, `""` and (for non-text filters) `"null"` mean not given, while an id, tag list, boolean or date that doesn't parse is an error rather than a silent `0` or `false`. Each document's `notes` array is likewise replaced with a `notes_count` field (omitted when zero) — notes are unbounded and can dominate response size. Pass `include_notes: true` to keep full note objects, or use `document_note_list`/`document_get` for a single document's notes.
+By default each document's `content` (OCR text) is truncated to a snippet (default 500 bytes, adjustable with `content_snippet_bytes`; `content_truncated: true` marks truncated entries) — full OCR content can be huge, making default responses unusable for MCP clients. Use `document_get` for full content of a single document, and `full_content` (or `content_snippet_bytes: 0`) to disable truncation. `count` is the number of matching documents: with `page_size: 1` it previews an `all: true` selection (see Selecting Documents by Filter). Filter values are checked: `null`, `""` and (for non-text filters) `"null"` mean not given, while an id, tag list, boolean or date that doesn't parse is an error rather than a silent `0` or `false`. Each document's `notes` array is likewise replaced with a `notes_count` field (0 when there are none) — notes are unbounded and can dominate response size. Pass `include_notes: true` to keep full note objects, or use `document_note_list`/`document_get` for a single document's notes.
 
 ##### document_get
 
@@ -179,8 +179,9 @@ By default each document's `content` (OCR text) is truncated to a snippet (defau
 |------|------|----------|-------------|
 | id | integer | yes | Document ID (a root document; a version id is a 404) |
 | version | integer | no | Version id whose `content` and `page_count` to return (default: the latest version) |
+| include_permissions | boolean | no | Send `full_perms=true`: the response has the `permissions` object (view and change users and groups) instead of `user_can_change` and `is_shared_by_requester` (default: false) |
 
-**Returns:** Full document object including tags, correspondent, document type, storage path, custom fields, notes, permissions, and API URL paths for download, preview, and thumbnail (unauthenticated paths relative to `PAPERLESS_URL`).
+**Returns:** Full document object including tags, correspondent, document type, storage path, custom fields, notes, owner, `user_can_change` and `is_shared_by_requester` (or `permissions` with `include_permissions`), `duplicate_documents` and `versions`. No file URLs.
 
 ##### document_update
 
@@ -256,7 +257,7 @@ A cancelled call returns immediately, even mid-render; see [Shutdown](#shutdown)
 | grayscale | boolean | no | Render grayscale (default: true; ~3x smaller with no legibility loss on scans) |
 | format | string | no | Output format: `jpeg` (default) or `png` |
 
-**Returns:** A text block noting document ID, page number, total page count, rendered pixel dimensions, and region (if any), followed by an MCP image content block. Errors are returned for out-of-range pages (naming the actual page count) and non-PDF, non-image documents (naming the content type).
+**Returns:** A text block noting document ID, page number, total page count, rendered pixel dimensions, and region (if any), followed by an MCP image content block. Errors are returned for out-of-range pages (naming the actual page count) and files it can't render (only PDF, PNG, JPEG, GIF and WebP decode; naming the content type). Getting another type means the document has no archived PDF (`archive_file_generation` `never`, or a parser that can't make one), so the error points to `document_download` `variant: thumbnail` with `content: true`, and for images to setting `archive_file_generation` to `auto` or `always` and running `document_reprocess`. A decode failure gets the same thumbnail pointer.
 
 ##### cleanup_downloads
 
@@ -445,7 +446,7 @@ Accepts `id`, `name` and `extra_data`. It does not send `data_type`, because pap
 
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
-| `search_autocomplete` | GET | `/api/search/autocomplete/` | Autocomplete search terms |
+| `search_autocomplete` | GET | `/api/search/autocomplete/` | Autocomplete search terms. `limit` 0 is "not given" and a negative one is refused (upstream answers 400 "Invalid limit" for 0 or less) |
 | `search_global` | GET | `/api/search/` | Quick lookup across object types: at most 3 results per type, not paginated. `query` (required) must be 3 to 4096 characters. Documents carry only `id`, `title` and `created`; use `document_list` with `query` for real document search. `db_only: true` matches documents by title in the database instead of the search index (only ever sent as true: upstream reads any non-empty value as true) |
 
 #### AI
@@ -517,8 +518,8 @@ The share link API has no update: `ShareLinkViewSet` supports create, retrieve, 
 |------|--------|----------|-------------|
 | `user_list` | GET | `/api/users/` | List users (`inherited_permissions` omitted unless `include_permissions` is set) |
 | `user_get` | GET | `/api/users/{id}/` | Get user details |
-| `user_create` | POST | `/api/users/` | Create user |
-| `user_update` | PATCH | `/api/users/{id}/` | Update user |
+| `user_create` | POST | `/api/users/` | Create user. `password` is optional (without one the user can't sign in with a password); `user_permissions` takes bare codenames such as `view_document` |
+| `user_update` | PATCH | `/api/users/{id}/` | Update user. `groups` and `user_permissions` replace the lists (`[]` empties them); `clear` blanks `first_name`, `last_name` or `email` |
 | `user_delete` | DELETE | `/api/users/{id}/` | Delete user |
 | `user_deactivate_totp` | POST | `/api/users/{id}/deactivate_totp/` | Deactivate TOTP for a user (admin) |
 
@@ -527,7 +528,7 @@ The share link API has no update: `ShareLinkViewSet` supports create, retrieve, 
 | Tool | Method | Endpoint | Description |
 |------|--------|----------|-------------|
 | `profile_get` | GET | `/api/profile/` | Get current user's profile (the `auth_token` field is redacted so the API token never enters a transcript) |
-| `profile_update` | PATCH | `/api/profile/` | Update current user's profile |
+| `profile_update` | PATCH | `/api/profile/` | Update current user's profile; `clear` blanks `first_name`, `last_name` or `email` |
 
 #### Groups
 
@@ -535,7 +536,7 @@ The share link API has no update: `ShareLinkViewSet` supports create, retrieve, 
 |------|--------|----------|-------------|
 | `group_list` | GET | `/api/groups/` | List groups |
 | `group_get` | GET | `/api/groups/{id}/` | Get group details |
-| `group_create` | POST | `/api/groups/` | Create group |
+| `group_create` | POST | `/api/groups/` | Create group (`permissions` defaults to `[]`, since upstream requires it) |
 | `group_update` | PATCH | `/api/groups/{id}/` | Update group |
 | `group_delete` | DELETE | `/api/groups/{id}/` | Delete group |
 
@@ -546,7 +547,7 @@ The share link API has no update: `ShareLinkViewSet` supports create, retrieve, 
 | `mail_account_list` | GET | `/api/mail_accounts/` | List mail accounts |
 | `mail_account_get` | GET | `/api/mail_accounts/{id}/` | Get mail account |
 | `mail_account_create` | POST | `/api/mail_accounts/` | Create mail account |
-| `mail_account_update` | PATCH | `/api/mail_accounts/{id}/` | Update mail account |
+| `mail_account_update` | PATCH | `/api/mail_accounts/{id}/` | Update mail account (including `character_set`) |
 | `mail_account_delete` | DELETE | `/api/mail_accounts/{id}/` | Delete mail account |
 | `mail_account_test` | POST | `/api/mail_accounts/test/` | Test mail account connectivity |
 | `mail_account_process` | POST | `/api/mail_accounts/{id}/process/` | Manually process account |
@@ -557,7 +558,7 @@ The share link API has no update: `ShareLinkViewSet` supports create, retrieve, 
 |------|--------|----------|-------------|
 | `mail_rule_list` | GET | `/api/mail_rules/` | List mail rules |
 | `mail_rule_get` | GET | `/api/mail_rules/{id}/` | Get mail rule |
-| `mail_rule_create` | POST | `/api/mail_rules/` | Create mail rule |
+| `mail_rule_create` | POST | `/api/mail_rules/` | Create mail rule (`name` and `account` are parameters; `body` may not contain them) |
 | `mail_rule_update` | PATCH | `/api/mail_rules/{id}/` | Update mail rule |
 | `mail_rule_delete` | DELETE | `/api/mail_rules/{id}/` | Delete mail rule |
 
@@ -685,14 +686,14 @@ The `all` ID array that list responses carried below API v10 no longer exists, s
 
 Some MCP clients send every declared parameter, filling unused ones with `null`. A top-level `null` therefore always means "not given", in every tool: middleware drops it before any handler runs. The string `"null"` is dropped too, except where it is real text and can't be padding: search text (`query`, `text`, `title_search`, `term`, task `result`, and the list tools' `name`/`title`/`content`/`path` filters) and required free-text parameters (a note, a new object's name). Optional fields that a write would overwrite (a password, a username, a title, OCR text) drop it, so a padding client can't set a password to "null". An empty string means "not given" for optional parameters; so do `[]` and `{}` (whitespace aside) for number and true/false parameters, and `{}` for optional object parameters (`extra_data`, `permissions`). An empty list that replaces values is real: `document_update` `tags: []` and `custom_fields: []` remove them all, and `filter_rules: []` replaces every rule. This covers `document_update` `content` (clear it with `clear: ["content"]`). A number or boolean that doesn't parse is an error rather than a silent `0`, `false` or default; booleans accept `1` and `0`, except the `all` selectors and selection filters, which take only true/false. An out-of-range number gets an error naming the range. Before this, a padded `null` became a real value in many tools (`document_update` `content: null` wiped the OCR text; `user_update` `is_superuser: null` sent `false`; list filters became `=0` or `=false`).
 
-Clearing a field takes an explicit `clear` array naming it: `document_update` (`correspondent`, `document_type`, `storage_path`, `archive_serial_number`, `owner`, `content`), `tag_update` (`parent`), `saved_view_update` (`page_size`, `display_mode`, `display_fields`), `bulk_edit_objects` (`owner`), `workflow_trigger_update` and `workflow_action_update` (their nullable single-value fields), and each trigger and action object in `workflow_create`/`workflow_update` (nested nulls there are dropped too). A field both given a value and listed in `clear` is an error. Nulls nested inside other JSON objects (such as `document_bulk_edit`'s `parameters`, mail rule bodies, custom field values) are sent as given.
+Clearing a field takes an explicit `clear` array naming it: `document_update` (`correspondent`, `document_type`, `storage_path`, `archive_serial_number`, `owner`, `content`), `tag_update` (`parent`, `match`), `correspondent_update`, `document_type_update` and `storage_path_update` (`match`, cleared to `""`), `user_update` and `profile_update` (`first_name`, `last_name`, `email`, cleared to `""`), `saved_view_update` (`page_size`, `display_mode`, `display_fields`), `bulk_edit_objects` (`owner`), `workflow_trigger_update` and `workflow_action_update` (their nullable single-value fields), and each trigger and action object in `workflow_create`/`workflow_update` (nested nulls there are dropped too). A field both given a value and listed in `clear` is an error. Nulls nested inside other JSON objects (such as `document_bulk_edit`'s `parameters`, mail rule bodies, custom field values) are sent as given.
 
 ## Response Shaping
 
 Paperless-ngx API responses can be far too large for MCP clients (full OCR text per list result, long task tracebacks). The server reshapes responses to keep tool output compact:
 
 - **Content truncation**: `document_list` truncates each document's `content` to a snippet (default 500 bytes, adjustable per call with `content_snippet_bytes`; `0` disables truncation), marking truncated entries with `content_truncated: true`. Opt out per-call with `full_content: true`, or use `document_get` for one document's full text.
-- **Notes stripped**: `document_list` replaces each document's unbounded `notes` array with a `notes_count` field (omitted when zero). Opt out per-call with `include_notes: true`, or use `document_note_list`/`document_get` for one document's full notes.
+- **Notes stripped**: `document_list` replaces each document's unbounded `notes` array with a `notes_count` field (0 when there are none). Opt out per-call with `include_notes: true`, or use `document_note_list`/`document_get` for one document's full notes.
 - **Task tracebacks trimmed**: `task_list` keeps the last 500 bytes of each `result_data.traceback` (the end, where the exception is), prefixed with `…` and marked `traceback_truncated: true`. Opt out with `include_traceback: true`, or use `task_get` for one task's full traceback.
 - **Log tailing**: `log_get` returns only the last `tail` lines (default 100); the server does the tailing (`?limit=`).
 - **Selection data filtering**: `document_selection_data` omits objects with `document_count: 0`.

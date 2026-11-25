@@ -42,12 +42,13 @@ func registerDocumentTypeTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("document_type_update",
-			mcp.WithDescription("Update a document type; only the fields given change, and "+nullsIgnoredHint+"."),
+			mcp.WithDescription("Update a document type; only the fields given change. "+clearHint+"."),
 			withNumber("id", mcp.Description("Document type ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Document type name")),
 			withMatchingAlgorithm(""),
-			mcp.WithString("match", mcp.Description("Match pattern")),
+			mcp.WithString("match", mcp.Description(matchUpdateDesc)),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
+			withClear("match"),
 		),
 		handleDocumentTypeUpdate(client),
 	)
@@ -124,9 +125,12 @@ func handleDocumentTypeUpdate(client *Client) server.ToolHandlerFunc {
 		if errRes := setOptionalBool(body, request, "is_insensitive"); errRes != nil {
 			return errRes, nil
 		}
+		if errRes := applyClear(body, request, []string{"match"}); errRes != nil {
+			return errRes, nil
+		}
 
 		if len(body) == 0 {
-			return errResult("no fields to update"), nil
+			return errResult("no fields to update; " + clearHint), nil
 		}
 
 		path := fmt.Sprintf("/api/document_types/%d/", id)

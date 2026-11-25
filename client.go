@@ -84,7 +84,9 @@ func (c *Client) Get(ctx context.Context, path string, params url.Values) (*http
 	}
 
 	// Check cache for metadata list endpoints (no query params = full list)
+	var gen uint64
 	if c.cache != nil && isCacheable(path) && len(params) == 0 {
+		gen = c.cache.Generation()
 		if data, ok := c.cache.Get(path); ok {
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -110,21 +112,33 @@ func (c *Client) Get(ctx context.Context, path string, params url.Values) (*http
 		if readErr != nil {
 			return nil, fmt.Errorf("read response for cache: %w", readErr)
 		}
-		c.cache.Set(path, body)
+		c.cache.SetIfGeneration(path, body, gen)
 		resp.Body = io.NopCloser(bytes.NewReader(body))
 	}
 
 	return resp, nil
 }
 
+// invalidateAround invalidates the cache for path's resource type now and
+// returns a function that does it again, for the caller to defer: a write
+// can land on the server even when its request errors or times out, and a
+// list fetched while it ran must not stay cached.
+func (c *Client) invalidateAround(path string) func() {
+	prefix := ""
+	if c.cache != nil {
+		prefix = cachePrefix(path)
+	}
+	if prefix == "" {
+		return func() {}
+	}
+	c.cache.Invalidate(prefix)
+	return func() { c.cache.Invalidate(prefix) }
+}
+
 // Post performs a POST request with a JSON body.
 // Invalidates cache for the affected resource type.
 func (c *Client) Post(ctx context.Context, path string, body any) (*http.Response, error) {
-	if c.cache != nil {
-		if prefix := cachePrefix(path); prefix != "" {
-			c.cache.Invalidate(prefix)
-		}
-	}
+	defer c.invalidateAround(path)()
 	req, err := newJSONRequest(ctx, "POST", c.baseURL+path, body)
 	if err != nil {
 		return nil, err
@@ -184,11 +198,7 @@ func (c *Client) doLong(req *http.Request, accept string) (*http.Response, error
 // Patch performs a PATCH request with a JSON body.
 // Invalidates cache for the affected resource type.
 func (c *Client) Patch(ctx context.Context, path string, body any) (*http.Response, error) {
-	if c.cache != nil {
-		if prefix := cachePrefix(path); prefix != "" {
-			c.cache.Invalidate(prefix)
-		}
-	}
+	defer c.invalidateAround(path)()
 
 	var buf bytes.Buffer
 	if body != nil {
@@ -207,11 +217,7 @@ func (c *Client) Patch(ctx context.Context, path string, body any) (*http.Respon
 // Delete performs a DELETE request with optional query parameters.
 // Invalidates cache for the affected resource type.
 func (c *Client) Delete(ctx context.Context, path string, params url.Values) (*http.Response, error) {
-	if c.cache != nil {
-		if prefix := cachePrefix(path); prefix != "" {
-			c.cache.Invalidate(prefix)
-		}
-	}
+	defer c.invalidateAround(path)()
 
 	u := c.baseURL + path
 	if len(params) > 0 {

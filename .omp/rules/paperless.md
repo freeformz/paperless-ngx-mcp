@@ -24,7 +24,7 @@ You have access to a Paperless-ngx MCP server for managing documents and metadat
 
 1. Get document details with `document_get` to see current metadata
 2. Update only the fields you want to change with `document_update`
-3. To clear a field (correspondent, document_type, storage_path, archive_serial_number, owner, content), name it in `clear` (e.g. `clear: ["correspondent"]`); a null value is ignored in every tool
+3. To clear a field (correspondent, document_type, storage_path, archive_serial_number, owner, content), name it in `clear` (e.g. `clear: ["correspondent"]`); a null value is ignored in every tool. The metadata update tools clear `match` the same way, and `user_update`/`profile_update` clear `first_name`, `last_name` and `email`
 4. For tags, pass a JSON array of tag IDs — this replaces the document's tags. Each tag also brings its ancestors. Removing a tag also removes its descendants, even ones still listed, except a newly added tag and its ancestors (so adding a child keeps its parent)
 5. For custom fields, pass a JSON array of `{field, value}`; it replaces all of the document's custom fields, so include every field to keep. To change only some, use `document_bulk_edit` `modify_custom_fields` with `documents: [id]` and `wait: true` instead
 

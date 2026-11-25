@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"testing"
+
+	"github.com/mark3labs/mcp-go/server"
 )
 
 func TestTagList(t *testing.T) {
@@ -118,5 +120,35 @@ func TestTagListWithNameFilter(t *testing.T) {
 
 	if capturedName != "invoice" {
 		t.Errorf("name filter = %q, want invoice", capturedName)
+	}
+}
+
+
+func TestMetadataUpdateClearMatch(t *testing.T) {
+	cases := []struct {
+		name    string
+		path    string
+		handler func(*Client) server.ToolHandlerFunc
+	}{
+		{"tag", "/api/tags/1/", handleTagUpdate},
+		{"correspondent", "/api/correspondents/1/", handleCorrespondentUpdate},
+		{"document_type", "/api/document_types/1/", handleDocumentTypeUpdate},
+		{"storage_path", "/api/storage_paths/1/", handleStoragePathUpdate},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var got captured
+			rh := newRouteHandler(t)
+			rh.Handle("PATCH", tc.path, captureHandler(t, &got, 200, map[string]any{"id": 1}))
+			client := testClientAndServer(t, rh)
+			result := callTool(t, tc.handler(client), map[string]any{"id": float64(1), "clear": []any{"match"}})
+			assertNotError(t, result)
+			if v, ok := got.body["match"]; !ok || v != "" {
+				t.Errorf("body = %v, want match \"\"", got.body)
+			}
+
+			conflict := callTool(t, tc.handler(client), map[string]any{"id": float64(1), "match": "x", "clear": []any{"match"}})
+			assertIsError(t, conflict)
+		})
 	}
 }

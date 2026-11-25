@@ -300,3 +300,20 @@ func TestDocumentPageImageGrayscaleDefault(t *testing.T) {
 		t.Errorf("expected grayscale JPEG, decoded as %T", img)
 	}
 }
+
+
+func TestUnrenderableMessage(t *testing.T) {
+	img := unrenderableMessage(4, "image/tiff")
+	for _, want := range []string{"no archived PDF", "image/tiff", "variant: thumbnail", "content: true", "archive_file_generation", "document_reprocess"} {
+		if !strings.Contains(img, want) {
+			t.Errorf("image message %q lacks %q", img, want)
+		}
+	}
+	text := unrenderableMessage(4, "text/plain")
+	if strings.Contains(text, "document_reprocess") {
+		t.Errorf("text message %q suggests reprocess", text)
+	}
+	if !strings.Contains(text, "variant: thumbnail") {
+		t.Errorf("text message %q lacks the thumbnail hint", text)
+	}
+}

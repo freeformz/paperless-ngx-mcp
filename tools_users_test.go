@@ -77,8 +77,6 @@ func TestUserCreateRequiresFields(t *testing.T) {
 	client := NewClient("http://unused", "unused")
 	result := callTool(t, handleUserCreate(client), map[string]any{})
 	assertIsError(t, result)
-	result = callTool(t, handleUserCreate(client), map[string]any{"username": "test"})
-	assertIsError(t, result)
 }
 
 func TestUserUpdate(t *testing.T) {
@@ -203,4 +201,74 @@ func TestProfileUpdateNoFields(t *testing.T) {
 	client := NewClient("http://unused", "unused")
 	result := callTool(t, handleProfileUpdate(client), map[string]any{})
 	assertIsError(t, result)
+}
+
+
+func TestUserCreateWithoutPassword(t *testing.T) {
+	var got captured
+	rh := newRouteHandler(t)
+	rh.Handle("POST", "/api/users/", captureHandler(t, &got, 201, map[string]any{"id": 2}))
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleUserCreate(client), map[string]any{
+		"username": "nopass", "user_permissions": []any{"view_document"},
+	})
+	assertNotError(t, result)
+	if _, ok := got.body["password"]; ok {
+		t.Errorf("body has password: %v", got.body)
+	}
+	if perms, _ := got.body["user_permissions"].([]any); len(perms) != 1 || perms[0] != "view_document" {
+		t.Errorf("user_permissions = %v, want [view_document]", got.body["user_permissions"])
+	}
+}
+
+func TestUserUpdateUserPermissionsAndClear(t *testing.T) {
+	var got captured
+	rh := newRouteHandler(t)
+	rh.Handle("PATCH", "/api/users/1/", captureHandler(t, &got, 200, map[string]any{"id": 1}))
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleUserUpdate(client), map[string]any{
+		"id": float64(1), "user_permissions": []any{}, "clear": []any{"first_name", "email"},
+	})
+	assertNotError(t, result)
+	if perms, ok := got.body["user_permissions"].([]any); !ok || len(perms) != 0 {
+		t.Errorf("user_permissions = %v, want []", got.body["user_permissions"])
+	}
+	if got.body["first_name"] != "" || got.body["email"] != "" {
+		t.Errorf("body = %v, want first_name and email blank", got.body)
+	}
+	if _, ok := got.body["last_name"]; ok {
+		t.Errorf("last_name sent though not cleared: %v", got.body)
+	}
+}
+
+func TestUserUpdateClearConflict(t *testing.T) {
+	client := NewClient("http://unused", "unused")
+	result := callTool(t, handleUserUpdate(client), map[string]any{
+		"id": float64(1), "first_name": "Ann", "clear": []any{"first_name"},
+	})
+	assertIsError(t, result)
+}
+
+func TestProfileUpdateClear(t *testing.T) {
+	var got captured
+	rh := newRouteHandler(t)
+	rh.Handle("PATCH", "/api/profile/", captureHandler(t, &got, 200, map[string]any{}))
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleProfileUpdate(client), map[string]any{"clear": []any{"last_name"}})
+	assertNotError(t, result)
+	if v, ok := got.body["last_name"]; !ok || v != "" {
+		t.Errorf("body = %v, want last_name blank", got.body)
+	}
+}
+
+func TestGroupCreateDefaultsPermissions(t *testing.T) {
+	var got captured
+	rh := newRouteHandler(t)
+	rh.Handle("POST", "/api/groups/", captureHandler(t, &got, 201, map[string]any{"id": 3}))
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleGroupCreate(client), map[string]any{"name": "g"})
+	assertNotError(t, result)
+	if perms, ok := got.body["permissions"].([]any); !ok || len(perms) != 0 {
+		t.Errorf("permissions = %v, want []", got.body["permissions"])
+	}
 }

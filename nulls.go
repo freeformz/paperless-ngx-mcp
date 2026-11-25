@@ -92,6 +92,9 @@ func keepNullText(tool, name string, schema any, required []string) bool {
 // clearHint is the guidance for tools that have a clear parameter.
 const clearHint = "null values are ignored; to clear a field, name it in clear"
 
+// matchUpdateDesc describes the match parameter of the metadata update tools.
+const matchUpdateDesc = "Match pattern (clear: [\"match\"] empties it, which turns matching off unless matching_algorithm is auto or none)"
+
 // nullsIgnoredHint is the guidance for update tools without one.
 const nullsIgnoredHint = "null values are ignored"
 
@@ -100,8 +103,9 @@ func withClear(fields ...string) mcp.ToolOption {
 	return withEnumArray("clear", fields, mcp.Description("Array of fields to clear (remove the value): "+strings.Join(fields, ", ")+". A null value elsewhere in the call is ignored, not cleared."))
 }
 
-// applyClear reads clear and sets each named field to null in body. A field
-// that is also given a value (see argIsSet) is an error.
+// applyClear reads clear and sets each named field to null in body, or to ""
+// for the blank-text fields in clearToBlank. A field that is also given a
+// value (see argIsSet) is an error.
 func applyClear(body map[string]any, request mcp.CallToolRequest, allowed []string) *mcp.CallToolResult {
 	fields, errRes := getClearFields(request, allowed)
 	if errRes != nil {
@@ -113,9 +117,16 @@ func applyClear(body map[string]any, request mcp.CallToolRequest, allowed []stri
 			return errResult(fmt.Sprintf("%s is both given a value and listed in clear; pick one", f))
 		}
 		body[f] = nil
+		if clearToBlank[f] {
+			body[f] = ""
+		}
 	}
 	return nil
 }
+
+// clearToBlank are text fields that can't be null upstream but may be blank:
+// clearing them sends "".
+var clearToBlank = map[string]bool{"content": true, "match": true, "first_name": true, "last_name": true, "email": true}
 
 // argIsSet reports whether an argument carries a value: not absent, null,
 // "null", "", an empty array (which for display_fields also means clear) or an

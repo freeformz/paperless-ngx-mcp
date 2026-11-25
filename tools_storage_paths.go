@@ -44,13 +44,14 @@ func registerStoragePathTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("storage_path_update",
-			mcp.WithDescription("Update a storage path; only the fields given change, and "+nullsIgnoredHint+"."),
+			mcp.WithDescription("Update a storage path; only the fields given change. "+clearHint+"."),
 			withNumber("id", mcp.Description("Storage path ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Storage path name")),
 			mcp.WithString("path", mcp.Description("Path template")),
 			withMatchingAlgorithm(""),
-			mcp.WithString("match", mcp.Description("Match pattern")),
+			mcp.WithString("match", mcp.Description(matchUpdateDesc)),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
+			withClear("match"),
 		),
 		handleStoragePathUpdate(client),
 	)
@@ -144,9 +145,12 @@ func handleStoragePathUpdate(client *Client) server.ToolHandlerFunc {
 		if errRes := setOptionalBool(body, request, "is_insensitive"); errRes != nil {
 			return errRes, nil
 		}
+		if errRes := applyClear(body, request, []string{"match"}); errRes != nil {
+			return errRes, nil
+		}
 
 		if len(body) == 0 {
-			return errResult("no fields to update"), nil
+			return errResult("no fields to update; " + clearHint), nil
 		}
 
 		p := fmt.Sprintf("/api/storage_paths/%d/", id)
