@@ -42,12 +42,13 @@ func registerCorrespondentTools(srv *server.MCPServer, client *Client) {
 
 	srv.AddTool(
 		mcp.NewTool("correspondent_update",
-			mcp.WithDescription("Update a correspondent; only the fields given change, and "+nullsIgnoredHint+"."),
+			mcp.WithDescription("Update a correspondent; only the fields given change. "+clearHint+"."),
 			withNumber("id", mcp.Description("Correspondent ID"), mcp.Required()),
 			mcp.WithString("name", mcp.Description("Correspondent name")),
 			withMatchingAlgorithm(""),
-			mcp.WithString("match", mcp.Description("Match pattern")),
+			mcp.WithString("match", mcp.Description(matchUpdateDesc)),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
+			withClear("match"),
 		),
 		handleCorrespondentUpdate(client),
 	)
@@ -124,9 +125,12 @@ func handleCorrespondentUpdate(client *Client) server.ToolHandlerFunc {
 		if errRes := setOptionalBool(body, request, "is_insensitive"); errRes != nil {
 			return errRes, nil
 		}
+		if errRes := applyClearBlank(body, request, []string{"match"}, []string{"match"}); errRes != nil {
+			return errRes, nil
+		}
 
 		if len(body) == 0 {
-			return errResult("no fields to update"), nil
+			return errResult("no fields to update; " + clearHint), nil
 		}
 
 		path := fmt.Sprintf("/api/correspondents/%d/", id)

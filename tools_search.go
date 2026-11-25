@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strconv"
 	"unicode/utf8"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -45,8 +46,17 @@ func handleSearchAutocomplete(client *Client) server.ToolHandlerFunc {
 		}
 
 		params := url.Values{"term": {term}}
-		if errRes := addIntParam(params, request, "limit", "limit"); errRes != nil {
+		limit, given, errRes := optionalInt(request, "limit")
+		if errRes != nil {
 			return errRes, nil
+		}
+		// 0 is not given, as some clients pad numbers with it; paperless-ngx
+		// answers 400 "Invalid limit" for 0 or less.
+		if given && limit < 0 {
+			return errResult("limit must be at least 1"), nil
+		}
+		if given && limit > 0 {
+			params.Set("limit", strconv.Itoa(limit))
 		}
 
 		path := "/api/search/autocomplete/"

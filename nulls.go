@@ -92,6 +92,9 @@ func keepNullText(tool, name string, schema any, required []string) bool {
 // clearHint is the guidance for tools that have a clear parameter.
 const clearHint = "null values are ignored; to clear a field, name it in clear"
 
+// matchUpdateDesc describes the match parameter of the metadata update tools.
+const matchUpdateDesc = "Match pattern (clear: [\"match\"] empties it, which turns matching off unless matching_algorithm is auto or none)"
+
 // nullsIgnoredHint is the guidance for update tools without one.
 const nullsIgnoredHint = "null values are ignored"
 
@@ -103,16 +106,28 @@ func withClear(fields ...string) mcp.ToolOption {
 // applyClear reads clear and sets each named field to null in body. A field
 // that is also given a value (see argIsSet) is an error.
 func applyClear(body map[string]any, request mcp.CallToolRequest, allowed []string) *mcp.CallToolResult {
+	return applyClearBlank(body, request, allowed, nil)
+}
+
+// applyClearBlank is applyClear for tools whose blank fields, text fields
+// that can't be null upstream, are cleared to "" instead.
+func applyClearBlank(body map[string]any, request mcp.CallToolRequest, allowed, blank []string) *mcp.CallToolResult {
 	fields, errRes := getClearFields(request, allowed)
 	if errRes != nil {
 		return errRes
 	}
 	args := request.GetArguments()
 	for _, f := range fields {
-		if argIsSet(args[f]) {
+		// For blank text fields, body also catches values the handler took
+		// as text that argIsSet calls padding (a match of "[]", say).
+		_, inBody := body[f]
+		if (inBody && slices.Contains(blank, f)) || argIsSet(args[f]) {
 			return errResult(fmt.Sprintf("%s is both given a value and listed in clear; pick one", f))
 		}
 		body[f] = nil
+		if slices.Contains(blank, f) {
+			body[f] = ""
+		}
 	}
 	return nil
 }

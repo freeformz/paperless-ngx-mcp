@@ -184,8 +184,8 @@ func TestStripNotesFields(t *testing.T) {
 	if _, ok := empty["notes"]; ok {
 		t.Error("empty notes array should be stripped")
 	}
-	if _, ok := empty["notes_count"]; ok {
-		t.Error("notes_count should be absent for empty notes")
+	if empty["notes_count"] != 0 {
+		t.Errorf("notes_count = %v, want 0 for empty notes", empty["notes_count"])
 	}
 
 	if _, ok := items[2].(map[string]any)["notes_count"]; ok {

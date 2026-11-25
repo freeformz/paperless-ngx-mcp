@@ -26,18 +26,19 @@ func registerDocumentTools(srv *server.MCPServer, client *Client) {
 			withNumber("page_size", mcp.Description("Results per page (default: 25, max: 100000)")),
 			mcp.WithBoolean("full_content", mcp.Description("Include full document content in results instead of a truncated snippet (default: false)")),
 			withNumber("content_snippet_bytes", mcp.Description("Max bytes of document content per result (default: 500; 0 disables truncation)")),
-			mcp.WithBoolean("include_notes", mcp.Description("Include full note objects in results (default: false — notes are replaced with notes_count, left out when there are none; use document_note_list for full notes)")),
+			mcp.WithBoolean("include_notes", mcp.Description("Include full note objects in results (default: false — notes are replaced with notes_count, 0 when there are none; use document_note_list for full notes)")),
 		)...),
 		handleDocumentList(client),
 	)
 
 	srv.AddTool(
 		mcp.NewTool("document_get",
-			mcp.WithDescription("Get full document details including tags, correspondent, document type, custom fields, notes, owner, user_can_change and is_shared_by_requester (the permissions object, with view and change users and groups, isn't returned here; document_update's response includes it). duplicate_documents lists other documents you can see with the same file (it is always [] in document_list results). versions lists the document's file versions, newest first; content and page_count are the latest version's unless version is given (the other file fields, such as mime_type and original_file_name, always describe the root). A version id as id is a 404: find its root with document_root. created_date is a deprecated copy of created's date; use created."),
+			mcp.WithDescription("Get full document details including tags, correspondent, document type, custom fields, notes, owner, user_can_change and is_shared_by_requester. include_permissions: true returns the permissions object (view and change users and groups) in place of user_can_change and is_shared_by_requester. duplicate_documents lists other documents you can see with the same file (it is always [] in document_list results). versions lists the document's file versions, newest first; content and page_count are the latest version's unless version is given (the other file fields, such as mime_type and original_file_name, always describe the root). A version id as id is a 404: find its root with document_root. created_date is a deprecated copy of created's date; use created."),
 			withNumber("id", mcp.Description("Document ID (a root document)"), mcp.Required()),
 			withVersion("Version id whose content and page_count to return (from document_version_list); default the latest version. A trashed version can be read this way too"),
+			mcp.WithBoolean("include_permissions", mcp.Description("Return the permissions object (view and change users and groups) instead of user_can_change and is_shared_by_requester (default: false)")),
 		),
-		handleGetByIDWithVersion(client, "/api/documents/%d/"),
+		handleDocumentGet(client),
 	)
 
 	srv.AddTool(
@@ -269,11 +270,8 @@ func handleDocumentUpdate(client *Client) server.ToolHandlerFunc {
 				return errRes, nil
 			}
 		}
-		if errRes := applyClear(body, request, documentUpdateClearable); errRes != nil {
+		if errRes := applyClearBlank(body, request, documentUpdateClearable, []string{"content"}); errRes != nil {
 			return errRes, nil
-		}
-		if c, ok := body["content"]; ok && c == nil {
-			body["content"] = ""
 		}
 
 		if err := setJSONField(body, request, "tags"); err != nil {
@@ -397,6 +395,36 @@ func handleDocumentEmail(client *Client) server.ToolHandlerFunc {
 		path := "/api/documents/email/"
 		resp, err := client.Post(ctx, path, body)
 		return doRequest(resp, err, "POST", path, emailFailedHint)
+	}
+}
+
+// handleDocumentGet gets one document; include_permissions asks paperless-ngx
+// for full_perms, which swaps user_can_change and is_shared_by_requester for
+// the permissions object.
+func handleDocumentGet(client *Client) server.ToolHandlerFunc {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		id, errRes := getRequiredInt(request, "id")
+		if errRes != nil {
+			return errRes, nil
+		}
+		version, errRes := optionalVersion(request)
+		if errRes != nil {
+			return errRes, nil
+		}
+		perms, errRes := optionalBool(request, "include_permissions", false)
+		if errRes != nil {
+			return errRes, nil
+		}
+		params := url.Values{}
+		if version != 0 {
+			params.Set("version", strconv.Itoa(version))
+		}
+		if perms {
+			params.Set("full_perms", "true")
+		}
+		path := fmt.Sprintf("/api/documents/%d/", id)
+		resp, err := client.Get(ctx, path, params)
+		return doRequest(resp, err, "GET", path)
 	}
 }
 

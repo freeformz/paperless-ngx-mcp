@@ -49,6 +49,7 @@ func registerMailTools(srv *server.MCPServer, client *Client) {
 		withIMAPSecurity("imap_security"),
 		mcp.WithString("username", mcp.Description("Username")),
 		mcp.WithString("password", mcp.Description("Password")),
+		mcp.WithString("character_set", mcp.Description("Character set")),
 	), handleMailAccountUpdate(client))
 
 	srv.AddTool(mcp.NewTool("mail_account_delete",
@@ -239,6 +240,9 @@ func handleMailAccountUpdate(client *Client) server.ToolHandlerFunc {
 		if v := request.GetString("password", ""); v != "" {
 			body["password"] = v
 		}
+		if v := request.GetString("character_set", ""); v != "" {
+			body["character_set"] = v
+		}
 
 		if len(body) == 0 {
 			return errResult("no fields to update"), nil
@@ -321,6 +325,11 @@ func handleMailRuleCreate(client *Client) server.ToolHandlerFunc {
 		}
 		// Merge body fields from the JSON body parameter into the top-level body
 		if extra, ok := body["body"].(map[string]any); ok {
+			for _, k := range []string{"name", "account"} {
+				if _, ok := extra[k]; ok {
+					return errResult(fmt.Sprintf("body must not contain %s: give name and account as their own parameters", k)), nil
+				}
+			}
 			delete(body, "body")
 			maps.Copy(body, extra)
 		} else if _, ok := body["body"]; ok {

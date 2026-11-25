@@ -371,3 +371,28 @@ func TestProcessedMailBulkDeleteRequiresIds(t *testing.T) {
 	result := callTool(t, handleProcessedMailBulkDelete(client), map[string]any{})
 	assertIsError(t, result)
 }
+
+func TestMailAccountUpdateCharacterSet(t *testing.T) {
+	var got captured
+	rh := newRouteHandler(t)
+	rh.Handle("PATCH", "/api/mail_accounts/1/", captureHandler(t, &got, 200, map[string]any{"id": 1}))
+	client := testClientAndServer(t, rh)
+	result := callTool(t, handleMailAccountUpdate(client), map[string]any{"id": float64(1), "character_set": "ISO-8859-1"})
+	assertNotError(t, result)
+	if got.body["character_set"] != "ISO-8859-1" {
+		t.Errorf("body = %v, want character_set", got.body)
+	}
+}
+
+func TestMailRuleCreateRefusesNameInBody(t *testing.T) {
+	client := NewClient("http://unused", "unused")
+	for _, key := range []string{"name", "account"} {
+		result := callTool(t, handleMailRuleCreate(client), map[string]any{
+			"name": "r", "account": float64(1), "body": map[string]any{key: "x"},
+		})
+		assertIsError(t, result)
+		if !strings.Contains(resultText(t, result), key) {
+			t.Errorf("error = %s, want it to name %s", resultText(t, result), key)
+		}
+	}
+}

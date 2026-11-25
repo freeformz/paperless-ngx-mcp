@@ -169,8 +169,8 @@ func TestDocumentListStripsNotes(t *testing.T) {
 	}
 
 	noNotes := m["results"].([]any)[1].(map[string]any)
-	if _, ok := noNotes["notes_count"]; ok {
-		t.Error("notes_count should be absent for documents without notes")
+	if noNotes["notes_count"] != float64(0) {
+		t.Errorf("notes_count = %v, want 0 for documents without notes", noNotes["notes_count"])
 	}
 }
 
@@ -732,5 +732,26 @@ func TestWithAPIHints(t *testing.T) {
 	}
 	if withAPIHints(nil, 400, []byte("alpha"), hints) != nil {
 		t.Error("nil result should stay nil")
+	}
+}
+
+func TestDocumentGetIncludePermissions(t *testing.T) {
+	var got captured
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/documents/1/", captureHandler(t, &got, 200, map[string]any{"id": 1}))
+	rh.Handle("GET", "/api/documents/1/metadata/", captureHandler(t, &got, 200, map[string]any{}))
+	client := testClientAndServer(t, rh)
+
+	assertNotError(t, callTool(t, handleDocumentGet(client), map[string]any{"id": float64(1)}))
+	if got.query.Has("full_perms") {
+		t.Errorf("full_perms sent without include_permissions: %v", got.query)
+	}
+	assertNotError(t, callTool(t, handleDocumentGet(client), map[string]any{"id": float64(1), "include_permissions": true, "version": float64(7)}))
+	if got.query.Get("full_perms") != "true" || got.query.Get("version") != "7" {
+		t.Errorf("query = %v, want full_perms=true and version=7", got.query)
+	}
+	assertNotError(t, callTool(t, handleGetByIDWithVersion(client, "/api/documents/%d/metadata/"), map[string]any{"id": float64(1)}))
+	if got.query.Has("full_perms") {
+		t.Errorf("document_metadata sent full_perms: %v", got.query)
 	}
 }

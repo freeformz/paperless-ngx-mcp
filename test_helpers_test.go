@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -34,6 +35,28 @@ func jsonHandler(t *testing.T, status int, body any) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
 		json.NewEncoder(w).Encode(body)
+	}
+}
+
+// captured is one request a captureHandler saw.
+type captured struct {
+	query url.Values
+	body  map[string]any
+}
+
+// captureHandler records each request's query and JSON body into *got and
+// answers with status and resp.
+func captureHandler(t *testing.T, got *captured, status int, resp any) http.HandlerFunc {
+	t.Helper()
+	return func(w http.ResponseWriter, r *http.Request) {
+		got.query = r.URL.Query()
+		got.body = nil
+		if r.Body != nil {
+			_ = json.NewDecoder(r.Body).Decode(&got.body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		json.NewEncoder(w).Encode(resp)
 	}
 }
 

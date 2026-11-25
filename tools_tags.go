@@ -55,10 +55,10 @@ func registerTagTools(srv *server.MCPServer, client *Client) {
 			mcp.WithString("color", mcp.Description("Hex color")),
 			mcp.WithBoolean("is_inbox_tag", mcp.Description("Whether this is an inbox tag")),
 			withMatchingAlgorithm(""),
-			mcp.WithString("match", mcp.Description("Match pattern")),
+			mcp.WithString("match", mcp.Description(matchUpdateDesc)),
 			mcp.WithBoolean("is_insensitive", mcp.Description("Case-insensitive matching")),
 			withNumber("parent", mcp.Description("Parent tag ID (clear: [\"parent\"] makes it a top-level tag)")),
-			withClear("parent"),
+			withClear("parent", "match"),
 		),
 		handleTagUpdate(client),
 	)
@@ -156,7 +156,7 @@ func handleTagUpdate(client *Client) server.ToolHandlerFunc {
 		if errRes := setOptionalInt(body, args, "parent"); errRes != nil {
 			return errRes, nil
 		}
-		if errRes := applyClear(body, request, []string{"parent"}); errRes != nil {
+		if errRes := applyClearBlank(body, request, []string{"parent", "match"}, []string{"match"}); errRes != nil {
 			return errRes, nil
 		}
 

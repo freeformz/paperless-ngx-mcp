@@ -143,3 +143,24 @@ func TestStatistics(t *testing.T) {
 		t.Errorf("documents_total = %v, want 100", m["documents_total"])
 	}
 }
+
+func TestSearchAutocompleteLimit(t *testing.T) {
+	var got captured
+	rh := newRouteHandler(t)
+	rh.Handle("GET", "/api/search/autocomplete/", captureHandler(t, &got, 200, []any{}))
+	client := testClientAndServer(t, rh)
+
+	for _, limit := range []any{float64(0), "0", ""} {
+		result := callTool(t, handleSearchAutocomplete(client), map[string]any{"term": "inv", "limit": limit})
+		assertNotError(t, result)
+		if got.query.Has("limit") {
+			t.Errorf("limit %#v: sent limit=%s, want none", limit, got.query.Get("limit"))
+		}
+	}
+	result := callTool(t, handleSearchAutocomplete(client), map[string]any{"term": "inv", "limit": float64(5)})
+	assertNotError(t, result)
+	if got.query.Get("limit") != "5" {
+		t.Errorf("limit = %q, want 5", got.query.Get("limit"))
+	}
+	assertIsError(t, callTool(t, handleSearchAutocomplete(client), map[string]any{"term": "inv", "limit": float64(-1)}))
+}

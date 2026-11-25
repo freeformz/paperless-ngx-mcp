@@ -29,9 +29,9 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 	)
 	srv.AddTool(
 		mcp.NewTool("user_create",
-			mcp.WithDescription("Create a new user. Only a superuser can create a staff user or superuser."),
+			mcp.WithDescription("Create a new user. Only a superuser can create a staff user or superuser. Without password the user can't sign in with a password until one is set."),
 			mcp.WithString("username", mcp.Description("Username"), mcp.Required()),
-			mcp.WithString("password", mcp.Description("Password"), mcp.Required()),
+			mcp.WithString("password", mcp.Description("Password")),
 			mcp.WithString("email", mcp.Description("Email address")),
 			mcp.WithString("first_name", mcp.Description("First name")),
 			mcp.WithString("last_name", mcp.Description("Last name")),
@@ -39,12 +39,13 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 			mcp.WithBoolean("is_staff", mcp.Description("Staff status")),
 			mcp.WithBoolean("is_superuser", mcp.Description("Superuser status")),
 			withJSONArray("groups", mcp.Description("Array of group IDs")),
+			withJSONArray("user_permissions", mcp.Description("Array of permission codenames granted directly, not through groups: bare codenames such as view_document, not documents.view_document as inherited_permissions shows them")),
 		),
 		handleUserCreate(client),
 	)
 	srv.AddTool(
 		mcp.NewTool("user_update",
-			mcp.WithDescription("Update a user; only the fields given change, and "+nullsIgnoredHint+". Only a superuser can change is_staff or is_superuser, or change a superuser."),
+			mcp.WithDescription("Update a user; only the fields given change. "+clearHint+". Only a superuser can change is_staff or is_superuser, or change a superuser."),
 			withNumber("id", mcp.Description("User ID"), mcp.Required()),
 			mcp.WithString("username", mcp.Description("Username")),
 			mcp.WithString("password", mcp.Description("Password")),
@@ -54,7 +55,9 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 			mcp.WithBoolean("is_active", mcp.Description("Active status")),
 			mcp.WithBoolean("is_staff", mcp.Description("Staff status")),
 			mcp.WithBoolean("is_superuser", mcp.Description("Superuser status")),
-			withJSONArray("groups", mcp.Description("Array of group IDs")),
+			withJSONArray("groups", mcp.Description("Array of group IDs; replaces the user's groups ([] removes them all)")),
+			withJSONArray("user_permissions", mcp.Description("Array of permission codenames granted directly, not through groups; replaces them ([] removes every direct permission). Bare codenames such as view_document, not documents.view_document as inherited_permissions shows them")),
+			withClear("first_name", "last_name", "email"),
 		),
 		handleUserUpdate(client),
 	)
@@ -93,7 +96,7 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 		mcp.NewTool("group_create",
 			mcp.WithDescription("Create a new group."),
 			mcp.WithString("name", mcp.Description("Group name"), mcp.Required()),
-			withJSONArray("permissions", mcp.Description("Array of permission codenames")),
+			withJSONArray("permissions", mcp.Description("Array of permission codenames (bare, such as view_document; default: none)")),
 		),
 		handleGroupCreate(client),
 	)
@@ -123,11 +126,12 @@ func registerUserTools(srv *server.MCPServer, client *Client) {
 	)
 	srv.AddTool(
 		mcp.NewTool("profile_update",
-			mcp.WithDescription("Update the current user's profile; only the fields given change, and "+nullsIgnoredHint+"."),
+			mcp.WithDescription("Update the current user's profile; only the fields given change. "+clearHint+"."),
 			mcp.WithString("email", mcp.Description("Email address")),
 			mcp.WithString("first_name", mcp.Description("First name")),
 			mcp.WithString("last_name", mcp.Description("Last name")),
 			mcp.WithString("password", mcp.Description("New password")),
+			withClear("first_name", "last_name", "email"),
 		),
 		handleProfileUpdate(client),
 	)
@@ -183,18 +187,19 @@ func handleProfileGet(client *Client) server.ToolHandlerFunc {
 	}
 }
 
+// userNameFields are the user and profile fields clear can blank.
+var userNameFields = []string{"first_name", "last_name", "email"}
+
 func handleUserCreate(client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		username, errRes := getRequiredString(request, "username")
 		if errRes != nil {
 			return errRes, nil
 		}
-		password, errRes := getRequiredString(request, "password")
-		if errRes != nil {
-			return errRes, nil
+		body := map[string]any{"username": username}
+		if v := request.GetString("password", ""); v != "" {
+			body["password"] = v
 		}
-
-		body := map[string]any{"username": username, "password": password}
 
 		if v := request.GetString("email", ""); v != "" {
 			body["email"] = v
@@ -215,6 +220,9 @@ func handleUserCreate(client *Client) server.ToolHandlerFunc {
 			return errRes, nil
 		}
 		if err := setJSONField(body, request, "groups"); err != nil {
+			return errResult(err.Error()), nil
+		}
+		if err := setJSONField(body, request, "user_permissions"); err != nil {
 			return errResult(err.Error()), nil
 		}
 
@@ -260,9 +268,15 @@ func handleUserUpdate(client *Client) server.ToolHandlerFunc {
 		if err := setJSONField(body, request, "groups"); err != nil {
 			return errResult(err.Error()), nil
 		}
+		if err := setJSONField(body, request, "user_permissions"); err != nil {
+			return errResult(err.Error()), nil
+		}
+		if errRes := applyClearBlank(body, request, userNameFields, userNameFields); errRes != nil {
+			return errRes, nil
+		}
 
 		if len(body) == 0 {
-			return errResult("no fields to update"), nil
+			return errResult("no fields to update; " + clearHint), nil
 		}
 
 		path := fmt.Sprintf("/api/users/%d/", id)
@@ -293,6 +307,10 @@ func handleGroupCreate(client *Client) server.ToolHandlerFunc {
 		body := map[string]any{"name": name}
 		if err := setJSONField(body, request, "permissions"); err != nil {
 			return errResult(err.Error()), nil
+		}
+		// paperless-ngx requires permissions on create.
+		if _, ok := body["permissions"]; !ok {
+			body["permissions"] = []any{}
 		}
 
 		path := "/api/groups/"
@@ -341,9 +359,12 @@ func handleProfileUpdate(client *Client) server.ToolHandlerFunc {
 		if v := request.GetString("password", ""); v != "" {
 			body["password"] = v
 		}
+		if errRes := applyClearBlank(body, request, userNameFields, userNameFields); errRes != nil {
+			return errRes, nil
+		}
 
 		if len(body) == 0 {
-			return errResult("no fields to update"), nil
+			return errResult("no fields to update; " + clearHint), nil
 		}
 
 		path := "/api/profile/"
